@@ -37,7 +37,7 @@ body {
 }
 
 .ocean-stage {
-  z-index: -3;
+  z-index: 0;
   background: #07131b;
 }
 
