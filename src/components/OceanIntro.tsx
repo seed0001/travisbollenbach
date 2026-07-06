@@ -40,16 +40,22 @@ export default function OceanIntro() {
       return;
     }
 
+    const getViewportSize = () => ({
+      height: Math.max(host.clientHeight, window.innerHeight, 1),
+      width: Math.max(host.clientWidth, window.innerWidth, 1),
+    });
+    const viewport = getViewportSize();
+
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x000000);
 
     const camera = new THREE.PerspectiveCamera(
       54,
-      host.clientWidth / host.clientHeight,
+      viewport.width / viewport.height,
       0.1,
       700,
     );
-    camera.position.set(0, 0, 96);
+    camera.position.set(0, 0, 86);
 
     const renderer = new THREE.WebGLRenderer({
       antialias: true,
@@ -57,7 +63,8 @@ export default function OceanIntro() {
       powerPreference: "high-performance",
     });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.6));
-    renderer.setSize(host.clientWidth, host.clientHeight);
+    renderer.setSize(viewport.width, viewport.height);
+    renderer.setClearColor(0x000000, 1);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.15;
@@ -71,6 +78,7 @@ export default function OceanIntro() {
     });
     const bodies = new THREE.InstancedMesh(bodyGeometry, bodyMaterial, ORGANISM_COUNT);
     bodies.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    bodies.frustumCulled = false;
     scene.add(bodies);
 
     const headGeometry = new THREE.SphereGeometry(0.28, 8, 6);
@@ -80,6 +88,7 @@ export default function OceanIntro() {
     });
     const heads = new THREE.InstancedMesh(headGeometry, headMaterial, ORGANISM_COUNT);
     heads.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    heads.frustumCulled = false;
     scene.add(heads);
 
     const organisms = makeOrganisms();
@@ -118,9 +127,10 @@ export default function OceanIntro() {
     };
 
     const onResize = () => {
-      camera.aspect = host.clientWidth / host.clientHeight;
+      const nextViewport = getViewportSize();
+      camera.aspect = nextViewport.width / nextViewport.height;
       camera.updateProjectionMatrix();
-      renderer.setSize(host.clientWidth, host.clientHeight);
+      renderer.setSize(nextViewport.width, nextViewport.height);
     };
 
     host.addEventListener("pointermove", onPointerMove);
@@ -150,7 +160,7 @@ export default function OceanIntro() {
         );
         rotation.setFromEuler(euler);
 
-        const size = organism.scale * (0.88 + (position.z + 220) / 520);
+        const size = organism.scale * (1.18 + (position.z + 220) / 520);
         scale.set(size * 2.2 * pulse, size * 0.62, size * 0.62);
         matrix.compose(position, rotation, scale);
         bodies.setMatrixAt(i, matrix);
@@ -167,7 +177,7 @@ export default function OceanIntro() {
 
       camera.position.x = THREE.MathUtils.lerp(camera.position.x, pointer.x * 5, 0.018);
       camera.position.y = THREE.MathUtils.lerp(camera.position.y, -pointer.y * 4, 0.018);
-      camera.position.z = 96 + Math.sin(elapsed * 0.08) * 1.8;
+      camera.position.z = 86 + Math.sin(elapsed * 0.08) * 1.8;
       camera.lookAt(pointer.x * 2.5, -pointer.y * 2, -32);
 
       renderer.render(scene, camera);

@@ -23,6 +23,8 @@ body {
 
 .landing {
   position: relative;
+  width: 100vw;
+  height: 100svh;
   min-height: 100svh;
   overflow: hidden;
   isolation: isolate;
@@ -30,15 +32,15 @@ body {
 
 .ocean-stage,
 .ocean-stage canvas {
-  position: absolute;
+  position: fixed;
   inset: 0;
-  width: 100%;
-  height: 100%;
+  width: 100vw;
+  height: 100svh;
 }
 
 .ocean-stage {
   z-index: 0;
-  background: #07131b;
+  background: #000000;
 }
 
 .ocean-stage canvas {
