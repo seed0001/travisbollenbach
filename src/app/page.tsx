@@ -1,35 +1,44 @@
 import Link from "next/link";
+import OceanIntro from "@/components/OceanIntro";
+
+const environments = ["Open water", "Night shelf", "Storm wall"];
 
 export default function Home() {
   return (
-    <main className="home">
-      <header className="masthead" aria-label="Site header">
+    <main className="landing">
+      <OceanIntro />
+
+      <div className="vignette" aria-hidden="true" />
+
+      <header className="site-header" aria-label="Site header">
         <Link className="wordmark" href="/" aria-label="Travis Bollenbach, home">
           TB<span>.</span>
         </Link>
         <p className="status">
           <span aria-hidden="true" />
-          Building the house
+          Live environment 01
         </p>
       </header>
 
-      <section className="hero" aria-labelledby="intro">
-        <p className="eyebrow">Hey, I&apos;m Travis.</p>
-        <h1 id="intro">
-          I like to build
-          <br />
-          cool shit<span>.</span>
-        </h1>
+      <section className="intro-panel" aria-labelledby="intro">
+        <p className="eyebrow">Travis Bollenbach</p>
+        <h1 id="intro">Skimming the edge of the next build.</h1>
         <p className="lede">
-          This will be home to everything I make—applications, games, music,
-          stories, experiments, and whatever comes next.
+          A cinematic launch deck for applications, games, music, experiments,
+          and the worlds that connect them.
         </p>
       </section>
 
-      <footer>
-        <p>Something bigger is taking shape.</p>
-        <p>© {new Date().getFullYear()} Travis Bollenbach</p>
-      </footer>
+      <aside className="environment-switcher" aria-label="Environment queue">
+        {environments.map((environment, index) => (
+          <span
+            className={index === 0 ? "environment active" : "environment"}
+            key={environment}
+          >
+            {environment}
+          </span>
+        ))}
+      </aside>
     </main>
   );
 }

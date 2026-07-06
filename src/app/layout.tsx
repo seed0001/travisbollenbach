@@ -22,24 +22,24 @@ const SITE_URL = "https://travisbollenbach.com";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: "Travis Bollenbach — Building Cool Shit",
+  title: "Travis Bollenbach - Skimming the Next Build",
   description:
-    "The home of everything Travis Bollenbach builds—applications, games, music, stories, experiments, and whatever comes next.",
+    "A cinematic launch deck for the applications, games, music, stories, experiments, and 3D worlds Travis Bollenbach builds.",
   authors: [{ name: "Travis Bollenbach" }],
   creator: "Travis Bollenbach",
   openGraph: {
     type: "website",
     url: SITE_URL,
-    title: "Travis Bollenbach — Building Cool Shit",
+    title: "Travis Bollenbach - Skimming the Next Build",
     description:
-      "Applications, games, music, stories, experiments, and whatever comes next.",
+      "Applications, games, music, stories, experiments, and cinematic 3D worlds.",
     siteName: "Travis Bollenbach",
   },
   twitter: {
     card: "summary",
-    title: "Travis Bollenbach — Building Cool Shit",
+    title: "Travis Bollenbach - Skimming the Next Build",
     description:
-      "Applications, games, music, stories, experiments, and whatever comes next.",
+      "Applications, games, music, stories, experiments, and cinematic 3D worlds.",
   },
 };
 
