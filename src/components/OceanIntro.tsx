@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 
-const ORGANISM_COUNT = 3200;
+const ORGANISM_COUNT = 5200;
 
 function random(seed: number) {
   const value = Math.sin(seed * 12.9898) * 43758.5453;
@@ -23,9 +23,10 @@ function makeOrganisms() {
       lane: (c - 0.5) * 72,
       orbit: 34 + random(index + 1409) * 138,
       phase: d * Math.PI * 2,
-      scale: 0.18 + random(index + 2017) * 1.25,
-      speed: 0.045 + random(index + 2801) * 0.13,
+      scale: 0.09 + random(index + 2017) * 0.34,
+      speed: 0.065 + random(index + 2801) * 0.18,
       wobble: 0.8 + random(index + 3203) * 4.2,
+      hue: 0.48 + random(index + 3907) * 0.32,
     };
   });
 }
@@ -63,51 +64,71 @@ export default function OceanIntro() {
     renderer.toneMappingExposure = 1.05;
     host.appendChild(renderer.domElement);
 
-    const ambient = new THREE.AmbientLight(0x6b98a8, 0.28);
+    const ambient = new THREE.AmbientLight(0x8fb8c2, 0.35);
     scene.add(ambient);
 
-    const keyLight = new THREE.PointLight(0x8df4ff, 15, 260, 2);
+    const keyLight = new THREE.PointLight(0x8df4ff, 11, 260, 2);
     keyLight.position.set(-36, 34, 58);
     scene.add(keyLight);
 
-    const fillLight = new THREE.PointLight(0xff6fba, 8, 210, 2);
+    const fillLight = new THREE.PointLight(0xff6fba, 5, 210, 2);
     fillLight.position.set(48, -26, 32);
     scene.add(fillLight);
 
-    const bodyGeometry = new THREE.IcosahedronGeometry(1, 2);
+    const bodyGeometry = new THREE.CapsuleGeometry(0.32, 0.92, 3, 8);
+    bodyGeometry.rotateZ(Math.PI / 2);
     const bodyMaterial = new THREE.MeshStandardMaterial({
-      color: 0x5dd8e8,
-      emissive: 0x123d46,
-      emissiveIntensity: 0.7,
+      color: 0xffffff,
+      emissive: 0x05090a,
+      emissiveIntensity: 0.28,
       metalness: 0,
-      roughness: 0.42,
+      roughness: 0.58,
+      vertexColors: true,
     });
     const bodies = new THREE.InstancedMesh(bodyGeometry, bodyMaterial, ORGANISM_COUNT);
     bodies.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     scene.add(bodies);
 
-    const glowGeometry = new THREE.SphereGeometry(1, 10, 8);
-    const glowMaterial = new THREE.MeshBasicMaterial({
-      color: 0xbffcff,
-      transparent: true,
-      opacity: 0.32,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
+    const headGeometry = new THREE.SphereGeometry(0.28, 8, 6);
+    const headMaterial = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      emissive: 0x05090a,
+      emissiveIntensity: 0.25,
+      metalness: 0,
+      roughness: 0.62,
+      vertexColors: true,
     });
-    const glows = new THREE.InstancedMesh(glowGeometry, glowMaterial, ORGANISM_COUNT);
-    glows.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    scene.add(glows);
+    const heads = new THREE.InstancedMesh(headGeometry, headMaterial, ORGANISM_COUNT);
+    heads.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    scene.add(heads);
 
     const organisms = makeOrganisms();
+    const color = new THREE.Color();
+    for (let i = 0; i < organisms.length; i += 1) {
+      const organism = organisms[i];
+      color.setHSL(organism.hue, 0.46, 0.42 + random(i + 4409) * 0.32);
+      bodies.setColorAt(i, color);
+      color.offsetHSL(0.02, -0.08, 0.08);
+      heads.setColorAt(i, color);
+    }
+    if (bodies.instanceColor) {
+      bodies.instanceColor.needsUpdate = true;
+    }
+    if (heads.instanceColor) {
+      heads.instanceColor.needsUpdate = true;
+    }
+
     const pointer = new THREE.Vector2();
     const clock = new THREE.Clock();
     const matrix = new THREE.Matrix4();
-    const glowMatrix = new THREE.Matrix4();
+    const headMatrix = new THREE.Matrix4();
     const position = new THREE.Vector3();
+    const headPosition = new THREE.Vector3();
+    const headOffset = new THREE.Vector3();
     const rotation = new THREE.Quaternion();
     const euler = new THREE.Euler();
     const scale = new THREE.Vector3();
-    const glowScale = new THREE.Vector3();
+    const headScale = new THREE.Vector3();
     let animationFrame = 0;
 
     const onPointerMove = (event: PointerEvent) => {
@@ -133,7 +154,7 @@ export default function OceanIntro() {
         const swim = elapsed * organism.speed + organism.phase;
         const angle = organism.angle + swim;
         const depth = ((organism.drift + elapsed * organism.wobble * 1.8 + 190) % 380) - 190;
-        const pulse = 1 + Math.sin(elapsed * 1.6 + organism.phase) * 0.12;
+        const pulse = 1 + Math.sin(elapsed * 3.2 + organism.phase) * 0.08;
         const orbit = organism.orbit + Math.sin(elapsed * 0.18 + organism.phase) * 4;
 
         position.set(
@@ -149,18 +170,20 @@ export default function OceanIntro() {
         );
         rotation.setFromEuler(euler);
 
-        const size = organism.scale * (1 + (position.z + 190) / 560);
-        scale.set(size * 1.45 * pulse, size * 0.72, size * 0.92);
+        const size = organism.scale * (0.62 + (position.z + 190) / 620);
+        scale.set(size * 2.2 * pulse, size * 0.62, size * 0.62);
         matrix.compose(position, rotation, scale);
         bodies.setMatrixAt(i, matrix);
 
-        glowScale.set(size * 2.9, size * 2.9, size * 2.9);
-        glowMatrix.compose(position, rotation, glowScale);
-        glows.setMatrixAt(i, glowMatrix);
+        headOffset.set(size * 1.35, 0, 0).applyQuaternion(rotation);
+        headPosition.copy(position).add(headOffset);
+        headScale.setScalar(size * 0.82);
+        headMatrix.compose(headPosition, rotation, headScale);
+        heads.setMatrixAt(i, headMatrix);
       }
 
       bodies.instanceMatrix.needsUpdate = true;
-      glows.instanceMatrix.needsUpdate = true;
+      heads.instanceMatrix.needsUpdate = true;
 
       camera.position.x = THREE.MathUtils.lerp(camera.position.x, pointer.x * 5, 0.018);
       camera.position.y = THREE.MathUtils.lerp(camera.position.y, -pointer.y * 4, 0.018);
@@ -179,8 +202,8 @@ export default function OceanIntro() {
       window.removeEventListener("resize", onResize);
       bodyGeometry.dispose();
       bodyMaterial.dispose();
-      glowGeometry.dispose();
-      glowMaterial.dispose();
+      headGeometry.dispose();
+      headMaterial.dispose();
       renderer.dispose();
       renderer.domElement.remove();
     };
