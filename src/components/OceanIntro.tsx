@@ -2,60 +2,32 @@
 
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
-import { Sky } from "three/examples/jsm/objects/Sky.js";
-import { Water } from "three/examples/jsm/objects/Water.js";
 
-function makeWaterNormals() {
-  const size = 512;
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
+const ORGANISM_COUNT = 3200;
 
-  const context = canvas.getContext("2d");
-  if (!context) {
-    return new THREE.Texture();
-  }
+function random(seed: number) {
+  const value = Math.sin(seed * 12.9898) * 43758.5453;
+  return value - Math.floor(value);
+}
 
-  const image = context.createImageData(size, size);
-  const heights = new Float32Array(size * size);
+function makeOrganisms() {
+  return Array.from({ length: ORGANISM_COUNT }, (_, index) => {
+    const a = random(index + 1);
+    const b = random(index + 101);
+    const c = random(index + 401);
+    const d = random(index + 907);
 
-  for (let y = 0; y < size; y += 1) {
-    for (let x = 0; x < size; x += 1) {
-      const nx = x / size;
-      const ny = y / size;
-      heights[y * size + x] =
-        Math.sin((nx * 2.1 + ny * 0.35) * Math.PI * 2) * 0.56 +
-        Math.sin((nx * 0.48 - ny * 1.28) * Math.PI * 2) * 0.34 +
-        Math.cos((nx * 1.1 + ny * 1.65) * Math.PI * 2) * 0.24 +
-        Math.sin((nx * 3.4 - ny * 1.9) * Math.PI * 2) * 0.08;
-    }
-  }
-
-  for (let y = 0; y < size; y += 1) {
-    for (let x = 0; x < size; x += 1) {
-      const left = heights[y * size + ((x - 1 + size) % size)];
-      const right = heights[y * size + ((x + 1) % size)];
-      const up = heights[((y - 1 + size) % size) * size + x];
-      const down = heights[((y + 1) % size) * size + x];
-      const normal = new THREE.Vector3((left - right) * 0.72, (up - down) * 0.72, 1);
-      normal.normalize();
-
-      const i = (y * size + x) * 4;
-      image.data[i] = Math.round((normal.x * 0.5 + 0.5) * 255);
-      image.data[i + 1] = Math.round((normal.y * 0.5 + 0.5) * 255);
-      image.data[i + 2] = Math.round((normal.z * 0.5 + 0.5) * 255);
-      image.data[i + 3] = 255;
-    }
-  }
-
-  context.putImageData(image, 0, 0);
-
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.wrapS = THREE.RepeatWrapping;
-  texture.wrapT = THREE.RepeatWrapping;
-  texture.colorSpace = THREE.NoColorSpace;
-
-  return texture;
+    return {
+      angle: a * Math.PI * 2,
+      drift: (b - 0.5) * 90,
+      lane: (c - 0.5) * 72,
+      orbit: 34 + random(index + 1409) * 138,
+      phase: d * Math.PI * 2,
+      scale: 0.18 + random(index + 2017) * 1.25,
+      speed: 0.045 + random(index + 2801) * 0.13,
+      wobble: 0.8 + random(index + 3203) * 4.2,
+    };
+  });
 }
 
 export default function OceanIntro() {
@@ -68,71 +40,74 @@ export default function OceanIntro() {
     }
 
     const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x000000);
+    scene.fog = new THREE.FogExp2(0x000000, 0.011);
+
     const camera = new THREE.PerspectiveCamera(
-      47,
+      54,
       host.clientWidth / host.clientHeight,
-      1,
-      22000,
+      0.1,
+      700,
     );
-    camera.position.set(0, 44, 155);
+    camera.position.set(0, 0, 112);
 
     const renderer = new THREE.WebGLRenderer({
       antialias: true,
       alpha: false,
       powerPreference: "high-performance",
     });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.6));
     renderer.setSize(host.clientWidth, host.clientHeight);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 0.72;
+    renderer.toneMappingExposure = 1.05;
     host.appendChild(renderer.domElement);
 
-    scene.fog = new THREE.FogExp2(0xb8d7e3, 0.000055);
+    const ambient = new THREE.AmbientLight(0x6b98a8, 0.28);
+    scene.add(ambient);
 
-    const sky = new Sky();
-    sky.scale.setScalar(10000);
-    scene.add(sky);
+    const keyLight = new THREE.PointLight(0x8df4ff, 15, 260, 2);
+    keyLight.position.set(-36, 34, 58);
+    scene.add(keyLight);
 
-    const skyUniforms = sky.material.uniforms;
-    skyUniforms.turbidity.value = 4.8;
-    skyUniforms.rayleigh.value = 2.15;
-    skyUniforms.mieCoefficient.value = 0.0028;
-    skyUniforms.mieDirectionalG.value = 0.78;
+    const fillLight = new THREE.PointLight(0xff6fba, 8, 210, 2);
+    fillLight.position.set(48, -26, 32);
+    scene.add(fillLight);
 
-    const sun = new THREE.Vector3();
-    const pmremGenerator = new THREE.PMREMGenerator(renderer);
-
-    const updateSun = () => {
-      const phi = THREE.MathUtils.degToRad(89.2 - 9.5);
-      const theta = THREE.MathUtils.degToRad(195);
-      sun.setFromSphericalCoords(1, phi, theta);
-      sky.material.uniforms.sunPosition.value.copy(sun);
-      water.material.uniforms.sunDirection.value.copy(sun).normalize();
-
-      const renderTarget = pmremGenerator.fromScene(sky as unknown as THREE.Scene);
-      scene.environment = renderTarget.texture;
-    };
-
-    const waterGeometry = new THREE.PlaneGeometry(18000, 18000, 256, 256);
-    const waterNormals = makeWaterNormals();
-    const water = new Water(waterGeometry, {
-      textureWidth: 1024,
-      textureHeight: 1024,
-      waterNormals,
-      sunDirection: new THREE.Vector3(),
-      sunColor: 0xffddb8,
-      waterColor: 0x0a2635,
-      distortionScale: 2.35,
-      fog: true,
+    const bodyGeometry = new THREE.IcosahedronGeometry(1, 2);
+    const bodyMaterial = new THREE.MeshStandardMaterial({
+      color: 0x5dd8e8,
+      emissive: 0x123d46,
+      emissiveIntensity: 0.7,
+      metalness: 0,
+      roughness: 0.42,
     });
-    water.rotation.x = -Math.PI / 2;
-    water.position.y = -5;
-    scene.add(water);
-    updateSun();
+    const bodies = new THREE.InstancedMesh(bodyGeometry, bodyMaterial, ORGANISM_COUNT);
+    bodies.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    scene.add(bodies);
 
+    const glowGeometry = new THREE.SphereGeometry(1, 10, 8);
+    const glowMaterial = new THREE.MeshBasicMaterial({
+      color: 0xbffcff,
+      transparent: true,
+      opacity: 0.32,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const glows = new THREE.InstancedMesh(glowGeometry, glowMaterial, ORGANISM_COUNT);
+    glows.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    scene.add(glows);
+
+    const organisms = makeOrganisms();
     const pointer = new THREE.Vector2();
     const clock = new THREE.Clock();
+    const matrix = new THREE.Matrix4();
+    const glowMatrix = new THREE.Matrix4();
+    const position = new THREE.Vector3();
+    const rotation = new THREE.Quaternion();
+    const euler = new THREE.Euler();
+    const scale = new THREE.Vector3();
+    const glowScale = new THREE.Vector3();
     let animationFrame = 0;
 
     const onPointerMove = (event: PointerEvent) => {
@@ -152,16 +127,45 @@ export default function OceanIntro() {
 
     const render = () => {
       const elapsed = clock.getElapsedTime();
-      water.material.uniforms.time.value = elapsed * 0.16;
+
+      for (let i = 0; i < organisms.length; i += 1) {
+        const organism = organisms[i];
+        const swim = elapsed * organism.speed + organism.phase;
+        const angle = organism.angle + swim;
+        const depth = ((organism.drift + elapsed * organism.wobble * 1.8 + 190) % 380) - 190;
+        const pulse = 1 + Math.sin(elapsed * 1.6 + organism.phase) * 0.12;
+        const orbit = organism.orbit + Math.sin(elapsed * 0.18 + organism.phase) * 4;
+
+        position.set(
+          Math.cos(angle) * orbit + Math.sin(swim * 2.7) * 3.2,
+          organism.lane + Math.sin(swim * 3.1) * 5.5,
+          depth,
+        );
+
+        euler.set(
+          Math.sin(swim * 2.2) * 0.55,
+          angle + Math.PI * 0.5,
+          Math.cos(swim * 1.7) * 0.35,
+        );
+        rotation.setFromEuler(euler);
+
+        const size = organism.scale * (1 + (position.z + 190) / 560);
+        scale.set(size * 1.45 * pulse, size * 0.72, size * 0.92);
+        matrix.compose(position, rotation, scale);
+        bodies.setMatrixAt(i, matrix);
+
+        glowScale.set(size * 2.9, size * 2.9, size * 2.9);
+        glowMatrix.compose(position, rotation, glowScale);
+        glows.setMatrixAt(i, glowMatrix);
+      }
+
+      bodies.instanceMatrix.needsUpdate = true;
+      glows.instanceMatrix.needsUpdate = true;
 
       camera.position.x = THREE.MathUtils.lerp(camera.position.x, pointer.x * 5, 0.018);
-      camera.position.y = THREE.MathUtils.lerp(
-        camera.position.y,
-        44 + -pointer.y * 2.5 + Math.sin(elapsed * 0.22) * 0.55,
-        0.018,
-      );
-      camera.position.z = 155 + Math.sin(elapsed * 0.12) * 2.4;
-      camera.lookAt(pointer.x * 4, -3, -950);
+      camera.position.y = THREE.MathUtils.lerp(camera.position.y, -pointer.y * 4, 0.018);
+      camera.position.z = 112 + Math.sin(elapsed * 0.08) * 1.8;
+      camera.lookAt(pointer.x * 2.5, -pointer.y * 2, -32);
 
       renderer.render(scene, camera);
       animationFrame = window.requestAnimationFrame(render);
@@ -173,11 +177,10 @@ export default function OceanIntro() {
       window.cancelAnimationFrame(animationFrame);
       host.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("resize", onResize);
-      waterGeometry.dispose();
-      waterNormals.dispose();
-      water.material.dispose();
-      sky.material.dispose();
-      pmremGenerator.dispose();
+      bodyGeometry.dispose();
+      bodyMaterial.dispose();
+      glowGeometry.dispose();
+      glowMaterial.dispose();
       renderer.dispose();
       renderer.domElement.remove();
     };
