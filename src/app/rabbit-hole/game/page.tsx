@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
-import ConstructGame from "@/components/ConstructGame";
+import ConstructGame from "@/components/ConstructGameClient";
 
 export const metadata: Metadata = {
   title: "The Construct — Travis Bollenbach",
   description:
-    "A rendered world you can walk through. Five questions stand in the dark — go stand next to one.",
+    "An open world grown from a single seed. Five questions stand in the meadow — go stand next to one.",
 };
 
 export default function GamePage() {
