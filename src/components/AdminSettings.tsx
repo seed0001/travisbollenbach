@@ -13,6 +13,14 @@ type FieldView =
 type Fields = Record<string, FieldView>;
 type ModelOption = { id: string; name: string };
 
+type AiLinkStatus = {
+  status: "ok" | "no_key" | "invalid_key" | "unreachable";
+  keySource: "admin" | "env" | "none";
+  model: string;
+  keyPreview: string;
+  detail: string;
+};
+
 const inputClass =
   "w-full rounded-lg border border-ops-line bg-white px-3.5 py-2.5 text-sm text-ops-ink placeholder:text-ops-muted/70 focus:border-ops-accent focus:outline-none focus:ring-2 focus:ring-ops-accent/15";
 
@@ -31,6 +39,10 @@ export default function AdminSettings() {
     "idle" | "loading" | "ready" | "error"
   >("idle");
   const [modelsError, setModelsError] = useState("");
+  const [modelsKeyed, setModelsKeyed] = useState(true);
+
+  const [aiStatus, setAiStatus] = useState<AiLinkStatus | null>(null);
+  const [aiChecking, setAiChecking] = useState(false);
 
   const loadModels = useCallback(async (refresh: boolean) => {
     setModelsStatus("loading");
@@ -48,12 +60,34 @@ export default function AdminSettings() {
         );
       }
       setModels(data.models);
+      setModelsKeyed(data.keyed !== false);
       setModelsStatus("ready");
     } catch (err) {
       setModelsStatus("error");
       setModelsError(
         err instanceof Error ? err.message : "Couldn't load models.",
       );
+    }
+  }, []);
+
+  const checkAiLink = useCallback(async () => {
+    setAiChecking(true);
+    try {
+      const res = await fetch("/api/admin/ai-status");
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.status) {
+        setAiStatus(data);
+      } else {
+        setAiStatus({
+          status: "unreachable",
+          keySource: "none",
+          model: "",
+          keyPreview: "",
+          detail: "The status check itself failed — reload and try again.",
+        });
+      }
+    } finally {
+      setAiChecking(false);
     }
   }, []);
 
@@ -70,12 +104,15 @@ export default function AdminSettings() {
         if (!cancelled) setError("Couldn't load settings.");
       });
     // deferred so the effect body itself doesn't set state synchronously
-    const kickoff = setTimeout(() => loadModels(false), 0);
+    const kickoff = setTimeout(() => {
+      loadModels(false);
+      checkAiLink();
+    }, 0);
     return () => {
       cancelled = true;
       clearTimeout(kickoff);
     };
-  }, [loadModels]);
+  }, [loadModels, checkAiLink]);
 
   const save = async (event: FormEvent) => {
     event.preventDefault();
@@ -114,7 +151,9 @@ export default function AdminSettings() {
       setStatus("saved");
       setTimeout(() => setStatus("idle"), 2500);
       // a fresh key may unlock account-gated models — refresh the catalog
+      // and re-verify the AI link end to end
       if (patch.openrouterApiKey) loadModels(true);
+      if (patch.openrouterApiKey || patch.openrouterModel) checkAiLink();
     } catch (err) {
       setStatus("error");
       setError(err instanceof Error ? err.message : "Save failed.");
@@ -136,6 +175,7 @@ export default function AdminSettings() {
       setFields(data.fields);
       seedDrafts(data.fields, setDrafts);
       setStatus("idle");
+      if (key === "openrouterApiKey") checkAiLink();
     } catch (err) {
       setStatus("error");
       setError(err instanceof Error ? err.message : "Clear failed.");
@@ -206,6 +246,52 @@ export default function AdminSettings() {
           Powers every AI feature on the site, starting with the character
           studio.
         </p>
+
+        {/* Live end-to-end check of the exact key + model the chat will use */}
+        <div
+          className={`mt-4 rounded-lg border p-3.5 ${
+            !aiStatus || aiChecking
+              ? "border-ops-line bg-ops-bg"
+              : aiStatus.status === "ok"
+                ? "border-ops-green/40 bg-ops-green-soft"
+                : "border-ops-red/40 bg-ops-red-soft"
+          }`}
+        >
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-[13px] font-semibold">
+              {aiChecking || !aiStatus
+                ? "AI link — checking…"
+                : aiStatus.status === "ok"
+                  ? "AI link — connected"
+                  : aiStatus.status === "no_key"
+                    ? "AI link — no key configured"
+                    : aiStatus.status === "invalid_key"
+                      ? "AI link — key rejected"
+                      : "AI link — OpenRouter unreachable"}
+            </span>
+            <button
+              type="button"
+              onClick={checkAiLink}
+              disabled={aiChecking}
+              className="shrink-0 rounded-lg border border-ops-line px-3 py-1 text-xs font-medium text-ops-muted transition-colors hover:border-ops-accent hover:text-ops-accent disabled:opacity-50"
+            >
+              test now
+            </button>
+          </div>
+          {aiStatus && !aiChecking && (
+            <p
+              className={`mt-1.5 text-xs ${
+                aiStatus.status === "ok" ? "text-ops-green" : "text-ops-red"
+              }`}
+            >
+              {aiStatus.detail}
+              {aiStatus.status === "ok" &&
+                aiStatus.keySource === "env" &&
+                " (key comes from the environment, not this page)"}
+            </p>
+          )}
+        </div>
+
         <div className="mt-5 space-y-5">
           {secretRow(
             "openrouterApiKey",
@@ -222,7 +308,9 @@ export default function AdminSettings() {
                 <span className="text-xs text-ops-muted">
                   {modelsStatus === "loading" && "loading catalog…"}
                   {modelsStatus === "ready" &&
-                    `${models.length} models available`}
+                    `${models.length} models available${
+                      modelsKeyed ? "" : " (public catalog — no key attached)"
+                    }`}
                   {modelsStatus === "error" && (
                     <span className="text-ops-red">{modelsError}</span>
                   )}

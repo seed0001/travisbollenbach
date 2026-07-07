@@ -148,10 +148,14 @@ function Chamber({
         ]);
         speak(data.reply);
       } else if (response.status === 503) {
-        setEntries((current) => [
-          ...current,
-          { role: "system", text: characterWorkshop.chamber.offline },
-        ]);
+        const chamber = characterWorkshop.chamber;
+        const text =
+          data?.reason === "bad_key"
+            ? chamber.badKey
+            : data?.reason === "unreachable"
+              ? chamber.unreachable
+              : chamber.offline;
+        setEntries((current) => [...current, { role: "system", text }]);
         setMood("idle");
       } else {
         setEntries((current) => [

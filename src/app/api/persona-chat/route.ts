@@ -8,7 +8,8 @@ import { descentPrompts } from "@/lib/descent-prompts";
 // OPENROUTER_API_KEY / OPENROUTER_MODEL env vars); without a key the route
 // degrades to an in-fiction offline response.
 
-const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const OPENROUTER_URL =
+  process.env.OPENROUTER_URL ?? "https://openrouter.ai/api/v1/chat/completions";
 const MAX_NAME = 60;
 const MAX_STATEMENT = 2000;
 const MAX_MESSAGE = 600;
@@ -152,7 +153,13 @@ export async function POST(request: Request) {
 
   const { apiKey, model } = await getOpenRouter();
   if (!apiKey) {
-    return NextResponse.json({ error: "offline" }, { status: 503 });
+    console.error(
+      "persona-chat: no OpenRouter key configured — save one in /admin or set OPENROUTER_API_KEY",
+    );
+    return NextResponse.json(
+      { error: "offline", reason: "no_key" },
+      { status: 503 },
+    );
   }
 
   try {
@@ -162,7 +169,9 @@ export async function POST(request: Request) {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
         "HTTP-Referer": "https://travisbollenbach.com",
-        "X-Title": "The Construct — travisbollenbach.com",
+        // ASCII only: fetch() rejects non-Latin-1 header values outright,
+        // so an em dash here killed every request before it was sent
+        "X-Title": "The Construct - travisbollenbach.com",
       },
       body: JSON.stringify({
         model: stageModel || model,
@@ -174,7 +183,13 @@ export async function POST(request: Request) {
 
     if (response.status === 401 || response.status === 403) {
       // bad or revoked key — treat as the construct being offline
-      return NextResponse.json({ error: "offline" }, { status: 503 });
+      console.error(
+        `persona-chat: OpenRouter rejected the configured key (${response.status}) — replace it in /admin`,
+      );
+      return NextResponse.json(
+        { error: "offline", reason: "bad_key" },
+        { status: 503 },
+      );
     }
     if (response.status === 429 || response.status === 402) {
       return NextResponse.json(
@@ -205,6 +220,9 @@ export async function POST(request: Request) {
   } catch (error) {
     // network failure or timeout — the uplink is down
     console.error("persona-chat error", error);
-    return NextResponse.json({ error: "offline" }, { status: 503 });
+    return NextResponse.json(
+      { error: "offline", reason: "unreachable" },
+      { status: 503 },
+    );
   }
 }

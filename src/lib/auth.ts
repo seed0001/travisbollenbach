@@ -109,6 +109,13 @@ export function toPublicUser(user: User): PublicUser {
   };
 }
 
+/** When ADMIN_EMAIL is set, the admin seat is pinned to that address — no one
+ * else can claim it, even on a brand-new (or wiped) database. Without it, the
+ * first account to register owns the ship. */
+function pinnedAdminEmail(): string | null {
+  return normalizeEmail(process.env.ADMIN_EMAIL);
+}
+
 export async function createUser(input: {
   email: string;
   password: string;
@@ -119,13 +126,19 @@ export async function createUser(input: {
     if (users.some((u) => u.email === input.email)) {
       return { error: "An account with that email already exists." };
     }
+    const adminEmail = pinnedAdminEmail();
     const user: User = {
       id: randomUUID(),
       email: input.email,
       name: input.name,
       passwordHash: await hashPassword(input.password),
-      // The first account to register owns the ship
-      role: users.length === 0 ? "admin" : "user",
+      role: adminEmail
+        ? input.email === adminEmail
+          ? "admin"
+          : "user"
+        : users.length === 0
+          ? "admin"
+          : "user",
       createdAt: new Date().toISOString(),
     };
     users.push(user);
@@ -142,6 +155,19 @@ export async function authenticate(
   const user = users.find((u) => u.email === email);
   if (!user || !(await verifyPassword(password, user.passwordHash))) {
     return null;
+  }
+  // If the admin seat is pinned to this address, restore the role on login —
+  // covers accounts created before ADMIN_EMAIL was set or after a data wipe.
+  if (user.role !== "admin" && user.email === pinnedAdminEmail()) {
+    await withLock(async () => {
+      const current = await readJson<User[]>(USERS_FILE, []);
+      const record = current.find((u) => u.id === user.id);
+      if (record && record.role !== "admin") {
+        record.role = "admin";
+        await writeJson(USERS_FILE, current);
+      }
+    });
+    user.role = "admin";
   }
   return toPublicUser(user);
 }
