@@ -26,6 +26,19 @@
   --color-studio-iris: #5b54d9;
   --color-studio-iris-soft: #eceafd;
   --color-studio-peach: #e88d67;
+
+  /* Ops — the operator console's professional palette */
+  --color-ops-bg: #f6f7f9;
+  --color-ops-card: #ffffff;
+  --color-ops-ink: #16181d;
+  --color-ops-muted: #6b7280;
+  --color-ops-line: #e4e6eb;
+  --color-ops-accent: #2563eb;
+  --color-ops-accent-soft: #eaf0fe;
+  --color-ops-green: #16a34a;
+  --color-ops-green-soft: #e8f7ee;
+  --color-ops-red: #dc2626;
+  --color-ops-red-soft: #fdecec;
 }
 
 :root {
@@ -308,6 +321,14 @@ body {
 
 .studio-display {
   font-family: Georgia, "Iowan Old Style", "Times New Roman", serif;
+}
+
+/* Ops console opts out of the terminal look too: clean sans, light scheme */
+.ops {
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Helvetica, Arial,
+    sans-serif;
+  color-scheme: light;
 }
 
 /* soft pastel wash behind the studio pages */
