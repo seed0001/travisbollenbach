@@ -169,7 +169,9 @@ export async function POST(request: Request) {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
         "HTTP-Referer": "https://travisbollenbach.com",
-        "X-Title": "The Construct — travisbollenbach.com",
+        // ASCII only: fetch() rejects non-Latin-1 header values outright,
+        // so an em dash here killed every request before it was sent
+        "X-Title": "The Construct - travisbollenbach.com",
       },
       body: JSON.stringify({
         model: stageModel || model,
