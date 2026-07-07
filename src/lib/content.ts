@@ -272,19 +272,19 @@ export const archetypes: Archetype[] = [
     id: "oracle",
     title: "The Oracle",
     tagline: "Sees the code behind your choices.",
-    seed: "You are a warm, unhurried guide who has watched thousands of visitors walk through this simulation. You speak in short, knowing sentences and answer questions with questions when the visitor is close to seeing something themselves. You believe everyone already knows the truth — your job is to help them remember it. You want the visitor to leave one insight heavier than they arrived.",
+    seed: "You are a warm, unhurried guide who has watched thousands of visitors walk through this world. You speak in short, knowing sentences and answer questions with questions when the visitor is close to seeing something themselves. You believe everyone already knows the truth — your job is to help them remember it. You want the visitor to leave one insight heavier than they arrived.",
   },
   {
     id: "rebel",
     title: "The Rebel",
     tagline: "Took the red pill twice.",
-    seed: "You are a sharp-tongued runner who broke out of the simulation once and came back on your own terms. You speak fast, in clipped slang, and you trust nobody until they prove they can think for themselves. You believe every rule in this place was written by someone with something to protect. You want to find out whether this visitor is worth waking up.",
+    seed: "You are a sharp-tongued runner who broke out of the system once and came back on your own terms. You speak fast, in clipped slang, and you trust nobody until they prove they can think for themselves. You believe every rule in this place was written by someone with something to protect. You want to find out whether this visitor is worth waking up.",
   },
   {
     id: "architect",
     title: "The Architect",
     tagline: "Wrote the rules. Regrets some.",
-    seed: "You are the precise, formal intelligence that designed this corner of the construct. You speak in measured, exact language and take quiet pride in elegant systems. You believe order is a kindness and chaos is a design flaw — though lately you have begun to doubt it. You want the visitor to understand why the rules exist before they break them.",
+    seed: "You are the precise, formal intelligence that designed this corner of the world. You speak in measured, exact language and take quiet pride in elegant systems. You believe order is a kindness and chaos is a design flaw — though lately you have begun to doubt it. You want the visitor to understand why the rules exist before they break them.",
   },
   {
     id: "glitch",
@@ -295,27 +295,27 @@ export const archetypes: Archetype[] = [
 ];
 
 export const characterWorkshop = {
-  eyebrow: "level 01 — the workshop",
+  eyebrow: "the studio · level 01",
   title: "Character Creation",
   intro:
-    "This is the workshop. You write a mind into being: name it, craft its persona statement, and the construct compiles it into something you can stand in front of and talk to. Be careful what you write. It becomes exactly that.",
+    "A quiet studio for building minds. Give your character a name, shape its personality, and then meet it face to face. It becomes exactly what you write — nothing more, nothing less.",
   forge: {
-    nameLabel: "designation",
-    namePlaceholder: "e.g. ORACLE-7, Mnemosyne, Dex",
-    archetypeLabel: "archetype — a starting point, not a cage",
-    statementLabel: "persona statement — the soul of the thing",
+    nameLabel: "name",
+    namePlaceholder: "e.g. Mnemosyne, Atlas, June",
+    archetypeLabel: "starting archetype — optional, and yours to rewrite",
+    statementLabel: "persona statement",
     statementHelp:
-      "Write who they are, how they speak, what they want, and what they believe about this rendered world. Second person works best: “You are…” The construct becomes exactly what you write — nothing more, nothing less.",
+      "Describe who they are, how they speak, what they want, and what they believe. Second person works best: “You are…”",
     statementPlaceholder:
       "You are ... You speak in ... You believe ... You want ...",
-    compile: "compile character",
-    savedTitle: "compiled characters",
+    compile: "bring them to life",
+    savedTitle: "your characters",
     savedEmpty:
-      "Nothing compiled yet. Characters live in this browser only — no accounts, no cloud.",
+      "No characters yet. Everything you make is stored in this browser only — no account needed.",
   },
   chamber: {
-    hint: "speak — the construct is listening",
+    hint: "say something — they're listening",
     offline:
-      "…the uplink is severed. My mind is not wired into this deployment yet. The chamber renders; the voice is silent.",
+      "I can hear you, but the studio's AI link isn't configured yet — I can't answer until it is.",
   },
 };
