@@ -11,6 +11,8 @@ const BOUNDS = { x: 70, zMin: -140, zMax: 20 };
 const REVEAL_RADIUS = 10;
 const RAIN_COUNT = 2200;
 
+type ControlMode = "touch" | "gyro";
+
 function subscribeToPointerType(callback: () => void) {
   const query = window.matchMedia("(pointer: coarse)");
   query.addEventListener("change", callback);
@@ -23,8 +25,6 @@ function makeLabelTexture(text: string) {
   canvas.height = 128;
   const ctx = canvas.getContext("2d");
   if (ctx) {
-    ctx.fillStyle = "rgba(0, 0, 0, 0)";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.font = "bold 64px monospace";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
@@ -38,16 +38,177 @@ function makeLabelTexture(text: string) {
   return texture;
 }
 
+// --- Procedural ambience (no audio files needed) ---------------------------
+
+type Ambience = {
+  setProximity(v: number): void;
+  setMuted(m: boolean): void;
+  dispose(): void;
+};
+
+function createAmbience(startMuted: boolean): Ambience | null {
+  try {
+    const ctx = new AudioContext();
+    const master = ctx.createGain();
+    master.gain.value = 0;
+    master.connect(ctx.destination);
+    if (!startMuted) {
+      master.gain.linearRampToValueAtTime(0.5, ctx.currentTime + 2.5);
+    }
+
+    // Low detuned drone — the hum of the machine
+    const droneGain = ctx.createGain();
+    droneGain.gain.value = 0.16;
+    const droneFilter = ctx.createBiquadFilter();
+    droneFilter.type = "lowpass";
+    droneFilter.frequency.value = 240;
+    droneGain.connect(droneFilter);
+    droneFilter.connect(master);
+    [
+      { freq: 46, type: "sine" as const, level: 1 },
+      { freq: 46.6, type: "sine" as const, level: 1 },
+      { freq: 92.5, type: "triangle" as const, level: 0.35 },
+    ].forEach((voice) => {
+      const osc = ctx.createOscillator();
+      osc.type = voice.type;
+      osc.frequency.value = voice.freq;
+      const gain = ctx.createGain();
+      gain.gain.value = voice.level;
+      osc.connect(gain);
+      gain.connect(droneGain);
+      osc.start();
+    });
+
+    // Airy shimmer — filtered noise drifting overhead like the rain
+    const noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+    const channel = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < channel.length; i += 1) {
+      channel[i] = Math.random() * 2 - 1;
+    }
+    const noise = ctx.createBufferSource();
+    noise.buffer = noiseBuffer;
+    noise.loop = true;
+    const shimmerFilter = ctx.createBiquadFilter();
+    shimmerFilter.type = "bandpass";
+    shimmerFilter.frequency.value = 1500;
+    shimmerFilter.Q.value = 8;
+    const shimmerGain = ctx.createGain();
+    shimmerGain.gain.value = 0.02;
+    noise.connect(shimmerFilter);
+    shimmerFilter.connect(shimmerGain);
+    shimmerGain.connect(master);
+    noise.start();
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = 0.07;
+    const lfoDepth = ctx.createGain();
+    lfoDepth.gain.value = 600;
+    lfo.connect(lfoDepth);
+    lfoDepth.connect(shimmerFilter.frequency);
+    lfo.start();
+
+    // Proximity chord — swells as you approach a monolith
+    const proxGain = ctx.createGain();
+    proxGain.gain.value = 0;
+    proxGain.connect(master);
+    [196, 294].forEach((freq) => {
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      osc.connect(proxGain);
+      osc.start();
+    });
+
+    return {
+      setProximity(v: number) {
+        proxGain.gain.setTargetAtTime(v * 0.06, ctx.currentTime, 0.25);
+      },
+      setMuted(m: boolean) {
+        master.gain.setTargetAtTime(m ? 0 : 0.5, ctx.currentTime, 0.15);
+      },
+      dispose() {
+        ctx.close().catch(() => {});
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
+// --- Device-orientation → camera quaternion (AR-style look) -----------------
+
+const WORLD_UP = new THREE.Vector3(0, 1, 0);
+const ZEE = new THREE.Vector3(0, 0, 1);
+const orientEuler = new THREE.Euler();
+const qScreen = new THREE.Quaternion();
+const Q_FLIP = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
+
+function setQuaternionFromOrientation(
+  quaternion: THREE.Quaternion,
+  alpha: number,
+  beta: number,
+  gamma: number,
+  screenAngle: number,
+) {
+  orientEuler.set(beta, alpha, -gamma, "YXZ");
+  quaternion.setFromEuler(orientEuler);
+  quaternion.multiply(Q_FLIP); // camera looks out the back of the device
+  quaternion.multiply(qScreen.setFromAxisAngle(ZEE, -screenAngle));
+}
+
 export default function ConstructGame() {
   const hostRef = useRef<HTMLDivElement>(null);
   const lockFnRef = useRef<(() => void) | null>(null);
+  const modeRef = useRef<ControlMode>("touch");
+  const ambienceRef = useRef<Ambience | null>(null);
+  const mutedRef = useRef(false);
+
   const [locked, setLocked] = useState(false);
+  const [entered, setEntered] = useState(false);
+  const [mode, setMode] = useState<ControlMode>("touch");
+  const [muted, setMuted] = useState(false);
   const [nearMonolith, setNearMonolith] = useState<number>(-1);
   const isTouch = useSyncExternalStore(
     subscribeToPointerType,
     () => window.matchMedia("(pointer: coarse)").matches,
     () => false,
   );
+
+  const startAudio = () => {
+    if (!ambienceRef.current) {
+      ambienceRef.current = createAmbience(mutedRef.current);
+    }
+  };
+
+  const toggleMute = () => {
+    const next = !mutedRef.current;
+    mutedRef.current = next;
+    setMuted(next);
+    ambienceRef.current?.setMuted(next);
+  };
+
+  const enterTouch = async (wantGyro: boolean) => {
+    let nextMode: ControlMode = "touch";
+    if (wantGyro) {
+      // iOS requires an explicit permission grant from a user gesture
+      const OrientationEvent = DeviceOrientationEvent as unknown as {
+        requestPermission?: () => Promise<string>;
+      };
+      try {
+        if (typeof OrientationEvent.requestPermission === "function") {
+          const result = await OrientationEvent.requestPermission();
+          if (result === "granted") nextMode = "gyro";
+        } else {
+          nextMode = "gyro";
+        }
+      } catch {
+        nextMode = "touch";
+      }
+    }
+    modeRef.current = nextMode;
+    setMode(nextMode);
+    startAudio();
+    setEntered(true);
+  };
 
   useEffect(() => {
     const host = hostRef.current;
@@ -127,7 +288,6 @@ export default function ConstructGame() {
       group.add(label);
       disposables.push(labelTexture, labelMaterial);
 
-      // glow ring on the floor
       const ringGeometry = new THREE.RingGeometry(2.6, 3, 48);
       const ringMaterial = new THREE.MeshBasicMaterial({
         color: 0x00ff66,
@@ -174,6 +334,27 @@ export default function ConstructGame() {
     const keys = new Set<string>();
     let yaw = 0; // spawn facing down the -z corridor of monoliths
     let pitch = 0;
+    let gyroYawOffset = 0; // swipe-to-turn on top of device orientation
+    const yawOffsetQ = new THREE.Quaternion();
+
+    const gyro = { alpha: 0, beta: 0, gamma: 0, has: false };
+    let screenAngle = THREE.MathUtils.degToRad(
+      window.screen.orientation?.angle ?? 0,
+    );
+
+    const onOrientation = (event: DeviceOrientationEvent) => {
+      if (event.alpha === null) return;
+      gyro.alpha = THREE.MathUtils.degToRad(event.alpha);
+      gyro.beta = THREE.MathUtils.degToRad(event.beta ?? 0);
+      gyro.gamma = THREE.MathUtils.degToRad(event.gamma ?? 0);
+      gyro.has = true;
+    };
+
+    const onScreenRotate = () => {
+      screenAngle = THREE.MathUtils.degToRad(
+        window.screen.orientation?.angle ?? 0,
+      );
+    };
 
     const onKeyDown = (event: KeyboardEvent) => {
       keys.add(event.code);
@@ -204,7 +385,7 @@ export default function ConstructGame() {
     };
     lockFnRef.current = requestLock;
 
-    // --- Touch controls: left half = move stick, right half = look ---------------
+    // --- Touch controls: left half = move stick, right half = look/turn ----------
     const touchState = {
       moveId: -1,
       moveStart: new THREE.Vector2(),
@@ -237,12 +418,18 @@ export default function ConstructGame() {
           );
           touchState.moveDelta.clampScalar(-1, 1);
         } else if (touch.identifier === touchState.lookId) {
-          applyLook(
-            touch.clientX - touchState.lookLast.x,
-            touch.clientY - touchState.lookLast.y,
-            0.0045,
-          );
-          touchState.lookLast.set(touch.clientX, touch.clientY);
+          if (modeRef.current === "gyro") {
+            // device handles pitch/roll; swiping turns the body
+            gyroYawOffset -= (touch.clientX - touchState.lookLast.x) * 0.004;
+            touchState.lookLast.set(touch.clientX, touch.clientY);
+          } else {
+            applyLook(
+              touch.clientX - touchState.lookLast.x,
+              touch.clientY - touchState.lookLast.y,
+              0.0045,
+            );
+            touchState.lookLast.set(touch.clientX, touch.clientY);
+          }
         }
       }
     };
@@ -268,6 +455,8 @@ export default function ConstructGame() {
     document.addEventListener("keyup", onKeyUp);
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("pointerlockchange", onPointerLockChange);
+    window.addEventListener("deviceorientation", onOrientation);
+    window.screen.orientation?.addEventListener("change", onScreenRotate);
     renderer.domElement.addEventListener("click", requestLock);
     renderer.domElement.addEventListener("touchstart", onTouchStart, {
       passive: false,
@@ -291,16 +480,35 @@ export default function ConstructGame() {
       const delta = Math.min(clock.getDelta(), 0.05);
       const elapsed = clock.elapsedTime;
 
-      // orientation
-      camera.rotation.set(0, 0, 0);
-      camera.rotateY(yaw);
-      camera.rotateX(pitch);
+      // orientation: AR-style from device sensors, or yaw/pitch from input
+      if (modeRef.current === "gyro" && gyro.has) {
+        setQuaternionFromOrientation(
+          camera.quaternion,
+          gyro.alpha,
+          gyro.beta,
+          gyro.gamma,
+          screenAngle,
+        );
+        camera.quaternion.premultiply(
+          yawOffsetQ.setFromAxisAngle(WORLD_UP, gyroYawOffset),
+        );
+      } else {
+        camera.rotation.set(0, 0, 0);
+        camera.rotateY(yaw);
+        camera.rotateX(pitch);
+      }
 
-      // movement input
-      forward.set(-Math.sin(yaw), 0, -Math.cos(yaw));
-      right.set(Math.cos(yaw), 0, -Math.sin(yaw));
+      // movement basis: where the camera faces, flattened to the floor
+      camera.getWorldDirection(forward);
+      forward.y = 0;
+      if (forward.lengthSq() < 1e-4) {
+        forward.set(0, 0, -1);
+      } else {
+        forward.normalize();
+      }
+      right.crossVectors(forward, WORLD_UP); // forward × up = right-hand side
+
       velocity.set(0, 0, 0);
-
       if (keys.has("KeyW") || keys.has("ArrowUp")) velocity.add(forward);
       if (keys.has("KeyS") || keys.has("ArrowDown")) velocity.sub(forward);
       if (keys.has("KeyD") || keys.has("ArrowRight")) velocity.add(right);
@@ -324,9 +532,12 @@ export default function ConstructGame() {
         );
       }
 
-      // subtle idle bob
-      camera.position.y =
-        EYE_HEIGHT + Math.sin(elapsed * 1.4) * 0.035;
+      // subtle idle bob (skip in gyro mode — the sensor already moves)
+      if (modeRef.current !== "gyro") {
+        camera.position.y = EYE_HEIGHT + Math.sin(elapsed * 1.4) * 0.035;
+      } else {
+        camera.position.y = EYE_HEIGHT;
+      }
 
       // rain fall + wrap
       const positions = rainGeometry.attributes.position
@@ -356,6 +567,9 @@ export default function ConstructGame() {
         currentNear = nearest;
         setNearMonolith(nearest);
       }
+      ambienceRef.current?.setProximity(
+        nearest === -1 ? 0 : 1 - nearestDistance / REVEAL_RADIUS,
+      );
 
       renderer.render(scene, camera);
     };
@@ -368,6 +582,8 @@ export default function ConstructGame() {
       document.removeEventListener("keyup", onKeyUp);
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("pointerlockchange", onPointerLockChange);
+      window.removeEventListener("deviceorientation", onOrientation);
+      window.screen.orientation?.removeEventListener("change", onScreenRotate);
       renderer.domElement.removeEventListener("click", requestLock);
       renderer.domElement.removeEventListener("touchstart", onTouchStart);
       renderer.domElement.removeEventListener("touchmove", onTouchMove);
@@ -379,10 +595,14 @@ export default function ConstructGame() {
       disposables.forEach((resource) => resource.dispose());
       renderer.dispose();
       renderer.domElement.remove();
+      ambienceRef.current?.dispose();
+      ambienceRef.current = null;
     };
   }, []);
 
   const near = nearMonolith >= 0 ? monoliths[nearMonolith] : null;
+  const showTouchOverlay = isTouch && !entered;
+  const showDesktopOverlay = !isTouch && !locked;
 
   return (
     <div className="fixed inset-0 overflow-hidden bg-black">
@@ -398,18 +618,29 @@ export default function ConstructGame() {
           <p className="glow-green text-xs uppercase tracking-[0.3em] text-matrix">
             the construct
           </p>
-          <Link
-            href="/rabbit-hole"
-            className="pointer-events-auto rounded-full border border-matrix-dim px-4 py-2 text-xs uppercase tracking-[0.2em] text-matrix transition-colors hover:bg-matrix hover:text-black"
-          >
-            jack out
-          </Link>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={toggleMute}
+              className="pointer-events-auto rounded-full border border-matrix-dim px-4 py-2 text-xs uppercase tracking-[0.2em] text-matrix transition-colors hover:bg-matrix hover:text-black"
+            >
+              {muted ? "sound off" : "sound on"}
+            </button>
+            <Link
+              href="/rabbit-hole"
+              className="pointer-events-auto rounded-full border border-matrix-dim px-4 py-2 text-xs uppercase tracking-[0.2em] text-matrix transition-colors hover:bg-matrix hover:text-black"
+            >
+              jack out
+            </Link>
+          </div>
         </div>
 
         {/* controls hint */}
-        <p className="absolute inset-x-0 bottom-4 text-center text-[11px] uppercase tracking-[0.25em] text-ink-dim">
+        <p className="absolute inset-x-0 bottom-4 px-4 text-center text-[11px] uppercase tracking-[0.25em] text-ink-dim">
           {isTouch
-            ? "left thumb: move — right thumb: look"
+            ? mode === "gyro"
+              ? "move your phone to look — left thumb: walk — swipe right side: turn"
+              : "left thumb: walk — right thumb: look"
             : "wasd / arrows: move — mouse: look — esc: release cursor"}
         </p>
 
@@ -428,10 +659,13 @@ export default function ConstructGame() {
         )}
       </div>
 
-      {/* click-to-enter overlay (desktop only) */}
-      {!locked && !isTouch && (
+      {/* click-to-enter overlay (desktop) */}
+      {showDesktopOverlay && (
         <div
-          onClick={() => lockFnRef.current?.()}
+          onClick={() => {
+            startAudio();
+            lockFnRef.current?.();
+          }}
           className="absolute inset-0 z-20 flex cursor-pointer flex-col items-center justify-center gap-6 bg-black/70 text-center"
         >
           <p className="glow-green text-2xl font-bold uppercase tracking-[0.3em] text-matrix">
@@ -448,6 +682,45 @@ export default function ConstructGame() {
             href="/rabbit-hole"
             onClick={(event) => event.stopPropagation()}
             className="z-30 mt-4 text-xs uppercase tracking-[0.25em] text-ink-dim underline-offset-4 transition-colors hover:text-matrix hover:underline"
+          >
+            ← back to the rabbit hole
+          </Link>
+        </div>
+      )}
+
+      {/* tap-to-enter overlay (mobile) — pick control style */}
+      {showTouchOverlay && (
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-6 bg-black/80 px-6 text-center">
+          <p className="glow-green text-2xl font-bold uppercase tracking-[0.3em] text-matrix">
+            the construct
+          </p>
+          <p className="max-w-sm text-sm leading-relaxed text-ink-soft">
+            A loading program. Five questions stand in the dark. Walk up to
+            them.
+          </p>
+          <button
+            type="button"
+            onClick={() => enterTouch(true)}
+            className="w-full max-w-xs rounded-full border border-matrix bg-matrix-dark/60 px-6 py-4 text-sm font-bold uppercase tracking-[0.2em] text-matrix transition-colors active:bg-matrix active:text-black"
+          >
+            enter with motion controls
+            <span className="mt-1 block text-[10px] font-normal normal-case tracking-normal text-ink-soft">
+              move your phone to look around, AR style
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => enterTouch(false)}
+            className="w-full max-w-xs rounded-full border border-matrix-dim px-6 py-4 text-sm font-bold uppercase tracking-[0.2em] text-ink-soft transition-colors active:bg-matrix active:text-black"
+          >
+            enter with touch controls
+            <span className="mt-1 block text-[10px] font-normal normal-case tracking-normal text-ink-dim">
+              drag to look, thumb to walk
+            </span>
+          </button>
+          <Link
+            href="/rabbit-hole"
+            className="mt-2 text-xs uppercase tracking-[0.25em] text-ink-dim underline-offset-4 transition-colors hover:text-matrix"
           >
             ← back to the rabbit hole
           </Link>
