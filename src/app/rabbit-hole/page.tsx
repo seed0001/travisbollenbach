@@ -142,6 +142,29 @@ export default function RabbitHole() {
           </Reveal>
         </section>
 
+        {/* Nexus portal — the multiplayer lobby */}
+        <section className="pt-8">
+          <Reveal>
+            <Link
+              href={rabbitHole.nexusCta.href}
+              className="group block rounded-3xl border border-matrix-dim bg-black/40 p-8 text-center transition-all hover:border-matrix hover:shadow-[0_0_60px_rgba(0,255,102,0.15)] md:p-12"
+            >
+              <p className="text-xs uppercase tracking-[0.35em] text-ink-dim">
+                players only — sign in required
+              </p>
+              <h2 className="glow-green mt-4 text-2xl font-bold tracking-tight text-matrix md:text-4xl">
+                {rabbitHole.nexusCta.title}
+              </h2>
+              <p className="mx-auto mt-4 max-w-xl leading-relaxed text-ink-soft">
+                {rabbitHole.nexusCta.description}
+              </p>
+              <span className="mt-6 inline-block rounded-full border border-matrix px-8 py-3 font-bold uppercase tracking-widest text-matrix transition-all group-hover:bg-matrix group-hover:text-void">
+                enter the lobby →
+              </span>
+            </Link>
+          </Reveal>
+        </section>
+
         {/* Guestbook */}
         <section id="guestbook" className="pt-16">
           <Reveal>

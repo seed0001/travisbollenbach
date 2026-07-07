@@ -9,8 +9,8 @@ description: Build, run, and visually verify this Next.js + three.js site (matri
 
 ```bash
 npm ci
-npx next build          # also generates next-env.d.ts (tsc alone fails on image imports before this)
-npx next start -p 3100  # production server
+npx next build                              # also generates next-env.d.ts (tsc alone fails on image imports before this)
+PORT=3100 NODE_ENV=production node server.mjs  # custom server: Next + /ws/lobby WebSocket (plain `next start` won't serve the lobby socket)
 ```
 
 `next lint` does not exist in this Next version — use `npx eslint <file>`.
@@ -46,3 +46,11 @@ WebGL renders fine under SwiftShader; screenshots capture the three.js canvas.
   shows an in-fiction offline message — that's the expected keyless path.
 - First signup becomes admin. `/admin` has analytics + integration
   settings (`/api/admin/settings`, admin-gated, secrets masked to last 4).
+- `/lobby` (the Nexus, multiplayer) requires a signed-in session: sign up via
+  `POST /api/auth/signup`, put the `tb_session` cookie in the browser context.
+  Launch Chromium with `--use-fake-ui-for-media-stream
+  --use-fake-device-for-media-stream` + the `microphone` permission so
+  proximity voice gets a fake mic. Desktop enter works headless (pointer-lock
+  rejection is tolerated). Two contexts in one browser = two players who can
+  see each other; presence/WS protocol is testable with the `ws` package
+  against `/ws/lobby` (401 without a session cookie).

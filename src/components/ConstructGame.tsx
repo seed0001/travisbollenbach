@@ -647,6 +647,12 @@ export default function ConstructGame() {
               {muted ? "sound off" : "sound on"}
             </button>
             <Link
+              href="/lobby"
+              className="pointer-events-auto rounded-full border border-matrix-dim px-4 py-2 text-xs uppercase tracking-[0.2em] text-matrix transition-colors hover:bg-matrix hover:text-black"
+            >
+              the nexus
+            </Link>
+            <Link
               href="/rabbit-hole"
               className="pointer-events-auto rounded-full border border-matrix-dim px-4 py-2 text-xs uppercase tracking-[0.2em] text-matrix transition-colors hover:bg-matrix hover:text-black"
             >

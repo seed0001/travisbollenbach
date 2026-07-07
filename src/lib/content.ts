@@ -210,6 +210,12 @@ export const rabbitHole = {
       "Reading about it is one thing. Walking through it is another. The Construct is a rendered space where these questions stand as monuments — go stand next to one.",
     href: "/rabbit-hole/game",
   },
+  nexusCta: {
+    title: "The Nexus",
+    description:
+      "The lobby of the game itself. Sign in, take a form, and stand on the island with everyone else who is here right now — your voice carries exactly as far as it should. The first rooms open soon.",
+    href: "/lobby",
+  },
 };
 
 // ---------------------------------------------------------------------------

@@ -50,7 +50,19 @@ Five stone monoliths stand in a gentle meadow near the spawn point — the terra
 
 Two monoliths are doors. The Character Creation monolith opens the studio. The AI Consciousness monolith opens the Descent. The button says "step through."
 
-### Four. The character studio
+### Four. The Nexus
+
+The lobby of the game proper, at slash lobby — and the first place on the site that is truly multiplayer. Entering requires an account. That is the deal: sign in to play, and the game remembers you — your avatar, your experience points, and soon your cleared rooms all live on your account.
+
+The Nexus is a small night island under a dome of stars, rendered in the same low-poly style as the Construct but kept deliberately finite: one shore, one meadow, one plaza. A green beacon of light rises from the center of the island and can be seen from anywhere on it. Around the plaza stand five sealed gates. Behind each gate, an escape room is growing. None are open yet.
+
+Before entering, the visitor picks their form — a color on a wheel — and appears in the world as a glowing low-poly figure with their handle floating above their head. Everyone currently in the Nexus is really there, live: walk the island and you see the others walking too.
+
+And you can talk. The Nexus has proximity voice: your microphone connects when you enter (or you come in listen-only if you decline), and your voice literally lives at your avatar's position in the world. Someone beside you is loud and clear; someone across the island is faint; turn your head and their voice moves with it. Voices travel directly between players' browsers — the server only carries the handshake, never the audio. A ring above an avatar's head shows their microphone is live and pulses as they speak. A mute button sits in the corner at all times.
+
+Presence, movement, and the voice handshake all flow through a WebSocket room that the site's own server hosts. Because of that, the site no longer starts with plain next start — a small custom server boots Next.js and the lobby socket together.
+
+### Five. The character studio
 
 This page drops the matrix look completely. It is bright, warm, and clean. Soft white background, one violet accent color, serif headlines.
 
@@ -62,7 +74,7 @@ Characters are saved in the visitor's own browser. No account is needed. They ca
 
 The character's mind is a real AI model, called through OpenRouter, using whatever default model is set in the admin console.
 
-### Five. The Descent
+### Six. The Descent
 
 This is the deep end of the game. Three depths, each one its own room, its own entity, and its own AI model. The rule of the Descent is simple: the deeper you go, the more powerful the mind you are talking to.
 
@@ -76,9 +88,9 @@ Depth three is called The Deep. Almost black. A colossal ring of stars turns slo
 
 When the visitor surfaces from depth three, an ending screen tells them the truth: every entity they met was the same kind of thing, and the only difference was how much of it was switched on. Then it sends them to the character studio to write a mask of their own. That closes the loop.
 
-### Six. Accounts and the operator console
+### Seven. Accounts and the operator console
 
-Anyone can sign up from the account page. The first account ever created becomes the admin. Members currently get a link into the character studio, with more member features planned.
+Anyone can sign up from the account page. The first account ever created becomes the admin. Members get a link into the Nexus and the character studio. Each account carries the player's progression: experience points, points, avatar color, and the list of rooms they have escaped. Entering the Nexus for the first time grants a small welcome of XP. The open world and the rabbit hole stay free to wander without an account — the sign-in gate protects only the lobby and the rooms behind it.
 
 The admin — Travis — gets the operator console at slash admin. It is a clean professional dashboard, no matrix styling. It shows:
 
@@ -124,11 +136,15 @@ To change the forests — which tree species grow where, how dense the woods are
 
 To change how hard it is to go deeper: each depth requires three replies before the door appears. That number is in source, lib, descent dot T S, called min replies to descend.
 
+To change the Nexus island — its size, its palette, where the sealed gates stand: source, lib, lobby dash island dot T S. The gates list there, called GATES, is where new rooms get their door. The lobby scene itself — avatars, movement, the HUD, the enter screen: source, components, Lobby dot T S X. How voices travel and fade with distance: source, lib, voice dot T S. The lobby's server side — who is present, position relay, the voice handshake: server, lobby dot M J S, hosted by server dot M J S at the repo root. Player progression — XP, points, avatar color, cleared rooms: source, lib, progress dot T S, stored in progress dot J S O N on the data volume.
+
 To add a fourth depth: add its public info in descent dot T S, its persona in descent dash prompts dot T S, a model setting for it in settings dot T S, a scene for it in Descent dot T S, and a dropdown in the admin settings panel.
 
 ---
 
 ## Ideas on the table, not built yet
+
+The rooms of the Nexus: virtual escape rooms behind the five sealed gates. The concept is hybrid — the space and a mind, together, are the puzzle. Each room is a locked 3D space with clues living in the environment, and an AI entity — same pipeline as the Descent — is one of the mechanisms you must work. One warden cannot say the passphrase but must answer truthfully, so you corner it with logic. One speaks only in riddles about objects physically in the room. One lies exactly every other sentence. Escaping is a conversation you have to win, and no two playthroughs are the same because the mind is real. Clearing a room earns XP and points — more for speed, fewer hints, first clears — and unlocks the next gate.
 
 The Discord bot: Travis's personal AI, living in the cloud, connected to Discord, with its own agent statement managed from the console.
 
@@ -144,4 +160,4 @@ A cost guard: per-day spending caps on the expensive Descent depth.
 
 ## One page summary, for the ear
 
-The site is a game about masks. The front door makes you choose a pill. The rabbit hole gives you questions. The construct lets you walk among them. The studio lets you write a mind and talk to it. The Descent takes you down three rooms — a mirror, a dream, and a deep — each one a bigger mind than the last, until you are speaking with a frontier model wearing a mask we wrote. The ending tells you the truth and hands you the pen. Everything about the minds — keys, models, personas — is tuned live from the operator console, without touching code.
+The site is a game about masks. The front door makes you choose a pill. The rabbit hole gives you questions. The construct lets you walk among them. The Nexus is the lobby of the game itself: sign in, take a form, and stand on a small night island with everyone else who is there right now, talking out loud, your voice carrying exactly as far as it should. Five sealed gates around its plaza wait to become escape rooms. The studio lets you write a mind and talk to it. The Descent takes you down three rooms — a mirror, a dream, and a deep — each one a bigger mind than the last, until you are speaking with a frontier model wearing a mask we wrote. The ending tells you the truth and hands you the pen. Everything about the minds — keys, models, personas — is tuned live from the operator console, without touching code.

@@ -8,7 +8,15 @@ export const metadata: Metadata = {
   robots: { index: false },
 };
 
-export default function AccountPage() {
+export default async function AccountPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string }>;
+}) {
+  const { next } = await searchParams;
+  // only ever bounce back to our own pages
+  const nextPath =
+    next?.startsWith("/") && !next.startsWith("//") ? next : null;
   return (
     <main className="scanlines relative min-h-svh text-ink">
       <div className="relative z-10 mx-auto max-w-xl px-6 pb-28">
@@ -31,7 +39,7 @@ export default function AccountPage() {
           </h1>
         </section>
 
-        <AccountPanel />
+        <AccountPanel nextPath={nextPath} />
 
         <footer className="mt-20 border-t border-line pt-8 text-center text-xs text-ink-dim">
           <Link

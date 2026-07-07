@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 type User = {
   id: string;
@@ -16,7 +17,13 @@ type Mode = "login" | "signup";
 const inputClass =
   "w-full rounded-xl border border-line bg-black/60 px-4 py-3 text-sm text-ink placeholder:text-ink-dim focus:border-matrix focus:outline-none";
 
-export default function AccountPanel() {
+export default function AccountPanel({
+  nextPath = null,
+}: {
+  /** where to send the visitor after they authenticate (e.g. /lobby) */
+  nextPath?: string | null;
+}) {
+  const router = useRouter();
   const [user, setUser] = useState<User | null | undefined>(undefined);
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
@@ -65,6 +72,7 @@ export default function AccountPanel() {
       setUser(data);
       setPassword("");
       setStatus("idle");
+      if (nextPath) router.push(nextPath);
     } catch (err) {
       setStatus("error");
       setError(err instanceof Error ? err.message : "Access denied.");
@@ -100,6 +108,12 @@ export default function AccountPanel() {
 
         <div className="mt-8 flex flex-wrap gap-4">
           <Link
+            href="/lobby"
+            className="rounded-xl border border-matrix px-6 py-3 text-xs font-bold uppercase tracking-[0.2em] text-matrix transition-colors hover:bg-matrix hover:text-black"
+          >
+            enter the nexus →
+          </Link>
+          <Link
             href="/rabbit-hole/character-creation"
             className="rounded-xl border border-matrix px-6 py-3 text-xs font-bold uppercase tracking-[0.2em] text-matrix transition-colors hover:bg-matrix hover:text-black"
           >
@@ -123,8 +137,9 @@ export default function AccountPanel() {
         </div>
 
         <p className="mt-8 text-sm leading-relaxed text-ink-dim">
-          Level 01 — the character workshop — is open now. More member
-          services unlock as levels come online.
+          The Nexus — the game lobby — is open now: walk the island, meet
+          whoever is jacked in, talk out loud. The first escape rooms open
+          soon. Your XP and progress live on this account.
         </p>
       </div>
     );
