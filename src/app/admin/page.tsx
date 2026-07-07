@@ -3,6 +3,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { getUserBySession, SESSION_COOKIE } from "@/lib/auth";
 import { dayKey, readAnalytics, type DayStats } from "@/lib/analytics";
+import { getStorageInfo } from "@/lib/storage";
 import AdminSettings from "@/components/AdminSettings";
 
 export const metadata: Metadata = {
@@ -76,6 +77,7 @@ export default async function AdminPage() {
     );
   }
 
+  const storage = await getStorageInfo();
   const data = await readAnalytics();
   const days = lastDays(DAYS_SHOWN);
   const recentDays = days.slice(-TOP_WINDOW);
@@ -120,6 +122,58 @@ export default async function AdminPage() {
             Watching the
             <span className="glow-green block text-matrix">watchers.</span>
           </h1>
+        </section>
+
+        {/* Persistence status — if this is red, every deploy wipes the data */}
+        <section
+          className={`mb-4 rounded-3xl border p-8 ${
+            storage.source === "fallback" || !storage.writable
+              ? "border-pill-red bg-pill-red-deep/20"
+              : "border-line bg-surface/70"
+          }`}
+        >
+          <div className="flex items-baseline justify-between gap-4">
+            <p className="text-xs uppercase tracking-[0.3em] text-ink-dim">
+              data persistence
+            </p>
+            <p
+              className={`text-xs font-bold uppercase tracking-[0.25em] ${
+                storage.source === "fallback" || !storage.writable
+                  ? "glow-red text-pill-red"
+                  : "glow-green text-matrix"
+              }`}
+            >
+              {!storage.writable
+                ? "not writable"
+                : storage.source === "fallback"
+                  ? "ephemeral — data lost on deploy"
+                  : "volume-backed"}
+            </p>
+          </div>
+          <p className="mt-4 break-all text-sm text-ink-soft">
+            writing to <span className="text-ink">{storage.dir}</span>{" "}
+            <span className="text-ink-dim">
+              (
+              {storage.source === "fallback"
+                ? "no DATA_DIR or COMMENTS_DIR set — container filesystem"
+                : `from ${storage.source}`}
+              )
+            </span>
+          </p>
+          <p className="mt-2 text-sm text-ink-soft">
+            {storage.users} account{storage.users === 1 ? "" : "s"} ·{" "}
+            {storage.comments} comment{storage.comments === 1 ? "" : "s"} ·
+            settings {storage.settingsPresent ? "saved" : "not saved yet"}
+          </p>
+          {storage.source === "fallback" && (
+            <p className="mt-4 text-sm leading-relaxed text-pill-red">
+              Accounts, sessions, comments, and integration keys are being
+              written inside the container and will be wiped on every deploy.
+              On Railway: add a Volume to this service (mount path{" "}
+              <span className="font-bold">/data</span>), set the variable{" "}
+              <span className="font-bold">DATA_DIR=/data</span>, and redeploy.
+            </p>
+          )}
         </section>
 
         {/* Topline numbers */}
