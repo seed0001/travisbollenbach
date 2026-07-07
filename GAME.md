@@ -16,11 +16,11 @@ Every page is meant to have its own unique look and feel. The matrix theme — t
 
 ### One. The front door
 
-The visitor lands on a plain welcome page in the matrix style. It says welcome, then shows two doors side by side.
+The visitor lands on a plain welcome page in the matrix style. It says welcome, then shows two doors side by side. Both are open.
 
-The first door is available now: the Lobby. Clicking it goes to the Nexus at slash lobby — the shared island where the game begins.
+The first door is the Lobby. Clicking it goes to the Nexus at slash lobby — the shared island where the game begins.
 
-The second door is coming soon: the Marketplace. Clicking it goes to vibe market dot biz, an outside site where that project is taking shape.
+The second door is Vibe Market, live at vibe market dot biz. The card promotes it: come host your custom builds, your crazy one-offs, or even your time and services.
 
 Below the doors there is a "log in / sign up" link to the account page, with a reminder that progress, XP, and avatars live on the account.
 

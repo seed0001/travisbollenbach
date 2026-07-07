@@ -4,7 +4,7 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "Travis Bollenbach — Welcome",
   description:
-    "Welcome. The lobby is open — jack in and play. The marketplace is coming soon.",
+    "Welcome. The lobby is open — jack in and play. Vibe Market is live — host your custom builds, one-offs, and services.",
 };
 
 // The front door: a plain welcome, what's live, and what's on the way.
@@ -21,7 +21,7 @@ export default function Home() {
         </h1>
         <p className="mx-auto mt-5 max-w-xl leading-relaxed text-ink-soft">
           This place is a game, and it is being built while you stand in it.
-          Here is what is open right now, and what is on the way.
+          Two doors are open right now.
         </p>
 
         <div className="mt-12 grid gap-6 md:grid-cols-2">
@@ -47,7 +47,7 @@ export default function Home() {
             </span>
           </Link>
 
-          {/* coming soon — the marketplace */}
+          {/* live — Vibe Market */}
           <a
             href="https://vibemarket.biz"
             target="_blank"
@@ -55,18 +55,18 @@ export default function Home() {
             className="group flex flex-col rounded-3xl border border-line bg-surface/60 p-8 text-left transition-all hover:border-pill-blue hover:shadow-[0_0_60px_rgba(56,189,248,0.15)]"
           >
             <p className="text-xs font-bold uppercase tracking-[0.3em] text-pill-blue">
-              coming soon
+              live now
             </p>
             <h2 className="mt-3 text-3xl font-bold tracking-tight text-ink">
-              The Marketplace
+              Vibe Market
             </h2>
             <p className="mt-3 grow leading-relaxed text-ink-soft">
-              A place to trade in the things this world runs on. It is still
-              under construction — step through for a preview of where it is
-              headed.
+              The marketplace is open. Come host your custom builds, your
+              crazy one-offs — or even your time and services. Check out
+              vibemarket.biz.
             </p>
             <span className="mt-6 inline-block self-start rounded-full border border-pill-blue px-6 py-3 text-xs font-bold uppercase tracking-widest text-pill-blue transition-all group-hover:bg-pill-blue group-hover:text-black">
-              vibemarket.biz →
+              visit vibemarket.biz →
             </span>
           </a>
         </div>
