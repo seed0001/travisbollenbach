@@ -99,12 +99,18 @@ export default function AccountPanel() {
         </p>
 
         <div className="mt-8 flex flex-wrap gap-4">
+          <Link
+            href="/rabbit-hole/character-creation"
+            className="rounded-xl border border-matrix px-6 py-3 text-xs font-bold uppercase tracking-[0.2em] text-matrix transition-colors hover:bg-matrix hover:text-black"
+          >
+            character workshop →
+          </Link>
           {user.role === "admin" && (
             <Link
               href="/admin"
               className="rounded-xl border border-matrix px-6 py-3 text-xs font-bold uppercase tracking-[0.2em] text-matrix transition-colors hover:bg-matrix hover:text-black"
             >
-              open analytics →
+              operator console →
             </Link>
           )}
           <button
@@ -117,8 +123,8 @@ export default function AccountPanel() {
         </div>
 
         <p className="mt-8 text-sm leading-relaxed text-ink-dim">
-          Member services are coming online soon. Your account is registered
-          and will unlock them as they ship.
+          Level 01 — the character workshop — is open now. More member
+          services unlock as levels come online.
         </p>
       </div>
     );

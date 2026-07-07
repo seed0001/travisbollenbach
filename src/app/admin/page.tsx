@@ -3,6 +3,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { getUserBySession, SESSION_COOKIE } from "@/lib/auth";
 import { dayKey, readAnalytics, type DayStats } from "@/lib/analytics";
+import AdminSettings from "@/components/AdminSettings";
 
 export const metadata: Metadata = {
   title: "Operator Console — Travis Bollenbach",
@@ -196,6 +197,17 @@ export default async function AdminPage() {
               </div>
             </div>
           ))}
+        </section>
+
+        {/* Integrations */}
+        <section className="mt-16">
+          <p className="glow-green mb-2 text-xs uppercase tracking-[0.35em] text-matrix">
+            integrations
+          </p>
+          <h2 className="mb-6 text-2xl font-bold tracking-tight md:text-3xl">
+            The machines behind the machine.
+          </h2>
+          <AdminSettings />
         </section>
       </div>
     </main>

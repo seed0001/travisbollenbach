@@ -1,6 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { choice, site } from "@/lib/content";
@@ -72,6 +73,14 @@ export default function ChoiceScreen() {
     <div className="scanlines relative min-h-svh">
       <MatrixRain />
       <div className="choice-vignette pointer-events-none fixed inset-0 z-[1]" />
+
+      {/* account entrance — always reachable, even mid-monologue */}
+      <Link
+        href="/account"
+        className="fixed right-5 top-5 z-20 rounded-full border border-line bg-black/50 px-5 py-2 text-[11px] uppercase tracking-[0.25em] text-ink-dim backdrop-blur-sm transition-colors hover:border-matrix hover:text-matrix"
+      >
+        log in / sign up
+      </Link>
 
       <div className="relative z-10 mx-auto flex min-h-svh max-w-4xl flex-col items-center justify-center px-6 py-10 text-center sm:py-16">
         {/* Hero title */}
