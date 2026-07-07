@@ -170,6 +170,8 @@ export default function ConstructGame() {
   const mutedRef = useRef(false);
 
   const [locked, setLocked] = useState(false);
+  // once the pointer has locked once, Esc means "pause", not "back to the door"
+  const [everLocked, setEverLocked] = useState(false);
   const [entered, setEntered] = useState(false);
   const [mode, setMode] = useState<ControlMode>("touch");
   const [muted, setMuted] = useState(false);
@@ -370,7 +372,9 @@ export default function ConstructGame() {
     };
 
     const onPointerLockChange = () => {
-      setLocked(document.pointerLockElement === renderer.domElement);
+      const isLocked = document.pointerLockElement === renderer.domElement;
+      setLocked(isLocked);
+      if (isLocked) setEverLocked(true);
     };
 
     const requestLock = () => {
@@ -611,7 +615,8 @@ export default function ConstructGame() {
   const near = nearMonolith >= 0 ? monoliths[nearMonolith] : null;
   const treeCredit = findCreditedWork("ez-tree");
   const showTouchOverlay = isTouch && !entered;
-  const showDesktopOverlay = !isTouch && !locked;
+  const showDesktopOverlay = !isTouch && !locked && !everLocked;
+  const showPaused = !isTouch && !locked && everLocked;
 
   return (
     <div className="fixed inset-0 overflow-hidden bg-black">
@@ -713,6 +718,24 @@ export default function ConstructGame() {
           </div>
         )}
       </div>
+
+      {/* paused (desktop): pointer released with Esc — mouse is free for the
+          HUD buttons; clicking the world re-locks via the canvas handler */}
+      {showPaused && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+          <div className="rounded-2xl border border-matrix-dim bg-black/75 px-8 py-5 text-center backdrop-blur-sm">
+            <p className="glow-green text-sm font-bold uppercase tracking-[0.3em] text-matrix">
+              paused
+            </p>
+            <p className="mt-2 text-xs uppercase tracking-[0.25em] text-ink-soft">
+              mouse is free — use the buttons up top
+            </p>
+            <p className="mt-1 text-xs uppercase tracking-[0.25em] text-ink-dim">
+              click the world to dive back in
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* click-to-enter overlay (desktop) */}
       {showDesktopOverlay && (
