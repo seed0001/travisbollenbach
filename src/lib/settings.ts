@@ -74,6 +74,12 @@ export async function updateSettings(
   });
 }
 
+/** Strip whitespace and stray wrapping quotes that sneak in when a value is
+ * pasted into a dashboard — a key sent with either is silently rejected. */
+export function normalize(value: string | undefined): string {
+  return (value ?? "").trim().replace(/^["']+|["']+$/g, "").trim();
+}
+
 /** OpenRouter credentials: admin-set value first, env var as fallback. */
 export async function getOpenRouter(): Promise<{
   apiKey: string;
@@ -81,10 +87,12 @@ export async function getOpenRouter(): Promise<{
 }> {
   const settings = await readSettings();
   return {
-    apiKey: settings.openrouterApiKey || process.env.OPENROUTER_API_KEY || "",
+    apiKey:
+      normalize(settings.openrouterApiKey) ||
+      normalize(process.env.OPENROUTER_API_KEY),
     model:
-      settings.openrouterModel ||
-      process.env.OPENROUTER_MODEL ||
+      normalize(settings.openrouterModel) ||
+      normalize(process.env.OPENROUTER_MODEL) ||
       SETTINGS_DEFAULTS.openrouterModel,
   };
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserBySession, SESSION_COOKIE } from "@/lib/auth";
-import { readSettings } from "@/lib/settings";
+import { normalize, readSettings } from "@/lib/settings";
 
 // Admin-only: live health check of the AI link. Unlike the model catalog
 // (a public OpenRouter endpoint that succeeds with no key at all), this
@@ -25,16 +25,13 @@ export async function GET(request: NextRequest) {
   }
 
   const settings = await readSettings();
-  const envKey = process.env.OPENROUTER_API_KEY ?? "";
-  const apiKey = settings.openrouterApiKey || envKey;
-  const keySource = settings.openrouterApiKey
-    ? "admin"
-    : envKey
-      ? "env"
-      : "none";
+  const adminKey = normalize(settings.openrouterApiKey);
+  const envKey = normalize(process.env.OPENROUTER_API_KEY);
+  const apiKey = adminKey || envKey;
+  const keySource = adminKey ? "admin" : envKey ? "env" : "none";
   const model =
-    settings.openrouterModel ||
-    process.env.OPENROUTER_MODEL ||
+    normalize(settings.openrouterModel) ||
+    normalize(process.env.OPENROUTER_MODEL) ||
     "openrouter/auto";
 
   const base: Omit<AiLinkStatus, "status" | "detail"> = {
