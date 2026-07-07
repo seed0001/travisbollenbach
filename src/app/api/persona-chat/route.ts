@@ -8,7 +8,8 @@ import { descentPrompts } from "@/lib/descent-prompts";
 // OPENROUTER_API_KEY / OPENROUTER_MODEL env vars); without a key the route
 // degrades to an in-fiction offline response.
 
-const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const OPENROUTER_URL =
+  process.env.OPENROUTER_URL ?? "https://openrouter.ai/api/v1/chat/completions";
 const MAX_NAME = 60;
 const MAX_STATEMENT = 2000;
 const MAX_MESSAGE = 600;
