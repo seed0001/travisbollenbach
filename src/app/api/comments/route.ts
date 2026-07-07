@@ -18,7 +18,20 @@ export type StoredComment = {
   name: string;
   message: string;
   createdAt: string;
+  /** which board this belongs to — absent means the original guestbook */
+  topic?: string;
 };
+
+const DEFAULT_TOPIC = "guestbook";
+const TOPIC_PATTERN = /^[a-z0-9][a-z0-9-]{0,39}$/;
+
+function resolveTopic(value: unknown): string | null {
+  if (value === undefined || value === null || value === "") {
+    return DEFAULT_TOPIC;
+  }
+  if (typeof value === "string" && TOPIC_PATTERN.test(value)) return value;
+  return null;
+}
 
 async function readComments(): Promise<StoredComment[]> {
   try {
@@ -66,10 +79,17 @@ function clean(value: unknown, maxLength: number): string | null {
   return trimmed;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const topic = resolveTopic(new URL(request.url).searchParams.get("topic"));
+  if (!topic) {
+    return NextResponse.json({ error: "Bad topic." }, { status: 400 });
+  }
   const comments = await readComments();
+  const matching = comments.filter(
+    (comment) => (comment.topic ?? DEFAULT_TOPIC) === topic,
+  );
   // newest first, cap the payload
-  return NextResponse.json(comments.slice(-100).reverse());
+  return NextResponse.json(matching.slice(-100).reverse());
 }
 
 export async function POST(request: Request) {
@@ -85,7 +105,8 @@ export async function POST(request: Request) {
 
   const name = clean(body.name, MAX_NAME);
   const message = clean(body.message, MAX_MESSAGE);
-  if (!name || !message) {
+  const topic = resolveTopic(body.topic);
+  if (!name || !message || !topic) {
     return NextResponse.json(
       {
         error: `Name (up to ${MAX_NAME} chars) and message (up to ${MAX_MESSAGE}) are required.`,
@@ -108,6 +129,7 @@ export async function POST(request: Request) {
     name,
     message,
     createdAt: new Date().toISOString(),
+    ...(topic !== DEFAULT_TOPIC ? { topic } : {}),
   };
 
   await fs.mkdir(DATA_DIR, { recursive: true });

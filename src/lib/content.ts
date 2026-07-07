@@ -328,25 +328,59 @@ export const characterWorkshop = {
 
 // ---------------------------------------------------------------------------
 // Open-source credits — the creators whose work grows inside this world.
-// Every borrowed marvel gets a name. Shown in-world when you walk up to the
-// thing they made, and listed in CREDITS.md at the repo root.
+// Every borrowed marvel gets a name. In the Construct, a visitor can switch
+// on the credit layer to see who made what; each creator also gets a profile
+// page at /credits/[id] with their works and a feedback board. Also listed
+// in CREDITS.md at the repo root.
 // ---------------------------------------------------------------------------
 
-export type OpenSourceCredit = {
+export type CreatorWork = {
+  /** stable id for the piece of work, e.g. "ez-tree" */
   id: string;
-  /** what they made, as the visitor sees it — e.g. "these trees" */
-  what: string;
   project: string;
-  author: string;
-  url: string;
+  repoUrl: string;
+  license: string;
+  /** what it powers here, as the visitor sees it — e.g. "these trees" */
+  inWorld: string;
 };
 
-export const openSourceCredits: OpenSourceCredit[] = [
+export type CreditedCreator = {
+  /** url slug, usually their GitHub handle */
+  id: string;
+  name: string;
+  githubUrl: string;
+  avatarUrl: string;
+  tagline: string;
+  /** the profile this site writes for them */
+  bio: string;
+  works: CreatorWork[];
+};
+
+export const creditedCreators: CreditedCreator[] = [
   {
-    id: "ez-tree",
-    what: "these trees",
-    project: "EZ-Tree",
-    author: "Daniel Greenheck",
-    url: "https://github.com/dgreenheck/ez-tree",
+    id: "dgreenheck",
+    name: "Daniel Greenheck",
+    githubUrl: "https://github.com/dgreenheck",
+    avatarUrl: "https://github.com/dgreenheck.png?size=240",
+    tagline: "procedural worlds for the browser",
+    bio: "Daniel builds open-source tools that grow things — trees, planets, whole procedural worlds — all running live in the browser on Three.js. He shares how it all works in the open: the code on GitHub, the craft on his channel. This world's forests exist because he decided tree generation should be easy for everyone.",
+    works: [
+      {
+        id: "ez-tree",
+        project: "EZ-Tree",
+        repoUrl: "https://github.com/dgreenheck/ez-tree",
+        license: "MIT",
+        inWorld: "these trees",
+      },
+    ],
   },
 ];
+
+/** find a credited work and its creator by work id */
+export function findCreditedWork(workId: string) {
+  for (const creator of creditedCreators) {
+    const work = creator.works.find((w) => w.id === workId);
+    if (work) return { creator, work };
+  }
+  return null;
+}

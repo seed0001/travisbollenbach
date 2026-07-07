@@ -1,12 +1,14 @@
 # Credits
 
 This world is built on the shoulders of open-source creators. Everything
-borrowed gets a name — here in the repo, and inside the world itself: walk up
-to the thing they made and their credit appears on screen.
+borrowed gets a name — here in the repo, and inside the world itself. In the
+Construct, toggle the **credit layer** on and walk up to anything borrowed:
+a credit appears naming its maker, linking to their profile page at
+`/credits/[id]` — avatar, bio, the works of theirs that live here, and a
+feedback board where visitors can leave them notes.
 
-The in-world credit registry lives in `src/lib/content.ts`
-(`openSourceCredits`). When new open-source work is added to the site, add it
-there **and** here.
+The creator registry lives in `src/lib/content.ts` (`creditedCreators`).
+When new open-source work is added to the site, add it there **and** here.
 
 ## The creators
 

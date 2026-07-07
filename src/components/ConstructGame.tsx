@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import * as THREE from "three";
-import { monoliths, openSourceCredits } from "@/lib/content";
+import { findCreditedWork, monoliths } from "@/lib/content";
 import { createForest } from "@/lib/forest";
 import {
   WORLD_SEED,
@@ -175,6 +175,7 @@ export default function ConstructGame() {
   const [muted, setMuted] = useState(false);
   const [nearMonolith, setNearMonolith] = useState<number>(-1);
   const [nearTree, setNearTree] = useState(false);
+  const [creditsOn, setCreditsOn] = useState(false);
   const isTouch = useSyncExternalStore(
     subscribeToPointerType,
     () => window.matchMedia("(pointer: coarse)").matches,
@@ -608,7 +609,7 @@ export default function ConstructGame() {
   }, []);
 
   const near = nearMonolith >= 0 ? monoliths[nearMonolith] : null;
-  const treeCredit = openSourceCredits.find((credit) => credit.id === "ez-tree");
+  const treeCredit = findCreditedWork("ez-tree");
   const showTouchOverlay = isTouch && !entered;
   const showDesktopOverlay = !isTouch && !locked;
 
@@ -629,6 +630,17 @@ export default function ConstructGame() {
           <div className="flex items-center gap-2">
             <button
               type="button"
+              onClick={() => setCreditsOn((value) => !value)}
+              className={`pointer-events-auto rounded-full border px-4 py-2 text-xs uppercase tracking-[0.2em] transition-colors ${
+                creditsOn
+                  ? "border-white/70 bg-white/10 text-white"
+                  : "border-matrix-dim text-matrix hover:bg-matrix hover:text-black"
+              }`}
+            >
+              {creditsOn ? "credits: on" : "credits"}
+            </button>
+            <button
+              type="button"
               onClick={toggleMute}
               className="pointer-events-auto rounded-full border border-matrix-dim px-4 py-2 text-xs uppercase tracking-[0.2em] text-matrix transition-colors hover:bg-matrix hover:text-black"
             >
@@ -643,19 +655,24 @@ export default function ConstructGame() {
           </div>
         </div>
 
-        {/* open-source credit — appears when standing under a tree */}
-        {nearTree && treeCredit && (
-          <div className="absolute bottom-14 left-4">
-            <a
-              href={treeCredit.url}
-              target="_blank"
-              rel="noreferrer"
-              className="pointer-events-auto rounded-full border border-white/20 bg-black/60 px-4 py-2 text-[11px] tracking-wide text-white/80 backdrop-blur-sm transition-colors hover:border-white/50 hover:text-white"
-            >
-              {treeCredit.what} grew from{" "}
-              <span className="font-bold">{treeCredit.project}</span> by{" "}
-              {treeCredit.author} ↗
-            </a>
+        {/* credit layer — opt-in overlay naming who made what, out of the
+            way of the game unless the visitor asks for it */}
+        {creditsOn && (
+          <div className="absolute bottom-14 left-4 flex flex-col items-start gap-2">
+            {nearTree && treeCredit ? (
+              <Link
+                href={`/credits/${treeCredit.creator.id}`}
+                className="pointer-events-auto rounded-full border border-white/25 bg-black/65 px-4 py-2 text-[11px] tracking-wide text-white/85 backdrop-blur-sm transition-colors hover:border-white/60 hover:text-white"
+              >
+                {treeCredit.work.inWorld} —{" "}
+                <span className="font-bold">{treeCredit.work.project}</span> by{" "}
+                {treeCredit.creator.name} · view profile →
+              </Link>
+            ) : (
+              <p className="rounded-full border border-white/15 bg-black/50 px-4 py-2 text-[11px] tracking-wide text-white/50 backdrop-blur-sm">
+                credit layer on — walk up to anything borrowed
+              </p>
+            )}
           </div>
         )}
 
