@@ -319,5 +319,9 @@ export const characterWorkshop = {
     hint: "say something — they're listening",
     offline:
       "I can hear you, but the studio's AI link isn't configured yet — I can't answer until it is.",
+    badKey:
+      "I can hear you, but the studio's key was turned away at the door — it's expired or wrong, and I can't answer until it's replaced.",
+    unreachable:
+      "I can hear you, but the line out of the studio just dropped — give it a moment and say that again.",
   },
 };

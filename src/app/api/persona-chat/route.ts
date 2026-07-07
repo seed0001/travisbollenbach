@@ -152,7 +152,13 @@ export async function POST(request: Request) {
 
   const { apiKey, model } = await getOpenRouter();
   if (!apiKey) {
-    return NextResponse.json({ error: "offline" }, { status: 503 });
+    console.error(
+      "persona-chat: no OpenRouter key configured — save one in /admin or set OPENROUTER_API_KEY",
+    );
+    return NextResponse.json(
+      { error: "offline", reason: "no_key" },
+      { status: 503 },
+    );
   }
 
   try {
@@ -174,7 +180,13 @@ export async function POST(request: Request) {
 
     if (response.status === 401 || response.status === 403) {
       // bad or revoked key — treat as the construct being offline
-      return NextResponse.json({ error: "offline" }, { status: 503 });
+      console.error(
+        `persona-chat: OpenRouter rejected the configured key (${response.status}) — replace it in /admin`,
+      );
+      return NextResponse.json(
+        { error: "offline", reason: "bad_key" },
+        { status: 503 },
+      );
     }
     if (response.status === 429 || response.status === 402) {
       return NextResponse.json(
@@ -205,6 +217,9 @@ export async function POST(request: Request) {
   } catch (error) {
     // network failure or timeout — the uplink is down
     console.error("persona-chat error", error);
-    return NextResponse.json({ error: "offline" }, { status: 503 });
+    return NextResponse.json(
+      { error: "offline", reason: "unreachable" },
+      { status: 503 },
+    );
   }
 }
