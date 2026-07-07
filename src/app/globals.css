@@ -347,6 +347,94 @@ body {
     var(--color-studio-bg);
 }
 
+/* --- The Descent -------------------------------------------------------------- */
+
+/* depth 1: the whole room flickers like a failing tube monitor */
+@keyframes echo-flicker {
+  0%,
+  93%,
+  100% {
+    opacity: 0;
+  }
+  94% {
+    opacity: 0.5;
+  }
+  95% {
+    opacity: 0;
+  }
+  97% {
+    opacity: 0.35;
+  }
+}
+
+.echo-flicker::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: #ffffff;
+  mix-blend-mode: overlay;
+  animation: echo-flicker 7s steps(1) infinite;
+}
+
+/* depth 1: entity text shivers */
+@keyframes glitch-shiver {
+  0%,
+  88%,
+  100% {
+    text-shadow: none;
+    transform: none;
+  }
+  90% {
+    text-shadow:
+      -2px 0 rgba(255, 255, 255, 0.55),
+      2px 0 rgba(120, 120, 130, 0.55);
+    transform: translateX(1px);
+  }
+  93% {
+    text-shadow:
+      2px 0 rgba(255, 255, 255, 0.4),
+      -2px 0 rgba(120, 120, 130, 0.4);
+    transform: translateX(-1px);
+  }
+}
+
+.glitch-shiver {
+  display: inline-block;
+  animation: glitch-shiver 4.6s steps(2) infinite;
+}
+
+/* depth 2: the whole scene slowly cycles through hues */
+@keyframes dream-shift {
+  0% {
+    filter: hue-rotate(0deg) saturate(1.15);
+  }
+  50% {
+    filter: hue-rotate(140deg) saturate(1.35);
+  }
+  100% {
+    filter: hue-rotate(360deg) saturate(1.15);
+  }
+}
+
+.dream-shift {
+  animation: dream-shift 70s linear infinite;
+}
+
+/* depth 3: heavy vignette — the dark leans in */
+.deep-vignette::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 75% 65% at 50% 42%,
+    transparent 40%,
+    rgba(0, 0, 5, 0.55) 78%,
+    rgba(0, 0, 5, 0.92) 100%
+  );
+}
+
 /* --- Full-viewport stages ----------------------------------------------------- */
 
 .stage-fixed,

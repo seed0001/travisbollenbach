@@ -179,6 +179,7 @@ export const channels: Channel[] = [
       "We built systems that talk back, and now we argue about whether anyone is home. The honest answer is that we don't know — and that not knowing is the most interesting place a builder can stand.",
       "I'm less interested in proving machines are conscious than in what the question does to us. Every conversation with an AI is a Rorschach test: the shape you see says as much about you as it does about the thing generating the words.",
     ],
+    cta: { label: "begin the descent →", href: "/rabbit-hole/descent" },
   },
   {
     id: "worlds-and-simulation",
@@ -235,6 +236,7 @@ export const monoliths: Monolith[] = [
     inscription:
       "Does the machine dream — or are we dreaming the machine? Nobody is sure who is generating whom.",
     position: [24, -30],
+    href: "/rabbit-hole/descent",
   },
   {
     title: "Worlds & Simulation",

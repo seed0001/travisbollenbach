@@ -293,6 +293,77 @@ export default function AdminSettings() {
         </div>
       </div>
 
+      {/* The Descent */}
+      <div className="rounded-xl border border-ops-line bg-ops-card p-6 shadow-sm">
+        <h3 className="text-base font-semibold">The Descent</h3>
+        <p className="mt-1 text-sm text-ops-muted">
+          Per-depth model overrides for the journey below the construct. Blank
+          uses the default model above. Depth 3 is the showcase — aim it at
+          the strongest model on your account.
+        </p>
+        <div className="mt-5 space-y-5">
+          {(
+            [
+              ["descentModel1", "Depth 01 — The Static (ECHO)"],
+              ["descentModel2", "Depth 02 — The Dream (SOMNI)"],
+              ["descentModel3", "Depth 03 — The Deep (AEON)"],
+            ] as const
+          ).map(([key, label]) => {
+            const view = fields[key];
+            if (!view || view.secret) return null;
+            return (
+              <div key={key}>
+                <label htmlFor={key} className={labelClass}>
+                  {label}
+                </label>
+                {modelsStatus === "ready" ? (
+                  <select
+                    id={key}
+                    value={
+                      models.some((m) => m.id === (drafts[key] ?? ""))
+                        ? drafts[key]
+                        : ""
+                    }
+                    onChange={(e) =>
+                      setDrafts((d) => ({ ...d, [key]: e.target.value }))
+                    }
+                    className={`${inputClass} mt-1.5`}
+                  >
+                    <option value="">
+                      {drafts[key]
+                        ? `current: ${drafts[key]}`
+                        : "use default model"}
+                    </option>
+                    {models.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.id}
+                        {m.name !== m.id ? ` — ${m.name}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    id={key}
+                    value={drafts[key] ?? ""}
+                    onChange={(e) =>
+                      setDrafts((d) => ({ ...d, [key]: e.target.value }))
+                    }
+                    placeholder="blank = default model"
+                    className={`${inputClass} mt-1.5`}
+                  />
+                )}
+                <p className="mt-1 text-xs text-ops-muted">
+                  Saved:{" "}
+                  <span className="font-medium text-ops-ink">
+                    {view.value || "default"}
+                  </span>
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Discord */}
       <div className="rounded-xl border border-ops-line bg-ops-card p-6 shadow-sm">
         <h3 className="text-base font-semibold">Discord</h3>

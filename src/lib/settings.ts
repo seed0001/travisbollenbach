@@ -14,6 +14,10 @@ const SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
 export type SiteSettings = {
   openrouterApiKey: string;
   openrouterModel: string;
+  // The Descent — per-depth model overrides; blank falls back to openrouterModel
+  descentModel1: string;
+  descentModel2: string;
+  descentModel3: string;
   discordBotToken: string;
   discordClientId: string;
   discordClientSecret: string;
@@ -22,6 +26,9 @@ export type SiteSettings = {
 export const SETTINGS_DEFAULTS: SiteSettings = {
   openrouterApiKey: "",
   openrouterModel: "openrouter/auto",
+  descentModel1: "",
+  descentModel2: "",
+  descentModel3: "",
   discordBotToken: "",
   discordClientId: "",
   discordClientSecret: "",

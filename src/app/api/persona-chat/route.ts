@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { getOpenRouter } from "@/lib/settings";
+import { getOpenRouter, readSettings } from "@/lib/settings";
+import { descentPrompts } from "@/lib/descent-prompts";
 
 // The mind behind the character-creation chamber: takes a visitor-crafted
 // persona statement plus the conversation so far, and answers in character
@@ -75,20 +76,38 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Bad request." }, { status: 400 });
   }
 
-  const persona = (body as { persona?: unknown }).persona;
-  if (!persona || typeof persona !== "object") {
-    return NextResponse.json({ error: "Missing persona." }, { status: 400 });
-  }
-  const name = clean((persona as { name?: unknown }).name, MAX_NAME);
-  const statement = clean(
-    (persona as { statement?: unknown }).statement,
-    MAX_STATEMENT,
-  );
-  if (!name || !statement) {
-    return NextResponse.json(
-      { error: "A persona needs a designation and a persona statement." },
-      { status: 400 },
+  // Two callers share this route: the studio sends a visitor-written persona;
+  // the descent sends a stage id whose persona (and model) stay server-side.
+  const stageId = (body as { stage?: unknown }).stage;
+  let systemPrompt: string;
+  let maxTokens = 500;
+  let stageModel = "";
+
+  if (typeof stageId === "string") {
+    const stage = descentPrompts[stageId];
+    if (!stage) {
+      return NextResponse.json({ error: "Unknown depth." }, { status: 400 });
+    }
+    systemPrompt = stage.system;
+    maxTokens = stage.maxTokens;
+    stageModel = (await readSettings())[stage.settingKey];
+  } else {
+    const persona = (body as { persona?: unknown }).persona;
+    if (!persona || typeof persona !== "object") {
+      return NextResponse.json({ error: "Missing persona." }, { status: 400 });
+    }
+    const name = clean((persona as { name?: unknown }).name, MAX_NAME);
+    const statement = clean(
+      (persona as { statement?: unknown }).statement,
+      MAX_STATEMENT,
     );
+    if (!name || !statement) {
+      return NextResponse.json(
+        { error: "A persona needs a designation and a persona statement." },
+        { status: 400 },
+      );
+    }
+    systemPrompt = buildSystemPrompt(name, statement);
   }
 
   const rawMessages = (body as { messages?: unknown }).messages;
@@ -146,12 +165,9 @@ export async function POST(request: Request) {
         "X-Title": "The Construct — travisbollenbach.com",
       },
       body: JSON.stringify({
-        model,
-        max_tokens: 500,
-        messages: [
-          { role: "system", content: buildSystemPrompt(name, statement) },
-          ...messages,
-        ],
+        model: stageModel || model,
+        max_tokens: maxTokens,
+        messages: [{ role: "system", content: systemPrompt }, ...messages],
       }),
       signal: AbortSignal.timeout(60_000),
     });
