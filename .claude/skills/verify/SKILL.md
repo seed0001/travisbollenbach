@@ -38,3 +38,7 @@ WebGL renders fine under SwiftShader; screenshots capture the three.js canvas.
 - Capture page console: shader compile errors surface there, not as exceptions.
 - Touch-look: swipe the right half of the screen via CDP
   `Input.dispatchTouchEvent`; left half is the walk stick.
+- `/rabbit-hole/character-creation` works headless with a plain desktop
+  page (no pointer lock needed). Without `ANTHROPIC_API_KEY` set,
+  `/api/persona-chat` returns 503 `{"error":"offline"}` and the chamber
+  shows an in-fiction offline message — that's the expected keyless path.
