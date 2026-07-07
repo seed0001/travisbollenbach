@@ -1,66 +1,22 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 
-// Operator panel for integration credentials. Secrets are write-only: the
-// server returns set/unset + a last-4 preview, and inputs left blank are
-// left unchanged on save.
+// Integration credentials manager. Secrets are write-only: the server returns
+// set/unset + a last-4 preview, and inputs left blank are left unchanged on
+// save. The OpenRouter model is picked from the live model catalog.
 
 type FieldView =
   | { secret: true; set: boolean; preview: string }
   | { secret: false; value: string };
 
 type Fields = Record<string, FieldView>;
-
-const SECTIONS: {
-  title: string;
-  description: string;
-  fields: { key: string; label: string; placeholder: string; hint?: string }[];
-}[] = [
-  {
-    title: "the mind — openrouter",
-    description:
-      "Powers every AI feature on the site, starting with the character chamber. Any model on OpenRouter works.",
-    fields: [
-      {
-        key: "openrouterApiKey",
-        label: "openrouter api key",
-        placeholder: "paste a new key to replace",
-      },
-      {
-        key: "openrouterModel",
-        label: "model",
-        placeholder: "openrouter/auto",
-        hint: "any OpenRouter model id — e.g. openrouter/auto or a specific vendor/model",
-      },
-    ],
-  },
-  {
-    title: "discord",
-    description:
-      "Credentials for the Discord integration. Stored here, wired up as the bot comes online.",
-    fields: [
-      {
-        key: "discordBotToken",
-        label: "bot token",
-        placeholder: "paste a new token to replace",
-      },
-      {
-        key: "discordClientId",
-        label: "application client id",
-        placeholder: "e.g. 1234567890",
-      },
-      {
-        key: "discordClientSecret",
-        label: "client secret",
-        placeholder: "paste a new secret to replace",
-      },
-    ],
-  },
-];
+type ModelOption = { id: string; name: string };
 
 const inputClass =
-  "w-full rounded-xl border border-line bg-black/60 px-4 py-3 text-sm text-ink placeholder:text-ink-dim focus:border-matrix focus:outline-none";
+  "w-full rounded-lg border border-ops-line bg-white px-3.5 py-2.5 text-sm text-ops-ink placeholder:text-ops-muted/70 focus:border-ops-accent focus:outline-none focus:ring-2 focus:ring-ops-accent/15";
+
+const labelClass = "text-[13px] font-medium text-ops-ink";
 
 export default function AdminSettings() {
   const [fields, setFields] = useState<Fields | null>(null);
@@ -69,6 +25,37 @@ export default function AdminSettings() {
     "idle",
   );
   const [error, setError] = useState("");
+
+  const [models, setModels] = useState<ModelOption[]>([]);
+  const [modelsStatus, setModelsStatus] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
+  const [modelsError, setModelsError] = useState("");
+
+  const loadModels = useCallback(async (refresh: boolean) => {
+    setModelsStatus("loading");
+    setModelsError("");
+    try {
+      const res = await fetch(
+        `/api/admin/models${refresh ? "?refresh=1" : ""}`,
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !Array.isArray(data.models)) {
+        throw new Error(
+          typeof data.error === "string"
+            ? data.error
+            : "Couldn't load models.",
+        );
+      }
+      setModels(data.models);
+      setModelsStatus("ready");
+    } catch (err) {
+      setModelsStatus("error");
+      setModelsError(
+        err instanceof Error ? err.message : "Couldn't load models.",
+      );
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -82,10 +69,13 @@ export default function AdminSettings() {
       .catch(() => {
         if (!cancelled) setError("Couldn't load settings.");
       });
+    // deferred so the effect body itself doesn't set state synchronously
+    const kickoff = setTimeout(() => loadModels(false), 0);
     return () => {
       cancelled = true;
+      clearTimeout(kickoff);
     };
-  }, []);
+  }, [loadModels]);
 
   const save = async (event: FormEvent) => {
     event.preventDefault();
@@ -93,7 +83,6 @@ export default function AdminSettings() {
     setStatus("saving");
     setError("");
 
-    // send secrets only when a new value was typed; plain fields when changed
     const patch: Record<string, string> = {};
     for (const [key, view] of Object.entries(fields)) {
       const draft = drafts[key] ?? "";
@@ -124,6 +113,8 @@ export default function AdminSettings() {
       seedDrafts(data.fields, setDrafts);
       setStatus("saved");
       setTimeout(() => setStatus("idle"), 2500);
+      // a fresh key may unlock account-gated models — refresh the catalog
+      if (patch.openrouterApiKey) loadModels(true);
     } catch (err) {
       setStatus("error");
       setError(err instanceof Error ? err.message : "Save failed.");
@@ -152,95 +143,210 @@ export default function AdminSettings() {
   };
 
   if (error && !fields) {
-    return <p className="text-sm text-pill-red">{error}</p>;
+    return <p className="text-sm text-ops-red">{error}</p>;
   }
   if (!fields) {
-    return <p className="animate-pulse text-sm text-ink-dim">decrypting…</p>;
+    return <p className="animate-pulse text-sm text-ops-muted">loading…</p>;
   }
 
-  return (
-    <form onSubmit={save} className="space-y-4">
-      {SECTIONS.map((section) => (
-        <div
-          key={section.title}
-          className="rounded-3xl border border-line bg-surface/70 p-8"
-        >
-          <p className="text-xs uppercase tracking-[0.3em] text-ink-dim">
-            {section.title}
-          </p>
-          <p className="mt-2 text-sm leading-relaxed text-ink-soft">
-            {section.description}
-          </p>
-          <div className="mt-6 space-y-5">
-            {section.fields.map(({ key, label, placeholder, hint }) => {
-              const view = fields[key];
-              if (!view) return null;
-              return (
-                <div key={key}>
-                  <div className="flex items-baseline justify-between gap-4">
-                    <label
-                      htmlFor={key}
-                      className="text-xs uppercase tracking-[0.25em] text-ink-dim"
-                    >
-                      {label}
-                    </label>
-                    {view.secret && (
-                      <span
-                        className={`text-xs ${view.set ? "text-matrix" : "text-ink-dim"}`}
-                      >
-                        {view.set ? `set · ends ${view.preview}` : "not set"}
-                      </span>
-                    )}
-                  </div>
-                  <div className="mt-2 flex gap-2">
-                    <input
-                      id={key}
-                      type={view.secret ? "password" : "text"}
-                      value={drafts[key] ?? ""}
-                      onChange={(e) =>
-                        setDrafts((d) => ({ ...d, [key]: e.target.value }))
-                      }
-                      placeholder={placeholder}
-                      autoComplete="off"
-                      className={inputClass}
-                    />
-                    {view.secret && view.set && (
-                      <button
-                        type="button"
-                        onClick={() => clearSecret(key)}
-                        className="shrink-0 rounded-xl border border-line px-4 text-xs uppercase tracking-[0.2em] text-ink-dim transition-colors hover:border-pill-red hover:text-pill-red"
-                      >
-                        clear
-                      </button>
-                    )}
-                  </div>
-                  {hint && (
-                    <p className="mt-1 text-xs leading-relaxed text-ink-dim">
-                      {hint}
-                    </p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+  const secretRow = (key: string, label: string, placeholder: string) => {
+    const view = fields[key];
+    if (!view || !view.secret) return null;
+    return (
+      <div key={key}>
+        <div className="flex items-baseline justify-between gap-4">
+          <label htmlFor={key} className={labelClass}>
+            {label}
+          </label>
+          <span
+            className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+              view.set
+                ? "bg-ops-green-soft text-ops-green"
+                : "bg-ops-bg text-ops-muted"
+            }`}
+          >
+            {view.set ? `set · ends ${view.preview}` : "not set"}
+          </span>
         </div>
-      ))}
+        <div className="mt-1.5 flex gap-2">
+          <input
+            id={key}
+            type="password"
+            value={drafts[key] ?? ""}
+            onChange={(e) =>
+              setDrafts((d) => ({ ...d, [key]: e.target.value }))
+            }
+            placeholder={placeholder}
+            autoComplete="off"
+            className={inputClass}
+          />
+          {view.set && (
+            <button
+              type="button"
+              onClick={() => clearSecret(key)}
+              className="shrink-0 rounded-lg border border-ops-line px-3.5 text-xs font-medium text-ops-muted transition-colors hover:border-ops-red hover:text-ops-red"
+            >
+              clear
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const modelView = fields.openrouterModel;
+  const clientIdView = fields.discordClientId;
+
+  return (
+    <form onSubmit={save} className="space-y-5">
+      {/* OpenRouter */}
+      <div className="rounded-xl border border-ops-line bg-ops-card p-6 shadow-sm">
+        <h3 className="text-base font-semibold">OpenRouter</h3>
+        <p className="mt-1 text-sm text-ops-muted">
+          Powers every AI feature on the site, starting with the character
+          studio.
+        </p>
+        <div className="mt-5 space-y-5">
+          {secretRow(
+            "openrouterApiKey",
+            "API key",
+            "paste a new key to replace",
+          )}
+
+          {modelView && !modelView.secret && (
+            <div>
+              <div className="flex items-baseline justify-between gap-4">
+                <label htmlFor="openrouterModel" className={labelClass}>
+                  Model
+                </label>
+                <span className="text-xs text-ops-muted">
+                  {modelsStatus === "loading" && "loading catalog…"}
+                  {modelsStatus === "ready" &&
+                    `${models.length} models available`}
+                  {modelsStatus === "error" && (
+                    <span className="text-ops-red">{modelsError}</span>
+                  )}
+                </span>
+              </div>
+              <div className="mt-1.5 flex gap-2">
+                {modelsStatus === "ready" ? (
+                  <select
+                    id="openrouterModel"
+                    value={
+                      models.some((m) => m.id === (drafts.openrouterModel ?? ""))
+                        ? drafts.openrouterModel
+                        : ""
+                    }
+                    onChange={(e) =>
+                      setDrafts((d) => ({
+                        ...d,
+                        openrouterModel: e.target.value,
+                      }))
+                    }
+                    className={inputClass}
+                  >
+                    <option value="" disabled>
+                      {drafts.openrouterModel
+                        ? `current: ${drafts.openrouterModel}`
+                        : "select a model…"}
+                    </option>
+                    {models.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.id}
+                        {m.name !== m.id ? ` — ${m.name}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    id="openrouterModel"
+                    value={drafts.openrouterModel ?? ""}
+                    onChange={(e) =>
+                      setDrafts((d) => ({
+                        ...d,
+                        openrouterModel: e.target.value,
+                      }))
+                    }
+                    placeholder="openrouter/auto"
+                    className={inputClass}
+                  />
+                )}
+                <button
+                  type="button"
+                  onClick={() => loadModels(true)}
+                  disabled={modelsStatus === "loading"}
+                  className="shrink-0 rounded-lg border border-ops-line px-3.5 text-xs font-medium text-ops-muted transition-colors hover:border-ops-accent hover:text-ops-accent disabled:opacity-50"
+                >
+                  refresh
+                </button>
+              </div>
+              <p className="mt-1.5 text-xs text-ops-muted">
+                Saved model:{" "}
+                <span className="font-medium text-ops-ink">
+                  {modelView.value || "openrouter/auto"}
+                </span>
+                {modelsStatus === "error" &&
+                  " — catalog unavailable, type a model id manually."}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Discord */}
+      <div className="rounded-xl border border-ops-line bg-ops-card p-6 shadow-sm">
+        <h3 className="text-base font-semibold">Discord</h3>
+        <p className="mt-1 text-sm text-ops-muted">
+          Credentials for the Discord integration — stored now, wired up as
+          the bot comes online.
+        </p>
+        <div className="mt-5 space-y-5">
+          {secretRow(
+            "discordBotToken",
+            "Bot token",
+            "paste a new token to replace",
+          )}
+          {clientIdView && !clientIdView.secret && (
+            <div>
+              <label htmlFor="discordClientId" className={labelClass}>
+                Application client ID
+              </label>
+              <input
+                id="discordClientId"
+                value={drafts.discordClientId ?? ""}
+                onChange={(e) =>
+                  setDrafts((d) => ({
+                    ...d,
+                    discordClientId: e.target.value,
+                  }))
+                }
+                placeholder="e.g. 1234567890"
+                autoComplete="off"
+                className={`${inputClass} mt-1.5`}
+              />
+            </div>
+          )}
+          {secretRow(
+            "discordClientSecret",
+            "Client secret",
+            "paste a new secret to replace",
+          )}
+        </div>
+      </div>
 
       <div className="flex items-center gap-4">
         <button
           type="submit"
           disabled={status === "saving"}
-          className="rounded-xl border border-matrix px-8 py-3 text-xs font-bold uppercase tracking-[0.2em] text-matrix transition-colors hover:bg-matrix hover:text-black disabled:opacity-50"
+          className="rounded-lg bg-ops-accent px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:brightness-110 disabled:opacity-50"
         >
-          {status === "saving" ? "writing…" : "save changes"}
+          {status === "saving" ? "Saving…" : "Save changes"}
         </button>
         {status === "saved" && (
-          <span className="glow-green text-xs uppercase tracking-[0.2em] text-matrix">
-            written to the construct
-          </span>
+          <span className="text-sm font-medium text-ops-green">Saved.</span>
         )}
         {status === "error" && (
-          <span className="text-xs text-pill-red">{error}</span>
+          <span className="text-sm text-ops-red">{error}</span>
         )}
       </div>
     </form>
