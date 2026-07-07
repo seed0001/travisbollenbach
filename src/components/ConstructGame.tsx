@@ -13,6 +13,34 @@ const RAIN_COUNT = 2200;
 
 type ControlMode = "touch" | "gyro";
 
+const GLYPHS =
+  "アイウエオカキクケコサシスセソタチツテトナニヌネノ0123456789ABCDEFXYZ<>/\\{}[]$#*+=";
+const ATLAS_GRID = 8; // 8x8 cells is enough for the glyph set
+
+function makeGlyphAtlas() {
+  const cell = 128;
+  const canvas = document.createElement("canvas");
+  canvas.width = ATLAS_GRID * cell;
+  canvas.height = ATLAS_GRID * cell;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    ctx.font = `bold ${Math.floor(cell * 0.72)}px monospace`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#ffffff";
+    for (let i = 0; i < GLYPHS.length; i += 1) {
+      ctx.fillText(
+        GLYPHS[i],
+        (i % ATLAS_GRID) * cell + cell / 2,
+        Math.floor(i / ATLAS_GRID) * cell + cell / 2,
+      );
+    }
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
 function subscribeToPointerType(callback: () => void) {
   const query = window.matchMedia("(pointer: coarse)");
   query.addEventListener("change", callback);
@@ -305,30 +333,92 @@ export default function ConstructGame() {
       monolithPositions.push(new THREE.Vector3(x, 0, z));
     });
 
-    // --- Falling code rain (3D points) ----------------------------------------
+    // --- Falling code rain (3D glyph sprites) ---------------------------------
     const rainGeometry = new THREE.BufferGeometry();
     const rainPositions = new Float32Array(RAIN_COUNT * 3);
     const rainSpeeds = new Float32Array(RAIN_COUNT);
+    const rainGlyphs = new Float32Array(RAIN_COUNT);
+    const rainSeeds = new Float32Array(RAIN_COUNT);
     for (let i = 0; i < RAIN_COUNT; i += 1) {
       rainPositions[i * 3] = (Math.random() - 0.5) * 300;
       rainPositions[i * 3 + 1] = Math.random() * 60;
       rainPositions[i * 3 + 2] = -140 + Math.random() * 180;
       rainSpeeds[i] = 2 + Math.random() * 7;
+      rainGlyphs[i] = Math.floor(Math.random() * GLYPHS.length);
+      rainSeeds[i] = Math.random();
     }
     rainGeometry.setAttribute(
       "position",
       new THREE.BufferAttribute(rainPositions, 3),
     );
-    const rainMaterial = new THREE.PointsMaterial({
-      color: 0x00ff66,
-      size: 0.22,
+    rainGeometry.setAttribute("glyph", new THREE.BufferAttribute(rainGlyphs, 1));
+    rainGeometry.setAttribute("seed", new THREE.BufferAttribute(rainSeeds, 1));
+
+    const glyphAtlas = makeGlyphAtlas();
+    const rainMaterial = new THREE.ShaderMaterial({
       transparent: true,
-      opacity: 0.7,
-      sizeAttenuation: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      uniforms: {
+        uAtlas: { value: glyphAtlas },
+        uTime: { value: 0 },
+        uColor: { value: new THREE.Color(0x00ff66) },
+        // half the drawing-buffer height — same size attenuation PointsMaterial uses
+        uScale: { value: 1 },
+      },
+      vertexShader: /* glsl */ `
+        attribute float glyph;
+        attribute float seed;
+        uniform float uScale;
+        varying float vGlyph;
+        varying float vSeed;
+        varying float vDepth;
+
+        void main() {
+          vGlyph = glyph;
+          vSeed = seed;
+          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+          vDepth = -mvPosition.z;
+          gl_PointSize = (0.7 + seed * 0.4) * uScale / vDepth;
+          gl_Position = projectionMatrix * mvPosition;
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        uniform sampler2D uAtlas;
+        uniform float uTime;
+        uniform vec3 uColor;
+        varying float vGlyph;
+        varying float vSeed;
+        varying float vDepth;
+
+        const float GRID = ${ATLAS_GRID.toFixed(1)};
+        const float COUNT = ${GLYPHS.length.toFixed(1)};
+
+        void main() {
+          // each drop flickers through the glyph set at its own cadence
+          float index = mod(vGlyph + floor(uTime * (1.0 + vSeed * 3.0)), COUNT);
+          vec2 uv = vec2(
+            (mod(index, GRID) + gl_PointCoord.x) / GRID,
+            1.0 - (floor(index / GRID) + gl_PointCoord.y) / GRID
+          );
+          float shape = texture2D(uAtlas, uv).a;
+          // fade with distance to match the scene fog (20..130)
+          float fade = 1.0 - smoothstep(20.0, 130.0, vDepth);
+          float alpha = shape * fade * (0.35 + vSeed * 0.55);
+          if (alpha < 0.01) discard;
+          gl_FragColor = vec4(uColor, alpha);
+          #include <colorspace_fragment>
+        }
+      `,
     });
     const rain = new THREE.Points(rainGeometry, rainMaterial);
     scene.add(rain);
-    disposables.push(rainGeometry, rainMaterial);
+    disposables.push(rainGeometry, rainMaterial, glyphAtlas);
+
+    const updateRainScale = () => {
+      rainMaterial.uniforms.uScale.value = renderer.domElement.height * 0.5;
+    };
+    updateRainScale();
 
     // --- Controls state ---------------------------------------------------------
     const keys = new Set<string>();
@@ -449,6 +539,7 @@ export default function ConstructGame() {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
+      updateRainScale();
     };
 
     document.addEventListener("keydown", onKeyDown);
@@ -540,6 +631,7 @@ export default function ConstructGame() {
       }
 
       // rain fall + wrap
+      rainMaterial.uniforms.uTime.value = elapsed;
       const positions = rainGeometry.attributes.position
         .array as Float32Array;
       for (let i = 0; i < RAIN_COUNT; i += 1) {
