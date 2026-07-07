@@ -123,62 +123,117 @@ body {
   animation: flicker 5s linear infinite;
 }
 
-/* --- Pill choice ----------------------------------------------------------- */
+/* --- Choice screen ---------------------------------------------------------- */
 
-.pill {
-  position: relative;
-  width: 8.5rem;
-  height: 3.4rem;
-  border-radius: 9999px;
-  cursor: pointer;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  transition:
-    transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow 0.35s ease,
-    filter 0.35s ease;
-  transform: rotate(-14deg);
-}
-
-.pill::after {
-  /* glass highlight */
-  content: "";
-  position: absolute;
-  left: 12%;
-  top: 14%;
-  width: 55%;
-  height: 30%;
-  border-radius: 9999px;
-  background: linear-gradient(
-    to bottom,
-    rgba(255, 255, 255, 0.55),
-    rgba(255, 255, 255, 0)
+/* Dims the rain behind the centered content so text reads clearly */
+.choice-vignette {
+  background: radial-gradient(
+    ellipse 72% 64% at 50% 48%,
+    rgba(0, 0, 0, 0.88) 0%,
+    rgba(0, 0, 0, 0.55) 52%,
+    transparent 78%
   );
 }
 
-.pill-red {
-  background: linear-gradient(145deg, #ff6b81 0%, #e11d48 45%, #7f1d1d 100%);
-  box-shadow: 0 0 22px rgba(244, 63, 94, 0.35);
+/* Crisp terminal text: black halo to separate from rain + green glow */
+.terminal-text {
+  text-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.95),
+    0 0 5px rgba(0, 255, 102, 0.55),
+    0 0 20px rgba(0, 255, 102, 0.3);
 }
 
-.pill-blue {
-  background: linear-gradient(145deg, #7dd3fc 0%, #0284c7 45%, #0c4a6e 100%);
-  box-shadow: 0 0 22px rgba(56, 189, 248, 0.35);
-  transform: rotate(14deg);
+.glitch-title {
+  position: relative;
+  display: inline-block;
 }
 
-.pill-btn:hover .pill,
-.pill-btn:focus-visible .pill {
-  transform: rotate(0deg) scale(1.12);
+.glitch-title::before,
+.glitch-title::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
 }
 
-.pill-btn:hover .pill-red,
-.pill-btn:focus-visible .pill-red {
-  box-shadow: 0 0 46px rgba(244, 63, 94, 0.8);
+.glitch-title::before {
+  color: #ff3b5c;
+  animation: glitch-slice-r 3.8s steps(2, jump-none) infinite;
 }
 
-.pill-btn:hover .pill-blue,
-.pill-btn:focus-visible .pill-blue {
-  box-shadow: 0 0 46px rgba(56, 189, 248, 0.8);
+.glitch-title::after {
+  color: #38bdf8;
+  animation: glitch-slice-b 3.8s steps(2, jump-none) infinite 0.1s;
+}
+
+@keyframes glitch-slice-r {
+  0%,
+  86%,
+  100% {
+    opacity: 0;
+    transform: none;
+    clip-path: inset(0 0 0 0);
+  }
+  88% {
+    opacity: 0.85;
+    transform: translate(-5px, 1px);
+    clip-path: inset(10% 0 58% 0);
+  }
+  91% {
+    opacity: 0.85;
+    transform: translate(4px, -1px);
+    clip-path: inset(52% 0 16% 0);
+  }
+  94% {
+    opacity: 0.85;
+    transform: translate(-3px, 0);
+    clip-path: inset(78% 0 2% 0);
+  }
+  96% {
+    opacity: 0;
+  }
+}
+
+@keyframes glitch-slice-b {
+  0%,
+  86%,
+  100% {
+    opacity: 0;
+    transform: none;
+    clip-path: inset(0 0 0 0);
+  }
+  89% {
+    opacity: 0.85;
+    transform: translate(5px, -1px);
+    clip-path: inset(34% 0 34% 0);
+  }
+  92% {
+    opacity: 0.85;
+    transform: translate(-4px, 1px);
+    clip-path: inset(4% 0 76% 0);
+  }
+  95% {
+    opacity: 0;
+  }
+}
+
+@keyframes choose-pulse {
+  0%,
+  100% {
+    text-shadow:
+      0 0 8px rgba(0, 255, 102, 0.8),
+      0 0 30px rgba(0, 255, 102, 0.35);
+  }
+  50% {
+    text-shadow:
+      0 0 16px rgba(0, 255, 102, 1),
+      0 0 64px rgba(0, 255, 102, 0.6);
+  }
+}
+
+.choose-pulse {
+  animation: choose-pulse 2.4s ease-in-out infinite;
 }
 
 /* --- Choice transition ------------------------------------------------------ */

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { choice, site } from "@/lib/content";
 import MatrixRain from "./MatrixRain";
+import Pill3D from "./Pill3D";
 
 type Pick = "red" | "blue" | null;
 
@@ -38,7 +39,7 @@ function TypedLine({
   if (!active && count === 0) return null;
 
   return (
-    <p className="glow-green min-h-[1.5em] text-sm text-matrix sm:text-base md:text-lg">
+    <p className="terminal-text min-h-[1.5em] text-base font-bold text-[#dcffe9] sm:text-lg md:text-xl">
       {text.slice(0, count)}
       {count < text.length && <span className="type-cursor">█</span>}
     </p>
@@ -70,11 +71,26 @@ export default function ChoiceScreen() {
   return (
     <div className="scanlines relative min-h-svh overflow-hidden">
       <MatrixRain />
+      <div className="choice-vignette pointer-events-none fixed inset-0 z-[1]" />
 
-      <div className="relative z-10 mx-auto flex min-h-svh max-w-3xl flex-col items-center justify-center px-6 py-16 text-center">
-        <p className="flicker mb-10 text-xs uppercase tracking-[0.4em] text-ink-dim">
-          {`${site.name} // incoming transmission`}
-        </p>
+      <div className="relative z-10 mx-auto flex min-h-svh max-w-4xl flex-col items-center justify-center px-6 py-16 text-center">
+        {/* Hero title */}
+        <motion.div
+          initial={{ opacity: 0, y: -24 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
+          className="mb-12"
+        >
+          <h1
+            data-text={site.name.toUpperCase()}
+            className="glitch-title glow-green text-3xl font-bold tracking-[0.14em] text-white sm:text-4xl md:text-6xl"
+          >
+            {site.name.toUpperCase()}
+          </h1>
+          <p className="flicker mt-4 text-[11px] uppercase tracking-[0.5em] text-matrix">
+            {"// incoming transmission //"}
+          </p>
+        </motion.div>
 
         <div className="w-full space-y-3 text-left sm:text-center">
           {monologue.map((text, i) => (
@@ -90,53 +106,73 @@ export default function ChoiceScreen() {
         <AnimatePresence>
           {monologueDone && !picked && (
             <motion.div
-              initial={{ opacity: 0, y: 24 }}
-              animate={{ opacity: 1, y: 0 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
-              className="mt-14 flex w-full flex-col items-center"
+              transition={{ duration: 0.5 }}
+              className="mt-12 flex w-full flex-col items-center"
+              style={{ perspective: 900 }}
             >
-              <p className="glow-green mb-10 text-2xl font-bold tracking-widest text-matrix md:text-3xl">
-                {choice.prompt}
-              </p>
-
-              <div className="flex w-full flex-col items-stretch justify-center gap-8 sm:flex-row sm:gap-14">
-                <button
-                  type="button"
-                  onClick={() => pick("blue")}
-                  className="pill-btn group flex flex-1 flex-col items-center gap-5 rounded-2xl border border-transparent p-6 outline-none transition-colors hover:border-pill-blue/30 focus-visible:border-pill-blue/60 sm:max-w-xs"
-                >
-                  <span className="pill pill-blue" />
-                  <span className="glow-blue text-lg font-bold tracking-widest text-pill-blue">
-                    {choice.blue.label}
-                  </span>
-                  <span className="text-xs leading-relaxed text-ink-soft">
-                    {choice.blue.hint}
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => pick("red")}
-                  className="pill-btn group flex flex-1 flex-col items-center gap-5 rounded-2xl border border-transparent p-6 outline-none transition-colors hover:border-pill-red/30 focus-visible:border-pill-red/60 sm:max-w-xs"
-                >
-                  <span className="pill pill-red" />
-                  <span className="glow-red text-lg font-bold tracking-widest text-pill-red">
-                    {choice.red.label}
-                  </span>
-                  <span className="text-xs leading-relaxed text-ink-soft">
-                    {choice.red.hint}
-                  </span>
-                </button>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setLine(monologue.length)}
-                className="sr-only"
+              <motion.p
+                initial={{ opacity: 0, scale: 0.7 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ type: "spring", stiffness: 160, damping: 14 }}
+                className="choose-pulse mb-8 text-3xl font-bold tracking-[0.3em] text-matrix md:text-4xl"
               >
-                Skip intro
-              </button>
+                {choice.prompt}
+              </motion.p>
+
+              <div className="flex w-full flex-col items-center justify-center gap-4 sm:flex-row sm:items-stretch sm:gap-10">
+                <motion.div
+                  initial={{ opacity: 0, y: 60, rotateX: 50 }}
+                  animate={{ opacity: 1, y: 0, rotateX: 0 }}
+                  transition={{
+                    type: "spring",
+                    stiffness: 110,
+                    damping: 13,
+                    delay: 0.15,
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => pick("blue")}
+                    className="group flex w-full max-w-xs flex-col items-center gap-2 rounded-2xl border border-transparent p-4 outline-none transition-colors hover:border-pill-blue/30 focus-visible:border-pill-blue/60"
+                  >
+                    <Pill3D variant="blue" />
+                    <span className="glow-blue text-lg font-bold tracking-widest text-pill-blue">
+                      {choice.blue.label}
+                    </span>
+                    <span className="terminal-text text-xs leading-relaxed text-ink-soft">
+                      {choice.blue.hint}
+                    </span>
+                  </button>
+                </motion.div>
+
+                <motion.div
+                  initial={{ opacity: 0, y: 60, rotateX: 50 }}
+                  animate={{ opacity: 1, y: 0, rotateX: 0 }}
+                  transition={{
+                    type: "spring",
+                    stiffness: 110,
+                    damping: 13,
+                    delay: 0.3,
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => pick("red")}
+                    className="group flex w-full max-w-xs flex-col items-center gap-2 rounded-2xl border border-transparent p-4 outline-none transition-colors hover:border-pill-red/30 focus-visible:border-pill-red/60"
+                  >
+                    <Pill3D variant="red" />
+                    <span className="glow-red text-lg font-bold tracking-widest text-pill-red">
+                      {choice.red.label}
+                    </span>
+                    <span className="terminal-text text-xs leading-relaxed text-ink-soft">
+                      {choice.red.hint}
+                    </span>
+                  </button>
+                </motion.div>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>

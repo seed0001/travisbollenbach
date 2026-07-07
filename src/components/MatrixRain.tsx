@@ -10,11 +10,14 @@ type MatrixRainProps = {
   color?: string;
   /** 0..1 — overall strength of the effect */
   intensity?: number;
+  /** 1 = original speed; lower is slower */
+  speed?: number;
 };
 
 export default function MatrixRain({
   color = "0, 255, 102",
   intensity = 1,
+  speed = 0.45,
 }: MatrixRainProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -47,8 +50,8 @@ export default function MatrixRain({
 
     const draw = (time: number) => {
       animationFrame = window.requestAnimationFrame(draw);
-      // ~30fps is plenty and keeps the trail decay consistent
-      if (time - lastTick < 33) return;
+      // glyphs advance one row per tick, so the interval sets the fall speed
+      if (time - lastTick < 33 / speed) return;
       lastTick = time;
 
       ctx.fillStyle = "rgba(0, 0, 0, 0.08)";
@@ -96,7 +99,7 @@ export default function MatrixRain({
       window.cancelAnimationFrame(animationFrame);
       window.removeEventListener("resize", resize);
     };
-  }, [color, intensity]);
+  }, [color, intensity, speed]);
 
   return (
     <div className="stage-fixed z-0" aria-hidden="true">
