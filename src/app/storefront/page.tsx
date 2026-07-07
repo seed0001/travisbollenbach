@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import Reveal from "@/components/Reveal";
-import { products, services, site, stats } from "@/lib/content";
+import { about, products, services, site, stats } from "@/lib/content";
+import portrait from "../../../public/travis-and-dog.jpg";
 
 export const metadata: Metadata = {
   title: "The Storefront — Travis Bollenbach",
@@ -165,6 +167,36 @@ export default function Storefront() {
               </Reveal>
             ))}
           </div>
+        </section>
+
+        {/* About */}
+        <section id="about" className="py-16">
+          <Reveal>
+            <div className="grid items-center gap-10 rounded-3xl border border-sky-900/50 bg-sky-950/20 p-8 md:grid-cols-[minmax(0,340px)_1fr] md:p-12">
+              <div className="relative mx-auto w-full max-w-[340px] overflow-hidden rounded-2xl border border-sky-800/60">
+                <Image
+                  src={portrait}
+                  alt={about.photoAlt}
+                  placeholder="blur"
+                  sizes="(min-width: 768px) 340px, 90vw"
+                  className="h-auto w-full"
+                />
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-[0.35em] text-sky-400">
+                  {about.storefront.eyebrow}
+                </p>
+                <h2 className="mt-3 text-2xl font-bold tracking-tight md:text-3xl">
+                  {about.storefront.title}
+                </h2>
+                <div className="mt-5 space-y-4 leading-relaxed text-slate-400">
+                  {about.storefront.paragraphs.map((paragraph) => (
+                    <p key={paragraph.slice(0, 32)}>{paragraph}</p>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </Reveal>
         </section>
 
         {/* Contact CTA */}

@@ -113,6 +113,26 @@ export const services: Service[] = [
   },
 ];
 
+export const about = {
+  photoAlt: "Travis Bollenbach crouched beside his dog on a stone wall",
+  storefront: {
+    eyebrow: "The human behind the tools",
+    title: "Hi, I'm Travis.",
+    paragraphs: [
+      "Part engineer, part creative, part founder. I've spent over a decade building software, brands, and products — usually all three at once. When you work with me, the person who designs the thing is the same person who builds it and the same person who answers the email.",
+      "Off the clock you'll find me outside with the head of my quality assurance department. He approves every release.",
+    ],
+  },
+  rabbitHole: {
+    eyebrow: "the architect",
+    title: "Every construct has an architect.",
+    paragraphs: [
+      "This one is mine. I spend my days building tools for the real world and my nights wondering how real the world actually is. Both jobs use the same keyboard.",
+      "The dog has never once questioned the nature of reality. I've come to suspect that makes him the enlightened one.",
+    ],
+  },
+};
+
 export const stats = [
   { value: "10+", label: "Years building" },
   { value: "50+", label: "Projects shipped" },

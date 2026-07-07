@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import MatrixRain from "@/components/MatrixRain";
 import Reveal from "@/components/Reveal";
-import { channels, rabbitHole, site } from "@/lib/content";
+import { about, channels, rabbitHole, site } from "@/lib/content";
+import portrait from "../../../public/travis-and-dog.jpg";
 
 export const metadata: Metadata = {
   title: "The Rabbit Hole — Travis Bollenbach",
@@ -76,6 +78,36 @@ export default function RabbitHole() {
               </article>
             </Reveal>
           ))}
+        </section>
+
+        {/* The architect */}
+        <section id="architect" className="pt-8">
+          <Reveal>
+            <div className="grid items-center gap-10 rounded-3xl border border-line bg-surface/70 p-8 backdrop-blur-sm md:grid-cols-[minmax(0,300px)_1fr] md:p-10">
+              <div className="matrix-photo relative mx-auto w-full max-w-[300px] overflow-hidden rounded-2xl border border-matrix-dim">
+                <Image
+                  src={portrait}
+                  alt={about.photoAlt}
+                  placeholder="blur"
+                  sizes="(min-width: 768px) 300px, 90vw"
+                  className="h-auto w-full"
+                />
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-[0.35em] text-ink-dim">
+                  {about.rabbitHole.eyebrow}
+                </p>
+                <h2 className="glow-green mt-3 text-2xl font-bold tracking-tight text-matrix md:text-3xl">
+                  {about.rabbitHole.title}
+                </h2>
+                <div className="mt-5 space-y-4 leading-relaxed text-ink-soft">
+                  {about.rabbitHole.paragraphs.map((paragraph) => (
+                    <p key={paragraph.slice(0, 32)}>{paragraph}</p>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </Reveal>
         </section>
 
         {/* Game portal */}

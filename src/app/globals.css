@@ -258,6 +258,33 @@ body {
   animation: white-flash 0.9s ease-out forwards;
 }
 
+/* --- Matrix-tinted photo (rabbit hole) -------------------------------------- */
+
+.matrix-photo img {
+  filter: grayscale(1) sepia(1) hue-rotate(75deg) saturate(2.6) contrast(1.05)
+    brightness(0.9);
+}
+
+.matrix-photo::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent 2px,
+      rgba(0, 0, 0, 0.22) 3px,
+      rgba(0, 0, 0, 0.22) 4px
+    ),
+    radial-gradient(
+      ellipse at center,
+      transparent 55%,
+      rgba(1, 6, 4, 0.55) 100%
+    );
+}
+
 /* --- Full-viewport stages ----------------------------------------------------- */
 
 .stage-fixed,
