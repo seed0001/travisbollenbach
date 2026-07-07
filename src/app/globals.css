@@ -16,6 +16,16 @@
   --color-surface: #04120b;
   --font-mono-display: "Courier New", ui-monospace, SFMono-Regular, Menlo,
     monospace;
+
+  /* The Studio — character creation's light palette (each page is its own world) */
+  --color-studio-bg: #f7f5f0;
+  --color-studio-card: #ffffff;
+  --color-studio-ink: #2a2733;
+  --color-studio-muted: #8b8798;
+  --color-studio-line: #e6e2ea;
+  --color-studio-iris: #5b54d9;
+  --color-studio-iris-soft: #eceafd;
+  --color-studio-peach: #e88d67;
 }
 
 :root {
@@ -283,6 +293,37 @@ body {
       transparent 55%,
       rgba(1, 6, 4, 0.55) 100%
     );
+}
+
+/* --- The Studio (character creation) ---------------------------------------- */
+
+/* This page opts out of the site-wide terminal look: humanist sans body,
+   serif display, light color scheme. */
+.studio {
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Helvetica, Arial,
+    sans-serif;
+  color-scheme: light;
+}
+
+.studio-display {
+  font-family: Georgia, "Iowan Old Style", "Times New Roman", serif;
+}
+
+/* soft pastel wash behind the studio pages */
+.studio-wash {
+  background:
+    radial-gradient(
+      620px 420px at 12% -4%,
+      rgba(91, 84, 217, 0.1),
+      transparent 70%
+    ),
+    radial-gradient(
+      560px 400px at 96% 12%,
+      rgba(232, 141, 103, 0.12),
+      transparent 70%
+    ),
+    var(--color-studio-bg);
 }
 
 /* --- Full-viewport stages ----------------------------------------------------- */

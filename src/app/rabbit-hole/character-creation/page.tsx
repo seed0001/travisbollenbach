@@ -4,7 +4,7 @@ import CharacterWorkshop from "@/components/CharacterWorkshop";
 export const metadata: Metadata = {
   title: "Character Creation — Travis Bollenbach",
   description:
-    "Level 01 of the rabbit hole: craft a persona statement, compile an AI character, and talk with it inside a rendered chamber of the construct.",
+    "The studio: name a character, write its persona, and meet it face to face in a bright 3D room — a conversation with something you wrote into being.",
 };
 
 export default function CharacterCreationPage() {
