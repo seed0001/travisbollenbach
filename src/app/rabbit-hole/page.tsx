@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
+import Guestbook from "@/components/Guestbook";
 import MatrixRain from "@/components/MatrixRain";
 import Reveal from "@/components/Reveal";
 import { about, channels, rabbitHole, site } from "@/lib/content";
@@ -130,6 +131,13 @@ export default function RabbitHole() {
                 jack in →
               </span>
             </Link>
+          </Reveal>
+        </section>
+
+        {/* Guestbook */}
+        <section id="guestbook" className="pt-16">
+          <Reveal>
+            <Guestbook />
           </Reveal>
         </section>
 

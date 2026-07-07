@@ -133,6 +133,14 @@ export const about = {
   },
 };
 
+export const guestbook = {
+  eyebrow: "open channel",
+  title: "Leave a trace",
+  description:
+    "You made it this far down. Say something — a thought, a question, proof you were here. No accounts, no tracking. Words only.",
+  emptyState: "No transmissions yet. Be the first voice in the channel.",
+};
+
 export const stats = [
   { value: "10+", label: "Years building" },
   { value: "50+", label: "Projects shipped" },
