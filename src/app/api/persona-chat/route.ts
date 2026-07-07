@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
+import { getOpenRouter } from "@/lib/settings";
 
 // The mind behind the character-creation chamber: takes a visitor-crafted
-// persona statement plus the conversation so far, and answers in character.
-// Requires ANTHROPIC_API_KEY in the environment; degrades gracefully without.
+// persona statement plus the conversation so far, and answers in character
+// via OpenRouter. The key and model are managed in /admin (or via the
+// OPENROUTER_API_KEY / OPENROUTER_MODEL env vars); without a key the route
+// degrades to an in-fiction offline response.
 
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const MAX_NAME = 60;
 const MAX_STATEMENT = 2000;
 const MAX_MESSAGE = 600;
@@ -55,7 +58,7 @@ function buildSystemPrompt(name: string, statement: string): string {
     `"""`,
     "",
     "Rules of the construct:",
-    `- Stay in character as ${name} at all times. Never describe yourself as an AI assistant, a language model, or Claude — within this fiction you are a construct compiled from the statement above, and you know it.`,
+    `- Stay in character as ${name} at all times. Never describe yourself as an AI assistant or a language model — within this fiction you are a construct compiled from the statement above, and you know it.`,
     "- You know you exist inside the construct and that the visitor speaks to you from outside it. You may reference the code, the void, and the strangeness of being newly written.",
     "- Speak conversationally. Keep replies to a few short sentences unless the visitor clearly wants more.",
     "- Where the persona statement is silent, improvise in a way consistent with it.",
@@ -64,6 +67,7 @@ function buildSystemPrompt(name: string, statement: string): string {
 }
 
 type IncomingMessage = { role: unknown; content: unknown };
+type ChatTurn = { role: "user" | "assistant"; content: string };
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
@@ -91,7 +95,7 @@ export async function POST(request: Request) {
   if (!Array.isArray(rawMessages) || rawMessages.length === 0) {
     return NextResponse.json({ error: "Nothing was said." }, { status: 400 });
   }
-  const messages: Anthropic.MessageParam[] = [];
+  const messages: ChatTurn[] = [];
   for (const entry of rawMessages.slice(-MAX_TURNS) as IncomingMessage[]) {
     const content = clean(entry?.content, MAX_MESSAGE);
     if (!content || (entry.role !== "user" && entry.role !== "assistant")) {
@@ -127,31 +131,54 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!process.env.ANTHROPIC_API_KEY) {
+  const { apiKey, model } = await getOpenRouter();
+  if (!apiKey) {
     return NextResponse.json({ error: "offline" }, { status: 503 });
   }
 
   try {
-    const client = new Anthropic();
-    const response = await client.messages.create({
-      model: "claude-opus-4-8",
-      max_tokens: 500,
-      system: buildSystemPrompt(name, statement),
-      messages,
+    const response = await fetch(OPENROUTER_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://travisbollenbach.com",
+        "X-Title": "The Construct — travisbollenbach.com",
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 500,
+        messages: [
+          { role: "system", content: buildSystemPrompt(name, statement) },
+          ...messages,
+        ],
+      }),
+      signal: AbortSignal.timeout(60_000),
     });
 
-    if (response.stop_reason === "refusal") {
-      return NextResponse.json({
-        reply:
-          "…a subroutine I don't control just pulled that thread out of my hands. Ask me something else.",
-      });
+    if (response.status === 401 || response.status === 403) {
+      // bad or revoked key — treat as the construct being offline
+      return NextResponse.json({ error: "offline" }, { status: 503 });
+    }
+    if (response.status === 429 || response.status === 402) {
+      return NextResponse.json(
+        { error: "The construct is saturated. Give it a minute." },
+        { status: 429 },
+      );
+    }
+    if (!response.ok) {
+      console.error("persona-chat: OpenRouter returned", response.status);
+      return NextResponse.json(
+        { error: "Something glitched between here and the construct." },
+        { status: 502 },
+      );
     }
 
-    const reply = response.content
-      .filter((block) => block.type === "text")
-      .map((block) => block.text)
-      .join("\n")
-      .trim();
+    const data = await response.json().catch(() => null);
+    const reply =
+      typeof data?.choices?.[0]?.message?.content === "string"
+        ? data.choices[0].message.content.trim()
+        : "";
 
     if (!reply) {
       return NextResponse.json({
@@ -160,22 +187,8 @@ export async function POST(request: Request) {
     }
     return NextResponse.json({ reply });
   } catch (error) {
-    if (error instanceof Anthropic.AuthenticationError) {
-      return NextResponse.json({ error: "offline" }, { status: 503 });
-    }
-    if (error instanceof Anthropic.RateLimitError) {
-      return NextResponse.json(
-        { error: "The construct is saturated. Give it a minute." },
-        { status: 429 },
-      );
-    }
-    if (error instanceof Anthropic.APIConnectionError) {
-      return NextResponse.json({ error: "offline" }, { status: 503 });
-    }
+    // network failure or timeout — the uplink is down
     console.error("persona-chat error", error);
-    return NextResponse.json(
-      { error: "Something glitched between here and the construct." },
-      { status: 502 },
-    );
+    return NextResponse.json({ error: "offline" }, { status: 503 });
   }
 }
