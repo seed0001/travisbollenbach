@@ -38,9 +38,11 @@ Below the channels there is a photo section about Travis, a big portal into the 
 
 ### Three. The Construct
 
-A first-person 3D world. Black void, green grid floor, actual letters and numbers raining from the sky. The visitor walks with W A S D on desktop, or thumbsticks on a phone. Phones can also use motion controls, where you look around by moving the phone.
+A first-person open world, and the seed of the larger game to come. The black void and grid are gone. Now it is an endless, procedurally generated natural landscape: low-poly rolling hills, grassy meadows, sandy coasts, water, and snow-capped mountains, all under a blue sky. The whole world grows from a single number — the world seed. Nothing is stored; every hill is recomputed from the seed as the visitor approaches, so walk a mile out and back and the land is exactly where you left it. Terrain streams in as tiles around the player and melts away behind them.
 
-Five stone monoliths stand in the dark, each carved with one of the site's big questions. Walk close to one and its inscription appears.
+The visitor walks with W A S D on desktop and runs by holding shift, or uses thumbsticks on a phone. Phones can also use motion controls, where you look around by moving the phone.
+
+Five stone monoliths stand in a gentle meadow near the spawn point — the terrain is forced calm and dry along their corridor, no matter what the noise wants. Each is carved with one of the site's big questions. Walk close to one and its inscription appears.
 
 Two monoliths are doors. The Character Creation monolith opens the studio. The AI Consciousness monolith opens the Descent. The button says "step through."
 
@@ -111,6 +113,8 @@ To change what the Descent entities actually are — their personalities, their 
 To change the studio characters' framing — the rules every visitor-made character lives under: the system prompt inside source, app, A P I, persona dash chat, route dot T S.
 
 To change how any room looks — the static wall, the dream blob, the deep ring, the studio chamber: those are the scene builders inside source, components, Descent dot T S and CharacterWorkshop dot T S.
+
+To change the open world — the seed, the shape of the mountains, the water level, the colors of the land, how far tiles stream in: source, lib, terrain dot T S. The world seed is a constant there called WORLD SEED; change it and a completely different planet grows. The Construct scene itself — sky, sun, water, monolith placement, movement — lives in source, components, ConstructGame dot T S X.
 
 To change how hard it is to go deeper: each depth requires three replies before the door appears. That number is in source, lib, descent dot T S, called min replies to descend.
 

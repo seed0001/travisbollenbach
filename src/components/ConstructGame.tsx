@@ -5,17 +5,17 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import * as THREE from "three";
 import { monoliths } from "@/lib/content";
 import {
-  GLYPHS,
-  createGlyphMaterial,
-  makeGlyphAtlas,
-  updateGlyphScale,
-} from "@/lib/glyphs";
+  WORLD_SEED,
+  WATER_LEVEL,
+  createChunkManager,
+  createTerrain,
+} from "@/lib/terrain";
 
 const EYE_HEIGHT = 2.2;
 const MOVE_SPEED = 12;
-const BOUNDS = { x: 70, zMin: -140, zMax: 20 };
+const RUN_SPEED = 22;
 const REVEAL_RADIUS = 10;
-const RAIN_COUNT = 2200;
+const SKY_COLOR = 0x9ec8e8;
 
 type ControlMode = "touch" | "gyro";
 
@@ -222,16 +222,17 @@ export default function ConstructGame() {
 
     // --- Scene -------------------------------------------------------------
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x000000);
-    scene.fog = new THREE.Fog(0x000000, 20, 130);
+    scene.background = new THREE.Color(SKY_COLOR);
+    scene.fog = new THREE.Fog(SKY_COLOR, 100, 320);
 
     const camera = new THREE.PerspectiveCamera(
       70,
       window.innerWidth / window.innerHeight,
       0.1,
-      400,
+      600,
     );
-    camera.position.set(0, EYE_HEIGHT, 10);
+    const terrain = createTerrain(WORLD_SEED);
+    camera.position.set(0, terrain.heightAt(0, 10) + EYE_HEIGHT, 10);
 
     const renderer = new THREE.WebGLRenderer({
       antialias: true,
@@ -243,24 +244,28 @@ export default function ConstructGame() {
 
     const disposables: { dispose(): void }[] = [];
 
-    // --- Floor grid ----------------------------------------------------------
-    const grid = new THREE.GridHelper(400, 200, 0x00ff66, 0x043017);
-    (grid.material as THREE.Material).transparent = true;
-    (grid.material as THREE.Material).opacity = 0.55;
-    scene.add(grid);
-    disposables.push(grid.geometry, grid.material as THREE.Material);
+    // --- Light and land --------------------------------------------------------
+    const skyLight = new THREE.HemisphereLight(0xcfe4f5, 0x8c7b5e, 0.95);
+    scene.add(skyLight);
+    const sun = new THREE.DirectionalLight(0xfff2d9, 1.25);
+    sun.position.set(180, 300, 105);
+    scene.add(sun);
+    disposables.push(skyLight, sun);
 
-    const floorGeometry = new THREE.PlaneGeometry(400, 400);
-    const floorMaterial = new THREE.MeshBasicMaterial({
-      color: 0x010604,
+    const chunkManager = createChunkManager(scene, terrain);
+    chunkManager.prewarm(camera.position.x, camera.position.z, 2);
+
+    const waterGeometry = new THREE.PlaneGeometry(900, 900);
+    const waterMaterial = new THREE.MeshLambertMaterial({
+      color: 0x3286b0,
       transparent: true,
-      opacity: 0.9,
+      opacity: 0.75,
     });
-    const floor = new THREE.Mesh(floorGeometry, floorMaterial);
-    floor.rotation.x = -Math.PI / 2;
-    floor.position.y = -0.02;
-    scene.add(floor);
-    disposables.push(floorGeometry, floorMaterial);
+    const water = new THREE.Mesh(waterGeometry, waterMaterial);
+    water.rotation.x = -Math.PI / 2;
+    water.position.y = WATER_LEVEL;
+    scene.add(water);
+    disposables.push(waterGeometry, waterMaterial);
 
     // --- Monoliths -----------------------------------------------------------
     const monolithGeometry = new THREE.BoxGeometry(5, 11, 1.4);
@@ -278,7 +283,7 @@ export default function ConstructGame() {
     monoliths.forEach((monolith) => {
       const [x, z] = monolith.position;
       const group = new THREE.Group();
-      group.position.set(x, 5.5, z);
+      group.position.set(x, terrain.heightAt(x, z) + 5.4, z);
 
       group.add(new THREE.Mesh(monolithGeometry, monolithMaterial));
       group.add(new THREE.LineSegments(edgeGeometry, edgeMaterial));
@@ -310,43 +315,6 @@ export default function ConstructGame() {
       scene.add(group);
       monolithPositions.push(new THREE.Vector3(x, 0, z));
     });
-
-    // --- Falling code rain (3D glyph sprites) ---------------------------------
-    const rainGeometry = new THREE.BufferGeometry();
-    const rainPositions = new Float32Array(RAIN_COUNT * 3);
-    const rainSpeeds = new Float32Array(RAIN_COUNT);
-    const rainGlyphs = new Float32Array(RAIN_COUNT);
-    const rainSeeds = new Float32Array(RAIN_COUNT);
-    for (let i = 0; i < RAIN_COUNT; i += 1) {
-      rainPositions[i * 3] = (Math.random() - 0.5) * 300;
-      rainPositions[i * 3 + 1] = Math.random() * 60;
-      rainPositions[i * 3 + 2] = -140 + Math.random() * 180;
-      rainSpeeds[i] = 2 + Math.random() * 7;
-      rainGlyphs[i] = Math.floor(Math.random() * GLYPHS.length);
-      rainSeeds[i] = Math.random();
-    }
-    rainGeometry.setAttribute(
-      "position",
-      new THREE.BufferAttribute(rainPositions, 3),
-    );
-    rainGeometry.setAttribute("glyph", new THREE.BufferAttribute(rainGlyphs, 1));
-    rainGeometry.setAttribute("seed", new THREE.BufferAttribute(rainSeeds, 1));
-
-    const glyphAtlas = makeGlyphAtlas();
-    // fade matches the scene fog (20..130)
-    const rainMaterial = createGlyphMaterial({
-      atlas: glyphAtlas,
-      size: 0.7,
-      sizeJitter: 0.4,
-      fadeNear: 20,
-      fadeFar: 130,
-    });
-    const rain = new THREE.Points(rainGeometry, rainMaterial);
-    scene.add(rain);
-    disposables.push(rainGeometry, rainMaterial, glyphAtlas);
-
-    const updateRainScale = () => updateGlyphScale(rainMaterial, renderer);
-    updateRainScale();
 
     // --- Controls state ---------------------------------------------------------
     const keys = new Set<string>();
@@ -398,7 +366,12 @@ export default function ConstructGame() {
 
     const requestLock = () => {
       if (!window.matchMedia("(pointer: coarse)").matches) {
-        renderer.domElement.requestPointerLock();
+        // returns a promise in Chromium; rejection means lock is unavailable
+        // (e.g. embedded preview) — the overlay simply stays up
+        const result = renderer.domElement.requestPointerLock() as unknown as
+          | Promise<void>
+          | undefined;
+        result?.catch?.(() => {});
       }
     };
     lockFnRef.current = requestLock;
@@ -467,7 +440,6 @@ export default function ConstructGame() {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
-      updateRainScale();
     };
 
     document.addEventListener("keydown", onKeyDown);
@@ -540,35 +512,28 @@ export default function ConstructGame() {
 
       if (velocity.lengthSq() > 0) {
         if (velocity.lengthSq() > 1) velocity.normalize();
-        camera.position.addScaledVector(velocity, MOVE_SPEED * delta);
-        camera.position.x = Math.max(
-          -BOUNDS.x,
-          Math.min(BOUNDS.x, camera.position.x),
-        );
-        camera.position.z = Math.max(
-          BOUNDS.zMin,
-          Math.min(BOUNDS.zMax, camera.position.z),
+        const running = keys.has("ShiftLeft") || keys.has("ShiftRight");
+        camera.position.addScaledVector(
+          velocity,
+          (running ? RUN_SPEED : MOVE_SPEED) * delta,
         );
       }
 
+      // walk the terrain — wade rather than sink where the land dips underwater
+      const groundY = Math.max(
+        terrain.heightAt(camera.position.x, camera.position.z),
+        WATER_LEVEL - 1.4,
+      );
       // subtle idle bob (skip in gyro mode — the sensor already moves)
-      if (modeRef.current !== "gyro") {
-        camera.position.y = EYE_HEIGHT + Math.sin(elapsed * 1.4) * 0.035;
-      } else {
-        camera.position.y = EYE_HEIGHT;
-      }
+      const bob =
+        modeRef.current !== "gyro" ? Math.sin(elapsed * 1.4) * 0.035 : 0;
+      camera.position.y = groundY + EYE_HEIGHT + bob;
 
-      // rain fall + wrap
-      rainMaterial.uniforms.uTime.value = elapsed;
-      const positions = rainGeometry.attributes.position
-        .array as Float32Array;
-      for (let i = 0; i < RAIN_COUNT; i += 1) {
-        positions[i * 3 + 1] -= rainSpeeds[i] * delta;
-        if (positions[i * 3 + 1] < 0) {
-          positions[i * 3 + 1] = 60;
-        }
-      }
-      rainGeometry.attributes.position.needsUpdate = true;
+      // stream terrain tiles and keep the water centered under the player
+      chunkManager.update(camera.position.x, camera.position.z);
+      water.position.x = camera.position.x;
+      water.position.z = camera.position.z;
+      water.position.y = WATER_LEVEL + Math.sin(elapsed * 0.5) * 0.06;
 
       // proximity check
       let nearest = -1;
@@ -612,6 +577,7 @@ export default function ConstructGame() {
       if (document.pointerLockElement === renderer.domElement) {
         document.exitPointerLock();
       }
+      chunkManager.dispose();
       disposables.forEach((resource) => resource.dispose());
       renderer.dispose();
       renderer.domElement.remove();
@@ -661,7 +627,7 @@ export default function ConstructGame() {
             ? mode === "gyro"
               ? "move your phone to look — left thumb: walk — swipe right side: turn"
               : "left thumb: walk — right thumb: look"
-            : "wasd / arrows: move — mouse: look — esc: release cursor"}
+            : "wasd / arrows: move — hold shift: run — mouse: look — esc: release cursor"}
         </p>
 
         {/* monolith inscription */}
@@ -700,8 +666,8 @@ export default function ConstructGame() {
             the construct
           </p>
           <p className="max-w-sm px-6 text-sm leading-relaxed text-ink-soft">
-            A loading program. Five questions stand in the dark. Walk up to
-            them.
+            An open world grown from a single seed. Five questions stand in the
+            meadow — and the land goes on forever.
           </p>
           <p className="animate-pulse text-xs uppercase tracking-[0.3em] text-ink-dim">
             click anywhere to enter
@@ -723,8 +689,8 @@ export default function ConstructGame() {
             the construct
           </p>
           <p className="max-w-sm text-sm leading-relaxed text-ink-soft">
-            A loading program. Five questions stand in the dark. Walk up to
-            them.
+            An open world grown from a single seed. Five questions stand in the
+            meadow — and the land goes on forever.
           </p>
           <button
             type="button"
