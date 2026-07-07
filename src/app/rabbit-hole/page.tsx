@@ -76,6 +76,14 @@ export default function RabbitHole() {
                     <p key={paragraph.slice(0, 32)}>{paragraph}</p>
                   ))}
                 </div>
+                {channel.cta && (
+                  <Link
+                    href={channel.cta.href}
+                    className="mt-6 inline-block rounded-full border border-matrix px-6 py-3 text-xs font-bold uppercase tracking-[0.2em] text-matrix transition-all hover:bg-matrix hover:text-void"
+                  >
+                    {channel.cta.label}
+                  </Link>
+                )}
               </article>
             </Reveal>
           ))}

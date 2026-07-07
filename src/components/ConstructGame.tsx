@@ -4,6 +4,12 @@ import Link from "next/link";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import * as THREE from "three";
 import { monoliths } from "@/lib/content";
+import {
+  GLYPHS,
+  createGlyphMaterial,
+  makeGlyphAtlas,
+  updateGlyphScale,
+} from "@/lib/glyphs";
 
 const EYE_HEIGHT = 2.2;
 const MOVE_SPEED = 12;
@@ -12,34 +18,6 @@ const REVEAL_RADIUS = 10;
 const RAIN_COUNT = 2200;
 
 type ControlMode = "touch" | "gyro";
-
-const GLYPHS =
-  "アイウエオカキクケコサシスセソタチツテトナニヌネノ0123456789ABCDEFXYZ<>/\\{}[]$#*+=";
-const ATLAS_GRID = 8; // 8x8 cells is enough for the glyph set
-
-function makeGlyphAtlas() {
-  const cell = 128;
-  const canvas = document.createElement("canvas");
-  canvas.width = ATLAS_GRID * cell;
-  canvas.height = ATLAS_GRID * cell;
-  const ctx = canvas.getContext("2d");
-  if (ctx) {
-    ctx.font = `bold ${Math.floor(cell * 0.72)}px monospace`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillStyle = "#ffffff";
-    for (let i = 0; i < GLYPHS.length; i += 1) {
-      ctx.fillText(
-        GLYPHS[i],
-        (i % ATLAS_GRID) * cell + cell / 2,
-        Math.floor(i / ATLAS_GRID) * cell + cell / 2,
-      );
-    }
-  }
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  return texture;
-}
 
 function subscribeToPointerType(callback: () => void) {
   const query = window.matchMedia("(pointer: coarse)");
@@ -355,69 +333,19 @@ export default function ConstructGame() {
     rainGeometry.setAttribute("seed", new THREE.BufferAttribute(rainSeeds, 1));
 
     const glyphAtlas = makeGlyphAtlas();
-    const rainMaterial = new THREE.ShaderMaterial({
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      uniforms: {
-        uAtlas: { value: glyphAtlas },
-        uTime: { value: 0 },
-        uColor: { value: new THREE.Color(0x00ff66) },
-        // half the drawing-buffer height — same size attenuation PointsMaterial uses
-        uScale: { value: 1 },
-      },
-      vertexShader: /* glsl */ `
-        attribute float glyph;
-        attribute float seed;
-        uniform float uScale;
-        varying float vGlyph;
-        varying float vSeed;
-        varying float vDepth;
-
-        void main() {
-          vGlyph = glyph;
-          vSeed = seed;
-          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-          vDepth = -mvPosition.z;
-          gl_PointSize = (0.7 + seed * 0.4) * uScale / vDepth;
-          gl_Position = projectionMatrix * mvPosition;
-        }
-      `,
-      fragmentShader: /* glsl */ `
-        uniform sampler2D uAtlas;
-        uniform float uTime;
-        uniform vec3 uColor;
-        varying float vGlyph;
-        varying float vSeed;
-        varying float vDepth;
-
-        const float GRID = ${ATLAS_GRID.toFixed(1)};
-        const float COUNT = ${GLYPHS.length.toFixed(1)};
-
-        void main() {
-          // each drop flickers through the glyph set at its own cadence
-          float index = mod(vGlyph + floor(uTime * (1.0 + vSeed * 3.0)), COUNT);
-          vec2 uv = vec2(
-            (mod(index, GRID) + gl_PointCoord.x) / GRID,
-            1.0 - (floor(index / GRID) + gl_PointCoord.y) / GRID
-          );
-          float shape = texture2D(uAtlas, uv).a;
-          // fade with distance to match the scene fog (20..130)
-          float fade = 1.0 - smoothstep(20.0, 130.0, vDepth);
-          float alpha = shape * fade * (0.35 + vSeed * 0.55);
-          if (alpha < 0.01) discard;
-          gl_FragColor = vec4(uColor, alpha);
-          #include <colorspace_fragment>
-        }
-      `,
+    // fade matches the scene fog (20..130)
+    const rainMaterial = createGlyphMaterial({
+      atlas: glyphAtlas,
+      size: 0.7,
+      sizeJitter: 0.4,
+      fadeNear: 20,
+      fadeFar: 130,
     });
     const rain = new THREE.Points(rainGeometry, rainMaterial);
     scene.add(rain);
     disposables.push(rainGeometry, rainMaterial, glyphAtlas);
 
-    const updateRainScale = () => {
-      rainMaterial.uniforms.uScale.value = renderer.domElement.height * 0.5;
-    };
+    const updateRainScale = () => updateGlyphScale(rainMaterial, renderer);
     updateRainScale();
 
     // --- Controls state ---------------------------------------------------------
@@ -746,6 +674,14 @@ export default function ConstructGame() {
               <p className="mt-2 text-sm leading-relaxed text-ink-soft">
                 {near.inscription}
               </p>
+              {near.href && (
+                <Link
+                  href={near.href}
+                  className="pointer-events-auto mt-4 inline-block rounded-full border border-matrix px-6 py-2 text-xs font-bold uppercase tracking-[0.2em] text-matrix transition-colors hover:bg-matrix hover:text-black"
+                >
+                  step through →
+                </Link>
+              )}
             </div>
           </div>
         )}

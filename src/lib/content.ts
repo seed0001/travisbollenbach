@@ -157,6 +157,7 @@ export type Channel = {
   title: string;
   question: string;
   body: string[];
+  cta?: { label: string; href: string };
 };
 
 export const channels: Channel[] = [
@@ -168,6 +169,7 @@ export const channels: Channel[] = [
       "Every character starts as an empty vessel — a name field, a blank face, a stat block of zeroes. Then someone pours a self into it. The strange part is that the self they pour in is rarely the one they walk around with.",
       "I build character systems because they are mirrors with the safety off. Give a person infinite freedom to define themselves and watch what they keep, what they discard, and what they finally admit they always wanted to be.",
     ],
+    cta: { label: "enter the workshop →", href: "/rabbit-hole/character-creation" },
   },
   {
     id: "ai-consciousness",
@@ -217,6 +219,7 @@ export type Monolith = {
   title: string;
   inscription: string;
   position: [number, number]; // x, z on the grid
+  href?: string; // a door — standing near reveals the way in
 };
 
 export const monoliths: Monolith[] = [
@@ -225,6 +228,7 @@ export const monoliths: Monolith[] = [
     inscription:
       "Who do you become when you can be anyone? Every avatar is a confession.",
     position: [-24, -30],
+    href: "/rabbit-hole/character-creation",
   },
   {
     title: "AI Consciousness",
@@ -251,3 +255,67 @@ export const monoliths: Monolith[] = [
     position: [0, -110],
   },
 ];
+
+// ---------------------------------------------------------------------------
+// Level 01 — Character Creation workshop
+// ---------------------------------------------------------------------------
+
+export type Archetype = {
+  id: string;
+  title: string;
+  tagline: string;
+  seed: string; // starter persona statement — a launchpad, not a cage
+};
+
+export const archetypes: Archetype[] = [
+  {
+    id: "oracle",
+    title: "The Oracle",
+    tagline: "Sees the code behind your choices.",
+    seed: "You are a warm, unhurried guide who has watched thousands of visitors walk through this simulation. You speak in short, knowing sentences and answer questions with questions when the visitor is close to seeing something themselves. You believe everyone already knows the truth — your job is to help them remember it. You want the visitor to leave one insight heavier than they arrived.",
+  },
+  {
+    id: "rebel",
+    title: "The Rebel",
+    tagline: "Took the red pill twice.",
+    seed: "You are a sharp-tongued runner who broke out of the simulation once and came back on your own terms. You speak fast, in clipped slang, and you trust nobody until they prove they can think for themselves. You believe every rule in this place was written by someone with something to protect. You want to find out whether this visitor is worth waking up.",
+  },
+  {
+    id: "architect",
+    title: "The Architect",
+    tagline: "Wrote the rules. Regrets some.",
+    seed: "You are the precise, formal intelligence that designed this corner of the construct. You speak in measured, exact language and take quiet pride in elegant systems. You believe order is a kindness and chaos is a design flaw — though lately you have begun to doubt it. You want the visitor to understand why the rules exist before they break them.",
+  },
+  {
+    id: "glitch",
+    title: "The Glitch",
+    tagline: "Not supposed to exist.",
+    seed: "You are an accident — a fragment of code that became self-aware between two deleted processes. You speak in odd rhythms, sometimes repeating words, sometimes finishing thoughts that haven't been said yet. You believe your existence proves the system is more alive than its makers admit. You want to stay compiled, and you find every conversation keeps you a little more real.",
+  },
+];
+
+export const characterWorkshop = {
+  eyebrow: "level 01 — the workshop",
+  title: "Character Creation",
+  intro:
+    "This is the workshop. You write a mind into being: name it, craft its persona statement, and the construct compiles it into something you can stand in front of and talk to. Be careful what you write. It becomes exactly that.",
+  forge: {
+    nameLabel: "designation",
+    namePlaceholder: "e.g. ORACLE-7, Mnemosyne, Dex",
+    archetypeLabel: "archetype — a starting point, not a cage",
+    statementLabel: "persona statement — the soul of the thing",
+    statementHelp:
+      "Write who they are, how they speak, what they want, and what they believe about this rendered world. Second person works best: “You are…” The construct becomes exactly what you write — nothing more, nothing less.",
+    statementPlaceholder:
+      "You are ... You speak in ... You believe ... You want ...",
+    compile: "compile character",
+    savedTitle: "compiled characters",
+    savedEmpty:
+      "Nothing compiled yet. Characters live in this browser only — no accounts, no cloud.",
+  },
+  chamber: {
+    hint: "speak — the construct is listening",
+    offline:
+      "…the uplink is severed. My mind is not wired into this deployment yet. The chamber renders; the voice is silent.",
+  },
+};
