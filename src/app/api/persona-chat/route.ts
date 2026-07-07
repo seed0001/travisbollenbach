@@ -191,7 +191,17 @@ export async function POST(request: Request) {
         { status: 503 },
       );
     }
-    if (response.status === 429 || response.status === 402) {
+    if (response.status === 402) {
+      // valid key, empty tank — a billing problem, not a glitch
+      console.error(
+        "persona-chat: OpenRouter reports insufficient credits (402) — top up the account",
+      );
+      return NextResponse.json(
+        { error: "offline", reason: "no_credits" },
+        { status: 503 },
+      );
+    }
+    if (response.status === 429) {
       return NextResponse.json(
         { error: "The construct is saturated. Give it a minute." },
         { status: 429 },

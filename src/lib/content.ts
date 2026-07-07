@@ -327,6 +327,8 @@ export const characterWorkshop = {
       "I can hear you, but the studio's AI link isn't configured yet — I can't answer until it is.",
     badKey:
       "I can hear you, but the studio's key was turned away at the door — it's expired or wrong, and I can't answer until it's replaced.",
+    noCredits:
+      "I can hear you, but the studio's account has run dry — words cost something out there, and the meter reads zero. Top it up and I'll be right here.",
     unreachable:
       "I can hear you, but the line out of the studio just dropped — give it a moment and say that again.",
   },

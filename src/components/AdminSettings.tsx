@@ -14,7 +14,7 @@ type Fields = Record<string, FieldView>;
 type ModelOption = { id: string; name: string };
 
 type AiLinkStatus = {
-  status: "ok" | "no_key" | "invalid_key" | "unreachable";
+  status: "ok" | "no_key" | "invalid_key" | "no_credits" | "unreachable";
   keySource: "admin" | "env" | "none";
   model: string;
   keyPreview: string;
@@ -267,7 +267,9 @@ export default function AdminSettings() {
                     ? "AI link — no key configured"
                     : aiStatus.status === "invalid_key"
                       ? "AI link — key rejected"
-                      : "AI link — OpenRouter unreachable"}
+                      : aiStatus.status === "no_credits"
+                        ? "AI link — out of credits"
+                        : "AI link — OpenRouter unreachable"}
             </span>
             <button
               type="button"

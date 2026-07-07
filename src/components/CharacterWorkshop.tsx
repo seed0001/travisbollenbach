@@ -152,9 +152,11 @@ function Chamber({
         const text =
           data?.reason === "bad_key"
             ? chamber.badKey
-            : data?.reason === "unreachable"
-              ? chamber.unreachable
-              : chamber.offline;
+            : data?.reason === "no_credits"
+              ? chamber.noCredits
+              : data?.reason === "unreachable"
+                ? chamber.unreachable
+                : chamber.offline;
         setEntries((current) => [...current, { role: "system", text }]);
         setMood("idle");
       } else {

@@ -10,7 +10,7 @@ import { normalize, readSettings } from "@/lib/settings";
 const KEY_URL = "https://openrouter.ai/api/v1/key";
 
 export type AiLinkStatus = {
-  status: "ok" | "no_key" | "invalid_key" | "unreachable";
+  status: "ok" | "no_key" | "invalid_key" | "no_credits" | "unreachable";
   keySource: "admin" | "env" | "none";
   model: string;
   keyPreview: string;
@@ -69,10 +69,29 @@ export async function GET(request: NextRequest) {
         detail: `OpenRouter answered ${response.status} to the key check. The chat may be degraded — try again shortly.`,
       } satisfies AiLinkStatus);
     }
+    // the key endpoint reports spend against the key's limit — a valid key
+    // with an empty tank fails every paid model with a 402, so surface it
+    const info = (await response.json().catch(() => null))?.data as
+      | { limit: number | null; usage: number | null; limit_remaining: number | null }
+      | undefined;
+    if (
+      typeof info?.limit_remaining === "number" &&
+      info.limit_remaining <= 0
+    ) {
+      return NextResponse.json({
+        ...base,
+        status: "no_credits",
+        detail: `The key is valid but its credit is exhausted (used ${info.usage ?? "?"} of ${info.limit ?? "?"}). Paid models will refuse — add credits at openrouter.ai or raise this key's limit.`,
+      } satisfies AiLinkStatus);
+    }
     return NextResponse.json({
       ...base,
       status: "ok",
-      detail: `Key accepted by OpenRouter. The chat is live via ${model}.`,
+      detail: `Key accepted by OpenRouter. The chat is live via ${model}.${
+        typeof info?.limit_remaining === "number"
+          ? ` Credit remaining on this key: ${info.limit_remaining}.`
+          : ""
+      }`,
     } satisfies AiLinkStatus);
   } catch {
     return NextResponse.json({
