@@ -16,13 +16,15 @@ Every page is meant to have its own unique look and feel. The matrix theme — t
 
 ### One. The front door
 
-The visitor lands on a black screen with green code raining down. A short monologue types itself out, one line at a time. Then two pills rise up: a blue one and a red one.
+The visitor lands on a plain welcome page in the matrix style. It says welcome, then shows two doors side by side.
 
-The blue pill goes to the storefront. That is the business side: products, services, the professional pitch.
+The first door is available now: the Lobby. Clicking it goes to the Nexus at slash lobby — the shared island where the game begins.
 
-The red pill goes to the rabbit hole. That is where the game lives.
+The second door is coming soon: the Marketplace. Clicking it goes to vibe market dot biz, an outside site where that project is taking shape.
 
-There is also a small "log in / sign up" button in the top right corner, always visible, which goes to the account page.
+Below the doors there is a "log in / sign up" link to the account page, with a reminder that progress, XP, and avatars live on the account.
+
+The old front door — the black screen with green code raining down, the typed monologue, and the blue and red pills — still exists in the code (the ChoiceScreen component) but is not routed right now. The pages behind it, the storefront and the rabbit hole, are still reachable at their own addresses.
 
 ### Two. The rabbit hole
 
