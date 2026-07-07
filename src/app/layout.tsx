@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import AnalyticsBeacon from "@/components/AnalyticsBeacon";
 import "./globals.css";
 
 const SITE_URL = "https://travisbollenbach.com";
@@ -34,7 +35,10 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        {children}
+        <AnalyticsBeacon />
+      </body>
     </html>
   );
 }
