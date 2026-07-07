@@ -325,3 +325,28 @@ export const characterWorkshop = {
       "I can hear you, but the line out of the studio just dropped — give it a moment and say that again.",
   },
 };
+
+// ---------------------------------------------------------------------------
+// Open-source credits — the creators whose work grows inside this world.
+// Every borrowed marvel gets a name. Shown in-world when you walk up to the
+// thing they made, and listed in CREDITS.md at the repo root.
+// ---------------------------------------------------------------------------
+
+export type OpenSourceCredit = {
+  id: string;
+  /** what they made, as the visitor sees it — e.g. "these trees" */
+  what: string;
+  project: string;
+  author: string;
+  url: string;
+};
+
+export const openSourceCredits: OpenSourceCredit[] = [
+  {
+    id: "ez-tree",
+    what: "these trees",
+    project: "EZ-Tree",
+    author: "Daniel Greenheck",
+    url: "https://github.com/dgreenheck/ez-tree",
+  },
+];

@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import type { ChunkTrees, Forest } from "./forest";
 
 // ---------------------------------------------------------------------------
 // The world generator. The entire terrain is a pure function of WORLD_SEED and
@@ -13,7 +14,7 @@ export const CHUNK_SEGMENTS = 32; // quads per side — divides CHUNK_SIZE exact
 export const VIEW_CHUNKS = 5; // radius of loaded tiles around the player
 export const WATER_LEVEL = 0;
 
-function mulberry32(seed: number) {
+export function mulberry32(seed: number) {
   let a = seed >>> 0;
   return () => {
     a |= 0;
@@ -256,26 +257,40 @@ export function createTerrain(seed: number): Terrain {
 export type ChunkManager = {
   update(x: number, z: number): void;
   prewarm(x: number, z: number, radius: number): void;
+  /** distance to the closest tree in the loaded world, Infinity if none near */
+  nearestTreeDistance(x: number, z: number): number;
   dispose(): void;
+};
+
+type ChunkRecord = {
+  ground: THREE.Mesh;
+  trees: ChunkTrees | null;
 };
 
 export function createChunkManager(
   scene: THREE.Scene,
   terrain: Terrain,
+  forest?: Forest,
 ): ChunkManager {
   const material = new THREE.MeshLambertMaterial({ vertexColors: true });
-  const chunks = new Map<string, THREE.Mesh>();
+  const chunks = new Map<string, ChunkRecord>();
 
   const build = (cx: number, cz: number, key: string) => {
-    const mesh = new THREE.Mesh(terrain.buildChunkGeometry(cx, cz), material);
-    mesh.position.set(cx * CHUNK_SIZE, 0, cz * CHUNK_SIZE);
-    scene.add(mesh);
-    chunks.set(key, mesh);
+    const ground = new THREE.Mesh(terrain.buildChunkGeometry(cx, cz), material);
+    ground.position.set(cx * CHUNK_SIZE, 0, cz * CHUNK_SIZE);
+    scene.add(ground);
+    const trees = forest?.buildChunkTrees(cx, cz) ?? null;
+    if (trees) scene.add(trees.group);
+    chunks.set(key, { ground, trees });
   };
 
-  const drop = (key: string, mesh: THREE.Mesh) => {
-    scene.remove(mesh);
-    mesh.geometry.dispose();
+  const drop = (key: string, record: ChunkRecord) => {
+    scene.remove(record.ground);
+    record.ground.geometry.dispose();
+    if (record.trees && forest) {
+      scene.remove(record.trees.group);
+      forest.disposeChunkTrees(record.trees);
+    }
     chunks.delete(key);
   };
 
@@ -283,13 +298,13 @@ export function createChunkManager(
     const pcx = Math.floor(x / CHUNK_SIZE);
     const pcz = Math.floor(z / CHUNK_SIZE);
 
-    for (const [key, mesh] of chunks) {
+    for (const [key, record] of chunks) {
       const [cx, cz] = key.split(",").map(Number);
       if (
         Math.max(Math.abs(cx - pcx), Math.abs(cz - pcz)) >
         VIEW_CHUNKS + 1
       ) {
-        drop(key, mesh);
+        drop(key, record);
       }
     }
 
@@ -319,10 +334,28 @@ export function createChunkManager(
     }
   };
 
+  const nearestTreeDistance = (x: number, z: number) => {
+    const pcx = Math.floor(x / CHUNK_SIZE);
+    const pcz = Math.floor(z / CHUNK_SIZE);
+    let best = Infinity;
+    for (let dz = -1; dz <= 1; dz += 1) {
+      for (let dx = -1; dx <= 1; dx += 1) {
+        const record = chunks.get(`${pcx + dx},${pcz + dz}`);
+        const xz = record?.trees?.positionsXZ;
+        if (!xz) continue;
+        for (let i = 0; i < xz.length; i += 2) {
+          const d = Math.hypot(xz[i] - x, xz[i + 1] - z);
+          if (d < best) best = d;
+        }
+      }
+    }
+    return best;
+  };
+
   const dispose = () => {
-    for (const [key, mesh] of chunks) drop(key, mesh);
+    for (const [key, record] of chunks) drop(key, record);
     material.dispose();
   };
 
-  return { update, prewarm, dispose };
+  return { update, prewarm, nearestTreeDistance, dispose };
 }

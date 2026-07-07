@@ -42,7 +42,9 @@ A first-person open world, and the seed of the larger game to come. The black vo
 
 The visitor walks with W A S D on desktop and runs by holding shift, or uses thumbsticks on a phone. Phones can also use motion controls, where you look around by moving the phone.
 
-Five stone monoliths stand in a gentle meadow near the spawn point — the terrain is forced calm and dry along their corridor, no matter what the noise wants. Each is carved with one of the site's big questions. Walk close to one and its inscription appears.
+Forests grow across the land — pines in the highlands, oaks, ash, and aspen in the lowlands, scrub everywhere below the tree line. The trees are grown with EZ-Tree, an open-source generator by Daniel Greenheck, and the world says so itself: walk up to any tree and a small credit appears naming him, linking to his work. That is the site's rule for borrowed marvels — every open-source creator whose work lives in the world gets credited in the world, and in CREDITS dot M D at the repo root. The registry of credits lives in source, lib, content dot T S.
+
+Five stone monoliths stand in a gentle meadow near the spawn point — the terrain is forced calm and dry along their corridor, no matter what the noise wants, and the ground around each monolith is kept clear of trees. Each is carved with one of the site's big questions. Walk close to one and its inscription appears.
 
 Two monoliths are doors. The Character Creation monolith opens the studio. The AI Consciousness monolith opens the Descent. The button says "step through."
 
@@ -115,6 +117,8 @@ To change the studio characters' framing — the rules every visitor-made charac
 To change how any room looks — the static wall, the dream blob, the deep ring, the studio chamber: those are the scene builders inside source, components, Descent dot T S and CharacterWorkshop dot T S.
 
 To change the open world — the seed, the shape of the mountains, the water level, the colors of the land, how far tiles stream in: source, lib, terrain dot T S. The world seed is a constant there called WORLD SEED; change it and a completely different planet grows. The Construct scene itself — sky, sun, water, monolith placement, movement — lives in source, components, ConstructGame dot T S X.
+
+To change the forests — which tree species grow where, how dense the woods are, the tree line, slope limits: source, lib, forest dot T S. To add or edit open-source credits: the openSourceCredits list in source, lib, content dot T S, and CREDITS dot M D at the repo root.
 
 To change how hard it is to go deeper: each depth requires three replies before the door appears. That number is in source, lib, descent dot T S, called min replies to descend.
 

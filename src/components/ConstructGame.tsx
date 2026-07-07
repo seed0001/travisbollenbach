@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import * as THREE from "three";
-import { monoliths } from "@/lib/content";
+import { monoliths, openSourceCredits } from "@/lib/content";
+import { createForest } from "@/lib/forest";
 import {
   WORLD_SEED,
   WATER_LEVEL,
@@ -173,6 +174,7 @@ export default function ConstructGame() {
   const [mode, setMode] = useState<ControlMode>("touch");
   const [muted, setMuted] = useState(false);
   const [nearMonolith, setNearMonolith] = useState<number>(-1);
+  const [nearTree, setNearTree] = useState(false);
   const isTouch = useSyncExternalStore(
     subscribeToPointerType,
     () => window.matchMedia("(pointer: coarse)").matches,
@@ -252,7 +254,13 @@ export default function ConstructGame() {
     scene.add(sun);
     disposables.push(skyLight, sun);
 
-    const chunkManager = createChunkManager(scene, terrain);
+    // keep the ground clear where the monoliths stand
+    const forest = createForest(
+      WORLD_SEED,
+      terrain,
+      monoliths.map((m) => ({ x: m.position[0], z: m.position[1], radius: 12 })),
+    );
+    const chunkManager = createChunkManager(scene, terrain, forest);
     chunkManager.prewarm(camera.position.x, camera.position.z, 2);
 
     const waterGeometry = new THREE.PlaneGeometry(900, 900);
@@ -464,6 +472,7 @@ export default function ConstructGame() {
     const right = new THREE.Vector3();
     const velocity = new THREE.Vector3();
     let currentNear = -1;
+    let treeNear = false;
     let animationFrame = 0;
 
     const animate = () => {
@@ -552,6 +561,17 @@ export default function ConstructGame() {
         currentNear = nearest;
         setNearMonolith(nearest);
       }
+
+      // standing under a tree reveals who grew it (hysteresis avoids flicker)
+      const treeDistance = chunkManager.nearestTreeDistance(
+        camera.position.x,
+        camera.position.z,
+      );
+      const nextTreeNear = treeNear ? treeDistance < 9 : treeDistance < 7;
+      if (nextTreeNear !== treeNear) {
+        treeNear = nextTreeNear;
+        setNearTree(nextTreeNear);
+      }
       ambienceRef.current?.setProximity(
         nearest === -1 ? 0 : 1 - nearestDistance / REVEAL_RADIUS,
       );
@@ -578,6 +598,7 @@ export default function ConstructGame() {
         document.exitPointerLock();
       }
       chunkManager.dispose();
+      forest.dispose();
       disposables.forEach((resource) => resource.dispose());
       renderer.dispose();
       renderer.domElement.remove();
@@ -587,6 +608,7 @@ export default function ConstructGame() {
   }, []);
 
   const near = nearMonolith >= 0 ? monoliths[nearMonolith] : null;
+  const treeCredit = openSourceCredits.find((credit) => credit.id === "ez-tree");
   const showTouchOverlay = isTouch && !entered;
   const showDesktopOverlay = !isTouch && !locked;
 
@@ -620,6 +642,22 @@ export default function ConstructGame() {
             </Link>
           </div>
         </div>
+
+        {/* open-source credit — appears when standing under a tree */}
+        {nearTree && treeCredit && (
+          <div className="absolute bottom-14 left-4">
+            <a
+              href={treeCredit.url}
+              target="_blank"
+              rel="noreferrer"
+              className="pointer-events-auto rounded-full border border-white/20 bg-black/60 px-4 py-2 text-[11px] tracking-wide text-white/80 backdrop-blur-sm transition-colors hover:border-white/50 hover:text-white"
+            >
+              {treeCredit.what} grew from{" "}
+              <span className="font-bold">{treeCredit.project}</span> by{" "}
+              {treeCredit.author} ↗
+            </a>
+          </div>
+        )}
 
         {/* controls hint */}
         <p className="absolute inset-x-0 bottom-4 px-4 text-center text-[11px] uppercase tracking-[0.25em] text-ink-dim">
