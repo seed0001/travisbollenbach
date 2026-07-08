@@ -301,6 +301,89 @@ export const storefronts: Storefront[] = [
 ];
 
 // ---------------------------------------------------------------------------
+// The Arena — the Superdome at the end of the street: a 3D game lobby
+// ---------------------------------------------------------------------------
+
+export type ArenaGame = {
+  id: string;
+  name: string;
+  tagline: string;
+  accent: string; // hex, drives the pod's light and portal
+  status: "live" | "soon"; // "live" games can send the player somewhere
+  href?: string; // where a live game loads (optional until one is built)
+};
+
+// Everything about the Superdome and the lobby inside it lives here.
+// To re-letter the marquee out front, just edit `billboard` below.
+// To add a game to the lobby, add an entry to `games` (flip status to
+// "live" and set an href once the game itself exists).
+export const arena = {
+  // The big billboard over the dome entrance — change these lines any time.
+  billboard: {
+    title: "THE ARENA",
+    subtitle: "immersive games — step inside to play",
+  },
+  accent: "#66e0ff",
+  // Shown on the placard when you walk up to the dome on the street.
+  entrance: {
+    name: "The Arena",
+    blurb:
+      "A domed game hall at the end of the block. Step inside to drop into a lobby of 3D worlds.",
+    cta: "Enter the Arena",
+  },
+  // Shown in the lobby overlay before you walk in.
+  lobby: {
+    intro:
+      "You're inside the dome. Each pod is a doorway into a different 3D world. Walk up to one and step into the light.",
+  },
+  // The pods arranged around the lobby floor. All "soon" until the games ship.
+  games: [
+    {
+      id: "neon-runner",
+      name: "Neon Runner",
+      tagline: "Outrun a grid that never stops accelerating.",
+      accent: "#66e0ff",
+      status: "soon",
+    },
+    {
+      id: "zero-g-arena",
+      name: "Zero-G Arena",
+      tagline: "Weightless combat in a floating cage.",
+      accent: "#ff8fd6",
+      status: "soon",
+    },
+    {
+      id: "cyber-maze",
+      name: "Cyber Maze",
+      tagline: "Escape a labyrinth that rewrites its own walls.",
+      accent: "#7dffa8",
+      status: "soon",
+    },
+    {
+      id: "orb-rush",
+      name: "Orb Rush",
+      tagline: "Collect every orb before the clock burns out.",
+      accent: "#f0c36a",
+      status: "soon",
+    },
+    {
+      id: "the-grid",
+      name: "The Grid",
+      tagline: "Trail-duel until one light is left standing.",
+      accent: "#b28dff",
+      status: "soon",
+    },
+    {
+      id: "sky-duel",
+      name: "Sky Duel",
+      tagline: "Dogfight above the neon skyline.",
+      accent: "#ff6b6b",
+      status: "soon",
+    },
+  ] as ArenaGame[],
+};
+
+// ---------------------------------------------------------------------------
 // The Character Workshop — design a persona, then talk to it
 // ---------------------------------------------------------------------------
 

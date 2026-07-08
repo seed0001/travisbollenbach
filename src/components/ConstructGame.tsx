@@ -18,7 +18,7 @@ import {
   type VRM,
   VRMHumanBoneName,
 } from "@pixiv/three-vrm";
-import { storefronts } from "@/lib/content";
+import { arena, storefronts } from "@/lib/content";
 import {
   LobbyClient,
   type ChatMessage,
@@ -28,8 +28,12 @@ import {
 
 const EYE_HEIGHT = 2.2;
 const MOVE_SPEED = 12;
-const BOUNDS = { x: 70, zMin: -140, zMax: 20 };
+const BOUNDS = { x: 70, zMin: -108, zMax: 20 };
 const REVEAL_RADIUS = 13;
+// The Superdome closes off the far end of the street. Walking into this
+// forecourt zone (centered on the entrance) lets the visitor press E to enter.
+const ARENA_ENTRANCE = { x: 0, z: -104, radius: 12 };
+const ARENA_HREF = "/rabbit-hole/arena";
 const RAIN_COUNT = 2200;
 
 const ORB_COLORS = [
@@ -83,6 +87,42 @@ function makeSignTexture(number: string, name: string, accent: string) {
     ctx.font = "700 74px Arial";
     ctx.fillStyle = "#dbe5ff";
     ctx.fillText(name.toUpperCase(), 210, canvas.height / 2 + 2);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+// The giant marquee over the Superdome entrance. Driven by content.arena so
+// the copy can be re-lettered from one place.
+function makeBillboardTexture(
+  title: string,
+  subtitle: string,
+  accent: string,
+) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1024;
+  canvas.height = 400;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    ctx.fillStyle = "#070b14";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 10;
+    ctx.strokeRect(6, 6, canvas.width - 12, canvas.height - 12);
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.shadowColor = accent;
+    ctx.shadowBlur = 34;
+    ctx.fillStyle = accent;
+    ctx.font = "900 168px Arial";
+    ctx.fillText(title.toUpperCase(), canvas.width / 2, 170, canvas.width - 60);
+
+    ctx.shadowBlur = 12;
+    ctx.fillStyle = "#dbe5ff";
+    ctx.font = "600 56px Arial";
+    ctx.fillText(subtitle, canvas.width / 2, 310, canvas.width - 80);
   }
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
@@ -311,6 +351,7 @@ export default function ConstructGame() {
   const [entered, setEntered] = useState(false);
   const [mode, setMode] = useState<ControlMode>("touch");
   const [nearStore, setNearStore] = useState<number>(-1);
+  const [nearArena, setNearArena] = useState(false);
   const [focusedWall, setFocusedWall] = useState<{
     unit: string;
     wallId: string;
@@ -433,6 +474,11 @@ export default function ConstructGame() {
           return;
         }
       }
+      if (nearArena) {
+        if (document.pointerLockElement) document.exitPointerLock();
+        router.push(ARENA_HREF);
+        return;
+      }
       const target = nearStore >= 0 ? storefronts[nearStore] : null;
       if (target?.action) {
         if (document.pointerLockElement) document.exitPointerLock();
@@ -441,7 +487,7 @@ export default function ConstructGame() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [focusedWall, viewer, editor, nearStore, router]);
+  }, [focusedWall, viewer, editor, nearStore, nearArena, router]);
 
   const toggleMic = async () => {
     const client = lobbyRef.current;
@@ -1237,6 +1283,122 @@ export default function ConstructGame() {
       });
     };
 
+    // --- The Arena: a domed game hall closing off the end of the street ------
+    {
+      const arenaAccent = new THREE.Color(arena.accent);
+      const FACADE_Z = -120; // front face of the frontage
+      const FACADE_H = 24; // frontage height
+      const OPENING_HALF = 8; // half-width of the central entrance gap
+      const FACADE_HALF = 34; // half-width of the whole frontage
+      const LINTEL_H = FACADE_H - 11; // billboard band height over the doorway
+
+      const arenaGroup = new THREE.Group();
+
+      // Dark shell + neon edge/trim, matching the storefront material language.
+      const arenaWallMat = new THREE.MeshBasicMaterial({ color: 0x0c1220 });
+      const arenaTrimMat = new THREE.MeshBasicMaterial({ color: arenaAccent });
+      const arenaEdgeMat = new THREE.LineBasicMaterial({
+        color: arenaAccent,
+        transparent: true,
+        opacity: 0.5,
+      });
+      disposables.push(arenaWallMat, arenaTrimMat, arenaEdgeMat);
+
+      // A faceted geodesic dome rising behind the frontage.
+      const domeGeo = new THREE.SphereGeometry(
+        36,
+        22,
+        12,
+        0,
+        Math.PI * 2,
+        0,
+        Math.PI / 2,
+      );
+      const domeMat = new THREE.MeshBasicMaterial({ color: 0x0a0f1b });
+      const dome = new THREE.Mesh(domeGeo, domeMat);
+      dome.position.set(0, 0, -156); // base ring front sits flush with FACADE_Z
+      arenaGroup.add(dome);
+      const domeWireMat = new THREE.MeshBasicMaterial({
+        color: arenaAccent,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.14,
+      });
+      const domeWire = new THREE.Mesh(domeGeo, domeWireMat);
+      domeWire.position.copy(dome.position);
+      arenaGroup.add(domeWire);
+      disposables.push(domeGeo, domeMat, domeWireMat);
+
+      // Two frontage pillars flanking the central entrance gap.
+      const pillarW = FACADE_HALF - OPENING_HALF;
+      const pillarGeo = new THREE.BoxGeometry(pillarW, FACADE_H, 4);
+      const pillarEdges = new THREE.EdgesGeometry(pillarGeo);
+      disposables.push(pillarGeo, pillarEdges);
+      for (const sx of [-1, 1]) {
+        const pillar = new THREE.Mesh(pillarGeo, arenaWallMat);
+        pillar.position.set(
+          sx * (OPENING_HALF + pillarW / 2),
+          FACADE_H / 2,
+          FACADE_Z,
+        );
+        arenaGroup.add(pillar);
+        const edges = new THREE.LineSegments(pillarEdges, arenaEdgeMat);
+        edges.position.copy(pillar.position);
+        arenaGroup.add(edges);
+      }
+
+      // Lintel spanning the entrance, carrying the billboard.
+      const lintelGeo = new THREE.BoxGeometry(OPENING_HALF * 2 + 2, LINTEL_H, 4);
+      const lintel = new THREE.Mesh(lintelGeo, arenaWallMat);
+      lintel.position.set(0, FACADE_H - LINTEL_H / 2, FACADE_Z);
+      arenaGroup.add(lintel);
+      disposables.push(lintelGeo);
+
+      // Accent threshold strip on the ground under the doorway.
+      const thresholdGeo = new THREE.BoxGeometry(OPENING_HALF * 2, 0.12, 3);
+      const threshold = new THREE.Mesh(thresholdGeo, arenaTrimMat);
+      threshold.position.set(0, 0.06, FACADE_Z + 2.4);
+      arenaGroup.add(threshold);
+      disposables.push(thresholdGeo);
+
+      // A curtain of light filling the entrance — "step through here".
+      const portalGeo = new THREE.PlaneGeometry(OPENING_HALF * 2, LINTEL_H);
+      const portalMat = new THREE.MeshBasicMaterial({
+        color: arenaAccent,
+        transparent: true,
+        opacity: 0.16,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      });
+      const portal = new THREE.Mesh(portalGeo, portalMat);
+      portal.position.set(0, LINTEL_H / 2, FACADE_Z + 0.3);
+      arenaGroup.add(portal);
+      disposables.push(portalGeo, portalMat);
+
+      // The changeable billboard (see content.arena.billboard).
+      const bbFrameGeo = new THREE.PlaneGeometry(OPENING_HALF * 2 + 2, 8);
+      const bbFrame = new THREE.Mesh(bbFrameGeo, arenaTrimMat);
+      bbFrame.position.set(0, FACADE_H - 5, FACADE_Z + 2.0);
+      arenaGroup.add(bbFrame);
+      const billboardTex = makeBillboardTexture(
+        arena.billboard.title,
+        arena.billboard.subtitle,
+        arena.accent,
+      );
+      const billboardMat = new THREE.MeshBasicMaterial({
+        map: billboardTex,
+        transparent: true,
+      });
+      const billboardGeo = new THREE.PlaneGeometry(OPENING_HALF * 2 + 1, 7);
+      const billboard = new THREE.Mesh(billboardGeo, billboardMat);
+      billboard.position.set(0, FACADE_H - 5, FACADE_Z + 2.1);
+      arenaGroup.add(billboard);
+      disposables.push(bbFrameGeo, billboardTex, billboardMat, billboardGeo);
+
+      scene.add(arenaGroup);
+    }
+
     // Let React push studio content onto the walls as it loads / is edited.
     wallApiRef.current = {
       applyStudios(studios) {
@@ -1536,6 +1698,7 @@ export default function ConstructGame() {
     const right = new THREE.Vector3();
     const velocity = new THREE.Vector3();
     let currentNear = -1;
+    let currentNearArena = false;
     let animationFrame = 0;
     let lastBroadcast = 0;
     const lastSent = new THREE.Vector2(Infinity, Infinity);
@@ -1663,6 +1826,17 @@ export default function ConstructGame() {
       if (nearest !== currentNear) {
         currentNear = nearest;
         setNearStore(nearest);
+      }
+
+      // Arena entrance proximity (its own forecourt zone at the street's end)
+      const nearArenaNow =
+        Math.hypot(
+          camera.position.x - ARENA_ENTRANCE.x,
+          camera.position.z - ARENA_ENTRANCE.z,
+        ) < ARENA_ENTRANCE.radius;
+      if (nearArenaNow !== currentNearArena) {
+        currentNearArena = nearArenaNow;
+        setNearArena(nearArenaNow);
       }
 
       // Which poster wall is under the crosshair (throttled, paused in overlays)
@@ -1996,6 +2170,39 @@ export default function ConstructGame() {
                   Manage your studio →
                 </Link>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* arena entrance placard (the Superdome at the street's end) */}
+        {nearArena && !near && (
+          <div className="absolute inset-x-0 bottom-14 flex justify-center px-4">
+            <div
+              className="max-w-md rounded-lg border bg-[#0b1020]/88 p-5 text-center backdrop-blur-sm"
+              style={{ borderColor: `${arena.accent}66` }}
+            >
+              <p
+                className="text-[11px] font-bold uppercase tracking-[0.28em]"
+                style={{ color: arena.accent }}
+              >
+                the superdome
+              </p>
+              <p className="mt-1.5 text-lg font-black tracking-tight text-[#dbe5ff]">
+                {arena.entrance.name}
+              </p>
+              <p className="mt-1 text-sm leading-relaxed text-ink-soft">
+                {arena.entrance.blurb}
+              </p>
+              <Link
+                href={ARENA_HREF}
+                className="pointer-events-auto mt-4 inline-block rounded-md border bg-[#121826]/72 px-5 py-2.5 text-xs font-bold uppercase tracking-[0.16em] text-[#dbe5ff] transition-colors hover:text-[#0b1020]"
+                style={{ borderColor: `${arena.accent}99` }}
+              >
+                {arena.entrance.cta}
+                <span className="ml-2 hidden text-[10px] text-ink-dim sm:inline">
+                  or press E
+                </span>
+              </Link>
             </div>
           </div>
         )}
