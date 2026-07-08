@@ -10,6 +10,7 @@ const DATA_DIR =
   path.join(process.cwd(), "data");
 const STUDIOS_FILE = path.join(DATA_DIR, "studios.json");
 export const UPLOADS_DIR = path.join(DATA_DIR, "uploads");
+export const VRM_DIR = path.join(DATA_DIR, "vrm");
 
 export type WallKind = "empty" | "image" | "website" | "youtube";
 
@@ -29,6 +30,9 @@ export type Studio = {
   studioName: string;
   walls: WallSlot[];
   links: MerchLink[];
+  // An uploaded VRM avatar that walks around inside the unit ("" = none).
+  // Stored as the same-origin serve path: /api/studio/vrm?f=<uuid>.vrm
+  vrmSrc: string;
 };
 
 // What a visitor's client sees — no owner identity leaks out.
@@ -36,6 +40,7 @@ export type PublicStudio = {
   unit: string;
   studioName: string;
   walls: WallSlot[];
+  vrmSrc: string;
 };
 
 // The three poster slots every unit gets: back wall + the two side walls.
@@ -90,7 +95,17 @@ function defaultStudio(unit: string): Studio {
     studioName: front ? front.name : `Unit ${unit}`,
     walls: WALL_IDS.map((id) => ({ id, kind: "empty", src: "", title: "" })),
     links: [],
+    vrmSrc: "",
   };
+}
+
+// The avatar path is one we minted ourselves in /api/studio/vrm; only accept
+// that same-origin shape so nothing arbitrary ends up loaded into the scene.
+function cleanVrmSrc(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const s = value.trim().slice(0, MAX_URL);
+  if (!s) return "";
+  return /^\/api\/studio\/vrm\?f=[a-f0-9-]{36}\.(vrm|glb)$/i.test(s) ? s : "";
 }
 
 // Parse a YouTube video id out of a URL (or a bare id). Shared by the back
@@ -167,6 +182,7 @@ export async function getPublicStudios(): Promise<PublicStudio[]> {
     unit: s.unit,
     studioName: s.studioName,
     walls: s.walls,
+    vrmSrc: s.vrmSrc ?? "",
   }));
 }
 
@@ -209,7 +225,12 @@ export async function vacateUnit(unit: string): Promise<boolean> {
 
 export async function updateStudio(
   unit: string,
-  patch: { studioName?: unknown; walls?: unknown; links?: unknown },
+  patch: {
+    studioName?: unknown;
+    walls?: unknown;
+    links?: unknown;
+    vrmSrc?: unknown;
+  },
   by: { userId: string; isAdmin: boolean },
 ): Promise<Studio | { error: string }> {
   if (!validUnit(unit)) return { error: "Unknown unit." };
@@ -235,6 +256,10 @@ export async function updateStudio(
     if (patch.links !== undefined) {
       studio.links = sanitizeLinks(patch.links);
     }
+    if (patch.vrmSrc !== undefined) {
+      studio.vrmSrc = cleanVrmSrc(patch.vrmSrc);
+    }
+    studio.vrmSrc = studio.vrmSrc ?? "";
     store[unit] = studio;
     await writeStore(store);
     return studio;

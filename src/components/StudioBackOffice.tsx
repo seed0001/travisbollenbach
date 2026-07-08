@@ -11,6 +11,7 @@ export type EditableStudio = {
   studioName: string;
   walls: WallSlot[];
   links: MerchLink[];
+  vrmSrc: string;
 };
 
 const WALL_LABELS: Record<string, string> = {
@@ -106,6 +107,7 @@ function StudioCard({
           studioName: studio.studioName,
           walls: studio.walls,
           links: studio.links,
+          vrmSrc: studio.vrmSrc,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -197,6 +199,17 @@ function StudioCard({
         )}
       </div>
 
+      {/* Store avatar (VRM) */}
+      <div className="mt-8 space-y-3">
+        <p className="text-xs uppercase tracking-[0.3em] text-ink-dim">
+          store avatar
+        </p>
+        <AvatarUploader
+          vrmSrc={studio.vrmSrc}
+          onChange={(vrmSrc) => onChange({ ...studio, vrmSrc })}
+        />
+      </div>
+
       <div className="mt-8 flex items-center gap-4">
         <button
           type="button"
@@ -213,6 +226,91 @@ function StudioCard({
         )}
         {status === "error" && <span className="text-sm text-pill-red">{error}</span>}
       </div>
+    </div>
+  );
+}
+
+// Upload a .vrm avatar for the unit. The file is stored server-side and its
+// serve path saved onto the studio; the Construct loads it and walks it around.
+function AvatarUploader({
+  vrmSrc,
+  onChange,
+}: {
+  vrmSrc: string;
+  onChange: (vrmSrc: string) => void;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
+
+  const upload = async (file: File) => {
+    setUploading(true);
+    setError("");
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/studio/vrm", { method: "POST", body: form });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Upload failed.");
+      onChange(data.url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="rounded-2xl border border-line bg-black/30 p-4">
+      <p className="text-sm text-ink-soft">
+        {vrmSrc
+          ? "An avatar is set — it walks around inside your unit in the city."
+          : "Upload a VRM avatar. It walks around inside your unit in the city."}
+      </p>
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          disabled={uploading}
+          className="rounded-md border border-line px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-ink-soft transition-colors hover:border-matrix hover:text-matrix disabled:opacity-50"
+        >
+          {uploading
+            ? "uploading…"
+            : vrmSrc
+              ? "replace avatar"
+              : "upload avatar"}
+        </button>
+        {vrmSrc && !uploading && (
+          <>
+            <span className="text-xs uppercase tracking-[0.16em] text-matrix">
+              avatar ready ✓
+            </span>
+            <button
+              type="button"
+              onClick={() => onChange("")}
+              className="text-xs font-bold uppercase tracking-[0.14em] text-ink-dim transition-colors hover:text-pill-red"
+            >
+              remove
+            </button>
+          </>
+        )}
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".vrm,.glb,model/gltf-binary"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) upload(f);
+            e.target.value = "";
+          }}
+        />
+      </div>
+      <p className="mt-2 text-[11px] leading-relaxed text-ink-dim">
+        VRM (or .glb) file, up to 40 MB. Save the storefront after uploading to
+        apply it.
+      </p>
+      {error && <p className="mt-2 text-sm text-pill-red">{error}</p>}
     </div>
   );
 }

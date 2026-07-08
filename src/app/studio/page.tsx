@@ -66,6 +66,7 @@ export default async function StudioPage() {
     studioName: s.studioName,
     walls: s.walls,
     links: s.links,
+    vrmSrc: s.vrmSrc ?? "",
   }));
 
   if (studios.length === 0) {

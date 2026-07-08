@@ -10,6 +10,13 @@ import {
   type FormEvent,
 } from "react";
 import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import {
+  VRMLoaderPlugin,
+  VRMUtils,
+  type VRM,
+  VRMHumanBoneName,
+} from "@pixiv/three-vrm";
 import { storefronts } from "@/lib/content";
 import {
   LobbyClient,
@@ -85,7 +92,12 @@ function makeSignTexture(number: string, name: string, accent: string) {
 
 type WallKind = "empty" | "image" | "website" | "youtube";
 type WallSlot = { id: string; kind: WallKind; src: string; title: string };
-type PublicStudio = { unit: string; studioName: string; walls: WallSlot[] };
+type PublicStudio = {
+  unit: string;
+  studioName: string;
+  walls: WallSlot[];
+  vrmSrc: string;
+};
 
 function parseYouTubeId(input: string): string | null {
   const s = (input ?? "").trim();
@@ -275,6 +287,7 @@ export default function ConstructGame() {
     applyStudios: (studios: PublicStudio[]) => void;
     applyWall: (unit: string, wall: WallSlot) => void;
     applySign: (unit: string, name: string) => void;
+    applyAvatar: (unit: string, vrmSrc: string) => void;
   } | null>(null);
   const studiosRef = useRef<Map<string, PublicStudio>>(new Map());
   const ownedRef = useRef<Set<string>>(new Set());
@@ -496,6 +509,7 @@ export default function ConstructGame() {
         unit: saved.unit,
         studioName: saved.studioName,
         walls: saved.walls,
+        vrmSrc: saved.vrmSrc ?? current?.vrmSrc ?? "",
       };
       studiosRef.current.set(saved.unit, entry);
       setStudioMap((prev) => new Map(prev).set(saved.unit, entry));
@@ -547,6 +561,16 @@ export default function ConstructGame() {
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x090b10);
     scene.fog = new THREE.Fog(0x090b10, 24, 145);
+
+    // The world's own surfaces are unlit (MeshBasicMaterial), but uploaded VRM
+    // avatars use lit materials — give them light so they're not black.
+    const ambientLight = new THREE.AmbientLight(0xffffff, 1.4);
+    scene.add(ambientLight);
+    const keyLight = new THREE.DirectionalLight(0xdbe5ff, 1.6);
+    keyLight.position.set(6, 14, 8);
+    scene.add(keyLight);
+    const hemiLight = new THREE.HemisphereLight(0xbcd0ff, 0x0b1020, 0.8);
+    scene.add(hemiLight);
 
     const camera = new THREE.PerspectiveCamera(
       70,
@@ -764,6 +788,12 @@ export default function ConstructGame() {
     };
 
     const storePositions: THREE.Vector3[] = [];
+    // Interior center + orientation for each unit, so an uploaded avatar can be
+    // dropped inside and paced along the frontage.
+    const avatarAnchors = new Map<
+      string,
+      { x: number; z: number; onLeft: boolean }
+    >();
     storefronts.forEach((store, i) => {
       const onLeft = i < 5;
       const rowIndex = onLeft ? i : i - 5;
@@ -771,6 +801,7 @@ export default function ConstructGame() {
       const groupX = onLeft
         ? -(STREET_HALF + STORE_D / 2)
         : STREET_HALF + STORE_D / 2;
+      avatarAnchors.set(store.number, { x: groupX, z, onLeft });
 
       const group = new THREE.Group();
       group.position.set(groupX, 0, z);
@@ -894,12 +925,165 @@ export default function ConstructGame() {
       storePositions.push(new THREE.Vector3(doorX, 0, z));
     });
 
+    // --- Uploaded VRM avatars: a host that walks around inside each unit -------
+    type Avatar = {
+      vrm: VRM;
+      onLeft: boolean;
+      ends: [number, number]; // the two z coordinates it paces between
+      targetEnd: 0 | 1;
+      state: "walk" | "pause";
+      pauseUntil: number;
+      gait: number; // walk-cycle accumulator
+      bones: Partial<Record<string, THREE.Object3D | null>>;
+    };
+    const avatars = new Map<string, Avatar>();
+    const AVATAR_PATROL_HALF = STORE_W / 2 - 3;
+    const AVATAR_WALK_SPEED = 1.6; // metres/sec
+    const AVATAR_FLOOR_Y = 0.12;
+    const gltfLoader = new GLTFLoader();
+    gltfLoader.register((parser) => new VRMLoaderPlugin(parser));
+
+    const bone = (vrm: VRM, name: VRMHumanBoneName) =>
+      vrm.humanoid?.getNormalizedBoneNode(name) ?? null;
+    const idleYawFor = (onLeft: boolean) => (onLeft ? Math.PI / 2 : -Math.PI / 2);
+
+    const removeAvatar = (unit: string) => {
+      const existing = avatars.get(unit);
+      if (!existing) return;
+      avatars.delete(unit);
+      scene.remove(existing.vrm.scene);
+      VRMUtils.deepDispose(existing.vrm.scene);
+    };
+
+    const loadAvatar = (unit: string, vrmSrc: string) => {
+      const anchor = avatarAnchors.get(unit);
+      if (!anchor) return;
+      gltfLoader.load(
+        vrmSrc,
+        (gltf) => {
+          const vrm = gltf.userData.vrm as VRM | undefined;
+          if (!vrm) return;
+          if (sceneDisposed) {
+            VRMUtils.deepDispose(vrm.scene);
+            return;
+          }
+          removeAvatar(unit); // replace any previous avatar for this unit
+          VRMUtils.rotateVRM0(vrm); // VRM0 models face -Z; align them to +Z
+          vrm.scene.traverse((obj) => {
+            obj.frustumCulled = false;
+          });
+          vrm.scene.position.set(anchor.x, AVATAR_FLOOR_Y, anchor.z);
+          vrm.scene.rotation.y = idleYawFor(anchor.onLeft);
+          vrm.scene.userData.vrmSrc = vrmSrc;
+          scene.add(vrm.scene);
+          avatars.set(unit, {
+            vrm,
+            onLeft: anchor.onLeft,
+            ends: [anchor.z - AVATAR_PATROL_HALF, anchor.z + AVATAR_PATROL_HALF],
+            targetEnd: 0,
+            state: "pause",
+            pauseUntil: 0,
+            gait: 0,
+            bones: {
+              spine: bone(vrm, VRMHumanBoneName.Spine),
+              chest: bone(vrm, VRMHumanBoneName.Chest),
+              head: bone(vrm, VRMHumanBoneName.Head),
+              leftUpperArm: bone(vrm, VRMHumanBoneName.LeftUpperArm),
+              rightUpperArm: bone(vrm, VRMHumanBoneName.RightUpperArm),
+              leftUpperLeg: bone(vrm, VRMHumanBoneName.LeftUpperLeg),
+              rightUpperLeg: bone(vrm, VRMHumanBoneName.RightUpperLeg),
+              leftLowerLeg: bone(vrm, VRMHumanBoneName.LeftLowerLeg),
+              rightLowerLeg: bone(vrm, VRMHumanBoneName.RightLowerLeg),
+            },
+          });
+        },
+        undefined,
+        () => {
+          /* an avatar is decoration — a failed load shouldn't break the world */
+        },
+      );
+    };
+
+    const applyAvatar = (unit: string, vrmSrc: string) => {
+      const current = avatars.get(unit);
+      if (!vrmSrc) {
+        removeAvatar(unit);
+        return;
+      }
+      // Skip a reload if this unit already shows this avatar.
+      if (current && current.vrm.scene.userData.vrmSrc === vrmSrc) return;
+      loadAvatar(unit, vrmSrc);
+    };
+
+    // Set a normalized humanoid bone's pose (relative to its neutral rest).
+    const poseBone = (node: THREE.Object3D | null | undefined, x: number) => {
+      if (node) node.rotation.x = x;
+    };
+
+    const updateAvatars = (elapsed: number, delta: number) => {
+      avatars.forEach((avatar) => {
+        const scene3 = avatar.vrm.scene;
+        const b = avatar.bones;
+        let desiredYaw: number;
+
+        if (avatar.state === "walk") {
+          const targetZ = avatar.ends[avatar.targetEnd];
+          const dz = targetZ - scene3.position.z;
+          const dir = dz >= 0 ? 1 : -1;
+          const step = AVATAR_WALK_SPEED * delta;
+          if (Math.abs(dz) <= step) {
+            scene3.position.z = targetZ;
+            avatar.state = "pause";
+            avatar.pauseUntil = elapsed + 1 + Math.random() * 2.5;
+          } else {
+            scene3.position.z += dir * step;
+          }
+          desiredYaw = dir > 0 ? 0 : Math.PI; // face the way we're walking
+          avatar.gait += delta * 6.5;
+          const swing = Math.sin(avatar.gait) * 0.5;
+          poseBone(b.leftUpperLeg, swing);
+          poseBone(b.rightUpperLeg, -swing);
+          poseBone(b.leftLowerLeg, -Math.max(0, -swing) * 0.6);
+          poseBone(b.rightLowerLeg, -Math.max(0, swing) * 0.6);
+          poseBone(b.leftUpperArm, -swing * 0.45);
+          poseBone(b.rightUpperArm, swing * 0.45);
+          poseBone(b.spine, Math.abs(swing) * 0.05);
+          scene3.position.y = AVATAR_FLOOR_Y + Math.abs(Math.sin(avatar.gait)) * 0.04;
+        } else {
+          if (elapsed >= avatar.pauseUntil) {
+            avatar.targetEnd = avatar.targetEnd === 0 ? 1 : 0;
+            avatar.state = "walk";
+          }
+          desiredYaw = idleYawFor(avatar.onLeft); // face the street
+          const breathe = Math.sin(elapsed * 1.6) * 0.04;
+          poseBone(b.spine, breathe);
+          poseBone(b.chest, breathe * 0.5);
+          poseBone(b.head, Math.sin(elapsed * 0.9) * 0.03);
+          poseBone(b.leftUpperLeg, 0);
+          poseBone(b.rightUpperLeg, 0);
+          poseBone(b.leftLowerLeg, 0);
+          poseBone(b.rightLowerLeg, 0);
+          poseBone(b.leftUpperArm, 0);
+          poseBone(b.rightUpperArm, 0);
+          scene3.position.y = AVATAR_FLOOR_Y;
+        }
+
+        // Ease toward the desired facing along the shortest arc.
+        let diff = desiredYaw - scene3.rotation.y;
+        diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+        scene3.rotation.y += diff * Math.min(1, delta * 6);
+
+        avatar.vrm.update(delta);
+      });
+    };
+
     // Let React push studio content onto the walls as it loads / is edited.
     wallApiRef.current = {
       applyStudios(studios) {
         for (const studio of studios) {
           applySign(studio.unit, studio.studioName);
           for (const wall of studio.walls) applyWall(wall, studio.unit);
+          applyAvatar(studio.unit, studio.vrmSrc ?? "");
         }
       },
       applyWall(unit, wall) {
@@ -907,6 +1091,9 @@ export default function ConstructGame() {
       },
       applySign(unit, name) {
         applySign(unit, name);
+      },
+      applyAvatar(unit, vrmSrc) {
+        applyAvatar(unit, vrmSrc);
       },
     };
     // If studio data already arrived before the scene built, apply it now.
@@ -1280,6 +1467,9 @@ export default function ConstructGame() {
         orb.group.position.y = 1.6 + Math.sin(elapsed * 1.8 + orb.phase) * 0.14;
       });
 
+      // uploaded store hosts pace around their units
+      updateAvatars(elapsed, delta);
+
       // share our own position with the lobby ~10x/sec, only when it changed
       if (elapsed - lastBroadcast > 0.1) {
         const dx = camera.position.x - lastSent.x;
@@ -1336,6 +1526,11 @@ export default function ConstructGame() {
       sceneDisposed = true;
       wallApiRef.current = null;
       posters.forEach((p) => p.ownTex?.dispose());
+      avatars.forEach((avatar) => {
+        scene.remove(avatar.vrm.scene);
+        VRMUtils.deepDispose(avatar.vrm.scene);
+      });
+      avatars.clear();
       window.cancelAnimationFrame(animationFrame);
       document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("keyup", onKeyUp);

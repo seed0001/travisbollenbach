@@ -33,6 +33,7 @@ export async function PATCH(request: NextRequest) {
       studioName: (body as { studioName?: unknown }).studioName,
       walls: (body as { walls?: unknown }).walls,
       links: (body as { links?: unknown }).links,
+      vrmSrc: (body as { vrmSrc?: unknown }).vrmSrc,
     },
     { userId: user.id, isAdmin: user.role === "admin" },
   );
