@@ -454,6 +454,57 @@ export default function AdminSettings() {
         </div>
       </div>
 
+      {/* Voice */}
+      <div className="rounded-xl border border-ops-line bg-ops-card p-6 shadow-sm">
+        <h3 className="text-base font-semibold">Voice</h3>
+        <p className="mt-1 text-sm text-ops-muted">
+          How the game speaks. Lower levels use Edge TTS — free, no key.
+          Higher levels use Fish Audio — premium voices, billed per use. With
+          no Fish key saved, everything falls back to Edge.
+        </p>
+        <div className="mt-5 space-y-5">
+          <div>
+            <label htmlFor="edgeVoice" className={labelClass}>
+              Edge voice (lower levels)
+            </label>
+            <input
+              id="edgeVoice"
+              value={drafts.edgeVoice ?? ""}
+              onChange={(e) =>
+                setDrafts((d) => ({ ...d, edgeVoice: e.target.value }))
+              }
+              placeholder="en-US-ChristopherNeural"
+              autoComplete="off"
+              className={`${inputClass} mt-1.5`}
+            />
+            <p className="mt-1 text-xs text-ops-muted">
+              Any Microsoft neural voice name, e.g. en-US-GuyNeural,
+              en-GB-RyanNeural, en-US-AriaNeural.
+            </p>
+          </div>
+          {secretRow(
+            "fishAudioApiKey",
+            "Fish Audio API key (higher levels)",
+            "paste a new key to replace",
+          )}
+          <div>
+            <label htmlFor="fishVoiceId" className={labelClass}>
+              Fish voice reference ID
+            </label>
+            <input
+              id="fishVoiceId"
+              value={drafts.fishVoiceId ?? ""}
+              onChange={(e) =>
+                setDrafts((d) => ({ ...d, fishVoiceId: e.target.value }))
+              }
+              placeholder="voice model id from fish.audio (blank = default)"
+              autoComplete="off"
+              className={`${inputClass} mt-1.5`}
+            />
+          </div>
+        </div>
+      </div>
+
       {/* Discord */}
       <div className="rounded-xl border border-ops-line bg-ops-card p-6 shadow-sm">
         <h3 className="text-base font-semibold">Discord</h3>

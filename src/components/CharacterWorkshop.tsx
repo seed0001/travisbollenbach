@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import * as THREE from "three";
 import { archetypes, characterWorkshop } from "@/lib/content";
+import { speakViaServer } from "@/lib/speech";
 
 // The Studio — character creation. Deliberately its own world: light, warm,
 // serif display type, one iris accent. No terminal green in sight.
@@ -99,19 +100,29 @@ function Chamber({
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
   }, [entries]);
 
-  const speak = (text: string) => {
+  const speak = async (text: string) => {
     const durationMs = Math.min(1200 + text.length * 45, 9000);
     speakingUntilRef.current = performance.now() + durationMs;
     setMood("speaking");
-    if (voiceRef.current && "speechSynthesis" in window) {
+    if (!voiceRef.current) return;
+
+    const done = () => {
+      speakingUntilRef.current = 0;
+      setMood("idle");
+    };
+    // the studio is a lower level — it speaks through Edge TTS. Signed-out
+    // visitors (or a dead voice server) fall back to the browser's own voice.
+    const audio = await speakViaServer(text, "low", done);
+    if (audio) {
+      speakingUntilRef.current = performance.now() + 60_000; // onended resets
+      return;
+    }
+    if ("speechSynthesis" in window) {
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.pitch = 1.0;
       utterance.rate = 0.97;
-      utterance.onend = () => {
-        speakingUntilRef.current = 0;
-        setMood("idle");
-      };
+      utterance.onend = done;
       window.speechSynthesis.speak(utterance);
     }
   };

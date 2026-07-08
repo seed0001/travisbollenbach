@@ -18,6 +18,11 @@ export type SiteSettings = {
   descentModel1: string;
   descentModel2: string;
   descentModel3: string;
+  // Voice: lower levels speak through Edge TTS (free), higher levels through
+  // Fish Audio (keyed). The tts API picks the engine by tier.
+  edgeVoice: string;
+  fishAudioApiKey: string;
+  fishVoiceId: string;
   discordBotToken: string;
   discordClientId: string;
   discordClientSecret: string;
@@ -29,6 +34,9 @@ export const SETTINGS_DEFAULTS: SiteSettings = {
   descentModel1: "",
   descentModel2: "",
   descentModel3: "",
+  edgeVoice: "en-US-ChristopherNeural",
+  fishAudioApiKey: "",
+  fishVoiceId: "",
   discordBotToken: "",
   discordClientId: "",
   discordClientSecret: "",

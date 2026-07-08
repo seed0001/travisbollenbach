@@ -70,7 +70,7 @@ This page drops the matrix look completely. It is bright, warm, and clean. Soft 
 
 The visitor builds an AI character in three steps. Step one, give it a name. Step two, shape its personality: they can pick a starting archetype — the Oracle, the Rebel, the Architect, or the Glitch — and then write or edit the persona statement, which is the character's entire soul. Step three, a live character card builds itself on the right side as they type.
 
-When they press "bring them to life," they enter the chamber: a bright 3D room where the character appears as a violet form surrounded by orbiting motes of pastel color. It breathes when idle, contracts and spins when thinking, and pulses when it speaks. They talk to it through a chat box. There is an optional voice toggle that reads the replies out loud.
+When they press "bring them to life," they enter the chamber: a bright 3D room where the character appears as a violet form surrounded by orbiting motes of pastel color. It breathes when idle, contracts and spins when thinking, and pulses when it speaks. They talk to it through a chat box. There is an optional voice toggle that reads the replies out loud — signed-in players hear a real neural voice through the site's voice service; everyone else gets the browser's built-in voice.
 
 Characters are saved in the visitor's own browser. No account is needed. They can come back, edit them, or delete them.
 
@@ -138,6 +138,8 @@ To change the forests — which tree species grow where, how dense the woods are
 
 To change how hard it is to go deeper: each depth requires three replies before the door appears. That number is in source, lib, descent dot T S, called min replies to descend.
 
+To change how the game speaks out loud: the voice section of the operator console. The rule of the voices matches the rule of the minds — lower levels speak through Edge TTS, which is free and needs no key; higher levels speak through Fish Audio, which is premium and billed per use. The console holds the Edge voice name, the Fish Audio API key (write-only), and the Fish voice reference. With no Fish key saved, everything falls back to Edge; with no voice server at all, the browser's own voice covers. The synthesis endpoint is source, app, A P I, tts; client playback is source, lib, speech dot T S.
+
 To change the Nexus island — its size, its palette, where the sealed gates stand: source, lib, lobby dash island dot T S. The gates list there, called GATES, is where new rooms get their door. The lobby scene itself — avatars, movement, the HUD, the enter screen: source, components, Lobby dot T S X. How voices travel and fade with distance: source, lib, voice dot T S. The lobby's server side — who is present, position relay, the voice handshake: server, lobby dot M J S, hosted by server dot M J S at the repo root. Player progression — XP, points, avatar color, cleared rooms: source, lib, progress dot T S, stored in progress dot J S O N on the data volume.
 
 To add a fourth depth: add its public info in descent dot T S, its persona in descent dash prompts dot T S, a model setting for it in settings dot T S, a scene for it in Descent dot T S, and a dropdown in the admin settings panel.
@@ -146,7 +148,7 @@ To add a fourth depth: add its public info in descent dot T S, its persona in de
 
 ## Ideas on the table, not built yet
 
-The rooms of the Nexus: virtual escape rooms behind the five sealed gates. The concept is hybrid — the space and a mind, together, are the puzzle. Each room is a locked 3D space with clues living in the environment, and an AI entity — same pipeline as the Descent — is one of the mechanisms you must work. One warden cannot say the passphrase but must answer truthfully, so you corner it with logic. One speaks only in riddles about objects physically in the room. One lies exactly every other sentence. Escaping is a conversation you have to win, and no two playthroughs are the same because the mind is real. Clearing a room earns XP and points — more for speed, fewer hints, first clears — and unlocks the next gate.
+The rooms of the Nexus: virtual escape rooms behind the five sealed gates. The concept is hybrid — the space and a mind, together, are the puzzle. Each room is a locked 3D space with clues living in the environment, and an AI entity — same pipeline as the Descent — is one of the mechanisms you must work. One warden cannot say the passphrase but must answer truthfully, so you corner it with logic. One speaks only in riddles about objects physically in the room. One lies exactly every other sentence. Escaping is a conversation you have to win, and no two playthroughs are the same because the mind is real. The wardens are voice-first: they speak their lines aloud through the voice service — Edge voices in the lower rooms, Fish voices in the deep ones — and voice input is planned so the visitor can talk back. Clearing a room earns XP and points — more for speed, fewer hints, first clears — and unlocks the next gate.
 
 The Discord bot: Travis's personal AI, living in the cloud, connected to Discord, with its own agent statement managed from the console.
 

@@ -13,6 +13,7 @@ import {
 
 const SECRET_KEYS: (keyof SiteSettings)[] = [
   "openrouterApiKey",
+  "fishAudioApiKey",
   "discordBotToken",
   "discordClientSecret",
 ];
