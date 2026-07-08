@@ -170,7 +170,6 @@ function makeGlowTexture() {
 // --- Procedural ambience (no audio files needed) ---------------------------
 
 type Ambience = {
-  setProximity(v: number): void;
   setMuted(m: boolean): void;
   dispose(): void;
 };
@@ -181,80 +180,140 @@ function createAmbience(startMuted: boolean): Ambience | null {
     const master = ctx.createGain();
     master.gain.value = 0;
     master.connect(ctx.destination);
+    const level = 0.5;
     if (!startMuted) {
-      master.gain.linearRampToValueAtTime(0.5, ctx.currentTime + 2.5);
+      master.gain.linearRampToValueAtTime(level, ctx.currentTime + 2.5);
     }
 
-    // Low detuned drone — the hum of the machine
-    const droneGain = ctx.createGain();
-    droneGain.gain.value = 0.16;
-    const droneFilter = ctx.createBiquadFilter();
-    droneFilter.type = "lowpass";
-    droneFilter.frequency.value = 240;
-    droneGain.connect(droneFilter);
-    droneFilter.connect(master);
-    [
-      { freq: 46, type: "sine" as const, level: 1 },
-      { freq: 46.6, type: "sine" as const, level: 1 },
-      { freq: 92.5, type: "triangle" as const, level: 0.35 },
-    ].forEach((voice) => {
-      const osc = ctx.createOscillator();
-      osc.type = voice.type;
-      osc.frequency.value = voice.freq;
-      const gain = ctx.createGain();
-      gain.gain.value = voice.level;
-      osc.connect(gain);
-      gain.connect(droneGain);
-      osc.start();
-    });
+    // An inviting outdoor bed that follows the visitor's local time of day:
+    // birdsong while the sun's up, a cricket chorus after dark. No drone, no
+    // wind, and nothing that swells when you walk up to a building.
+    const hour = new Date().getHours();
+    const isDay = hour >= 6 && hour < 19;
 
-    // Airy shimmer — filtered noise drifting overhead like the rain
-    const noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
-    const channel = noiseBuffer.getChannelData(0);
-    for (let i = 0; i < channel.length; i += 1) {
-      channel[i] = Math.random() * 2 - 1;
+    let closed = false;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
+    if (isDay) {
+      const birds = ctx.createGain();
+      birds.gain.value = 1;
+      birds.connect(master);
+
+      // A single bird "tweet": a quick pitch bend with a soft pluck envelope.
+      const tweet = (t0: number, freq: number, panX: number, gain: number) => {
+        const osc = ctx.createOscillator();
+        osc.type = "sine";
+        const g = ctx.createGain();
+        const panner = ctx.createStereoPanner();
+        panner.pan.value = panX;
+        osc.connect(g);
+        g.connect(panner);
+        panner.connect(birds);
+        osc.frequency.setValueAtTime(freq * 0.86, t0);
+        osc.frequency.exponentialRampToValueAtTime(freq * 1.12, t0 + 0.05);
+        osc.frequency.exponentialRampToValueAtTime(freq * 0.95, t0 + 0.13);
+        g.gain.setValueAtTime(0.0001, t0);
+        g.gain.exponentialRampToValueAtTime(gain, t0 + 0.012);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.17);
+        osc.start(t0);
+        osc.stop(t0 + 0.22);
+      };
+
+      // A phrase is a little run of one to four tweets, then a pause. Nearer
+      // birds are louder and more centered; far ones softer and wider.
+      const phrase = () => {
+        if (closed) return;
+        const notes = 1 + Math.floor(Math.random() * 4);
+        const base = 2600 + Math.random() * 1700;
+        const near = Math.random() < 0.6;
+        const panX = (Math.random() - 0.5) * (near ? 0.7 : 1.4);
+        const gain = near ? 0.13 : 0.06;
+        for (let i = 0; i < notes; i += 1) {
+          tweet(
+            ctx.currentTime + i * (0.1 + Math.random() * 0.06),
+            base * (1 + (Math.random() - 0.5) * 0.12),
+            panX,
+            gain,
+          );
+        }
+        timers.push(setTimeout(phrase, 700 + Math.random() * 2800));
+      };
+      phrase();
+    } else {
+      // Night: one looping noise source shaped into a few cricket voices.
+      const noiseBuffer = ctx.createBuffer(
+        1,
+        ctx.sampleRate * 2,
+        ctx.sampleRate,
+      );
+      const channel = noiseBuffer.getChannelData(0);
+      for (let i = 0; i < channel.length; i += 1) {
+        channel[i] = Math.random() * 2 - 1;
+      }
+      const noise = ctx.createBufferSource();
+      noise.buffer = noiseBuffer;
+      noise.loop = true;
+
+      const cricket = (
+        center: number,
+        q: number,
+        trillRate: number,
+        rhythmRate: number,
+        panX: number,
+        voiceLevel: number,
+      ) => {
+        const band = ctx.createBiquadFilter();
+        band.type = "bandpass";
+        band.frequency.value = center;
+        band.Q.value = q;
+        noise.connect(band);
+
+        // Fast trill gates the chirp on and off (the "chirr").
+        const vca = ctx.createGain();
+        vca.gain.value = 0.5;
+        const trill = ctx.createOscillator();
+        trill.type = "triangle";
+        trill.frequency.value = trillRate;
+        const trillDepth = ctx.createGain();
+        trillDepth.gain.value = 0.5;
+        trill.connect(trillDepth);
+        trillDepth.connect(vca.gain);
+
+        // Slow rhythm swells the whole voice, like crickets chirping in waves.
+        const out = ctx.createGain();
+        out.gain.value = voiceLevel;
+        const rhythm = ctx.createOscillator();
+        rhythm.type = "sine";
+        rhythm.frequency.value = rhythmRate;
+        const rhythmDepth = ctx.createGain();
+        rhythmDepth.gain.value = voiceLevel * 0.6;
+        rhythm.connect(rhythmDepth);
+        rhythmDepth.connect(out.gain);
+
+        const panner = ctx.createStereoPanner();
+        panner.pan.value = panX;
+
+        band.connect(vca);
+        vca.connect(out);
+        out.connect(panner);
+        panner.connect(master);
+        trill.start();
+        rhythm.start();
+      };
+
+      cricket(4200, 20, 52, 1.8, -0.4, 1.1);
+      cricket(4600, 22, 47, 2.1, 0.4, 0.9);
+      cricket(3900, 18, 58, 1.5, 0.0, 0.7);
+      noise.start();
     }
-    const noise = ctx.createBufferSource();
-    noise.buffer = noiseBuffer;
-    noise.loop = true;
-    const shimmerFilter = ctx.createBiquadFilter();
-    shimmerFilter.type = "bandpass";
-    shimmerFilter.frequency.value = 1500;
-    shimmerFilter.Q.value = 8;
-    const shimmerGain = ctx.createGain();
-    shimmerGain.gain.value = 0.02;
-    noise.connect(shimmerFilter);
-    shimmerFilter.connect(shimmerGain);
-    shimmerGain.connect(master);
-    noise.start();
-    const lfo = ctx.createOscillator();
-    lfo.frequency.value = 0.07;
-    const lfoDepth = ctx.createGain();
-    lfoDepth.gain.value = 600;
-    lfo.connect(lfoDepth);
-    lfoDepth.connect(shimmerFilter.frequency);
-    lfo.start();
-
-    // Proximity chord — swells as you approach a storefront
-    const proxGain = ctx.createGain();
-    proxGain.gain.value = 0;
-    proxGain.connect(master);
-    [196, 294].forEach((freq) => {
-      const osc = ctx.createOscillator();
-      osc.type = "sine";
-      osc.frequency.value = freq;
-      osc.connect(proxGain);
-      osc.start();
-    });
 
     return {
-      setProximity(v: number) {
-        proxGain.gain.setTargetAtTime(v * 0.06, ctx.currentTime, 0.25);
-      },
       setMuted(m: boolean) {
-        master.gain.setTargetAtTime(m ? 0 : 0.5, ctx.currentTime, 0.15);
+        master.gain.setTargetAtTime(m ? 0 : level, ctx.currentTime, 0.15);
       },
       dispose() {
+        closed = true;
+        timers.forEach((t) => clearTimeout(t));
         ctx.close().catch(() => {});
       },
     };
@@ -1029,9 +1088,6 @@ export default function ConstructGame() {
         currentNear = nearest;
         setNearStore(nearest);
       }
-      ambienceRef.current?.setProximity(
-        nearest === -1 ? 0 : 1 - nearestDistance / REVEAL_RADIUS,
-      );
 
       renderer.render(scene, camera);
     };
