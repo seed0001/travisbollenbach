@@ -23,6 +23,17 @@ const SESSIONS_FILE = path.join(DATA_DIR, "sessions.json");
 // Falls back to first-registered-wins only if ADMIN_EMAIL is unset.
 const ADMIN_EMAIL = normalizeEmail(process.env.ADMIN_EMAIL) ?? null;
 
+// The env var is the source of truth for ownership: the owner is always an
+// admin at read time and can never be demoted or deleted, so the account can't
+// be locked out from the management console.
+export function isOwnerEmail(email: string): boolean {
+  return ADMIN_EMAIL !== null && email === ADMIN_EMAIL;
+}
+
+export function ownerEmail(): string | null {
+  return ADMIN_EMAIL;
+}
+
 export const SESSION_COOKIE = "tb_session";
 export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30; // 30 days
 
@@ -109,7 +120,7 @@ export function toPublicUser(user: User): PublicUser {
     id: user.id,
     email: user.email,
     name: user.name,
-    role: user.role,
+    role: isOwnerEmail(user.email) ? "admin" : user.role,
     createdAt: user.createdAt,
   };
 }
@@ -146,6 +157,60 @@ export async function createUser(input: {
 export async function countUsers(): Promise<number> {
   const users = await readJson<User[]>(USERS_FILE, []);
   return users.length;
+}
+
+// --- Member management (admin console) -------------------------------------
+
+export async function listUsers(): Promise<PublicUser[]> {
+  const users = await readJson<User[]>(USERS_FILE, []);
+  return users
+    .slice()
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)) // newest first
+    .map(toPublicUser);
+}
+
+export async function setUserRole(
+  userId: string,
+  role: "admin" | "user",
+): Promise<PublicUser | null> {
+  return withLock(async () => {
+    const users = await readJson<User[]>(USERS_FILE, []);
+    const user = users.find((u) => u.id === userId);
+    if (!user) return null;
+    // The owner's role is pinned by ADMIN_EMAIL — never writable.
+    if (!isOwnerEmail(user.email)) {
+      user.role = role;
+      await writeJson(USERS_FILE, users);
+    }
+    return toPublicUser(user);
+  });
+}
+
+export async function deleteUser(userId: string): Promise<boolean> {
+  return withLock(async () => {
+    const users = await readJson<User[]>(USERS_FILE, []);
+    const user = users.find((u) => u.id === userId);
+    if (!user || isOwnerEmail(user.email)) return false; // never delete the owner
+    await writeJson(
+      USERS_FILE,
+      users.filter((u) => u.id !== userId),
+    );
+    // Revoke any live sessions the deleted member still holds.
+    const sessions = await readJson<Session[]>(SESSIONS_FILE, []);
+    const remaining = sessions.filter((s) => s.userId !== userId);
+    if (remaining.length !== sessions.length) {
+      await writeJson(SESSIONS_FILE, remaining);
+    }
+    return true;
+  });
+}
+
+// Resolve the admin behind a session token, or null if not an admin.
+export async function getAdminBySession(
+  token: string,
+): Promise<PublicUser | null> {
+  const user = await getUserBySession(token);
+  return user && user.role === "admin" ? user : null;
 }
 
 export async function authenticate(

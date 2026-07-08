@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 type User = {
   id: string;
@@ -17,6 +18,7 @@ const inputClass =
   "w-full rounded-xl border border-line bg-black/60 px-4 py-3 text-sm text-ink placeholder:text-ink-dim focus:border-matrix focus:outline-none";
 
 export default function AccountPanel() {
+  const router = useRouter();
   const [user, setUser] = useState<User | null | undefined>(undefined);
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
@@ -65,6 +67,10 @@ export default function AccountPanel() {
       setUser(data);
       setPassword("");
       setStatus("idle");
+      // The owner/admins land straight in the management console.
+      if (data.role === "admin") {
+        router.push("/admin");
+      }
     } catch (err) {
       setStatus("error");
       setError(err instanceof Error ? err.message : "Access denied.");
