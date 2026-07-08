@@ -905,9 +905,7 @@ export default function Lobby() {
                   {gate.title}
                 </p>
                 <p className="mt-2 text-sm leading-relaxed text-ink-soft">
-                  {gate.href
-                    ? "The gate is open. On the other side: no floor, a star fighter with your name on it, nine uncharted worlds, and twelve shards of light adrift between them. Bring them all home."
-                    : "Sealed. Something is growing behind this door."}
+                  {gate.blurb ?? "Sealed. Something is growing behind this door."}
                 </p>
                 {gate.href && (
                   <Link

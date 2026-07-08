@@ -21,14 +21,24 @@ export const GATES: {
   title: string;
   angle: number;
   href?: string;
+  blurb?: string;
 }[] = [
   {
     id: "room-01",
     title: "Room 01 — The Galaxy",
     angle: 0,
     href: "/rooms/galaxy",
+    blurb:
+      "The gate is open. On the other side: no floor, a star fighter with your name on it, nine uncharted worlds, and twelve shards of light adrift between them. Bring them all home.",
   },
-  { id: "room-02", title: "Room 02 — sealed", angle: (Math.PI * 2) / 5 },
+  {
+    id: "room-02",
+    title: "Room 02 — The Shore",
+    angle: (Math.PI * 2) / 5,
+    href: "/rooms/beach",
+    blurb:
+      "The gate is open. Warm sand, rolling surf, palms on the dunes — and nothing that needs anything from you. Ten shells are lost on the beach, if you feel like looking.",
+  },
   { id: "room-03", title: "Room 03 — sealed", angle: (Math.PI * 4) / 5 },
   { id: "room-04", title: "Room 04 — sealed", angle: (Math.PI * 6) / 5 },
   { id: "room-05", title: "Room 05 — sealed", angle: (Math.PI * 8) / 5 },

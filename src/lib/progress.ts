@@ -23,6 +23,8 @@ export type Progress = {
   roomsCleared: string[];
   /** shard ids collected in the galaxy room */
   galaxyShards: string[];
+  /** per-room collected item ids (rooms after the galaxy use this) */
+  collectibles?: Record<string, string[]>;
   firstJoinedLobbyAt?: string;
   updatedAt: string;
 };
@@ -136,6 +138,42 @@ export async function collectShard(
       !record.roomsCleared.includes(opts.roomId)
     ) {
       record.roomsCleared.push(opts.roomId);
+      record.xp += opts.clearXp;
+      record.points += 50;
+      clearedNow = true;
+    }
+    record.updatedAt = new Date().toISOString();
+    all[userId] = record;
+    await writeAll(all);
+    return { progress: record, added: true, clearedNow };
+  });
+}
+
+/** Pick up a collectible in any room (the generalized successor to
+ * collectShard). Idempotent per item; completing the set clears the room. */
+export async function collectItem(
+  userId: string,
+  roomId: string,
+  itemId: string,
+  opts: { itemXp: number; totalItems: number; clearXp: number },
+): Promise<{ progress: Progress; added: boolean; clearedNow: boolean }> {
+  return withLock(async () => {
+    const all = await readAll();
+    const record = all[userId] ?? blank(userId);
+    if (!record.collectibles) record.collectibles = {};
+    const held = record.collectibles[roomId] ?? [];
+    if (held.includes(itemId)) {
+      return { progress: record, added: false, clearedNow: false };
+    }
+    held.push(itemId);
+    record.collectibles[roomId] = held;
+    record.xp += opts.itemXp;
+    let clearedNow = false;
+    if (
+      held.length >= opts.totalItems &&
+      !record.roomsCleared.includes(roomId)
+    ) {
+      record.roomsCleared.push(roomId);
       record.xp += opts.clearXp;
       record.points += 50;
       clearedNow = true;
