@@ -67,6 +67,8 @@ export default async function StudioPage() {
     walls: s.walls,
     links: s.links,
     vrmSrc: s.vrmSrc ?? "",
+    avatarScale: s.avatarScale ?? 1,
+    avatarYaw: s.avatarYaw ?? 0,
   }));
 
   if (studios.length === 0) {

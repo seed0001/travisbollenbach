@@ -98,6 +98,8 @@ type PublicStudio = {
   studioName: string;
   walls: WallSlot[];
   vrmSrc: string;
+  avatarScale: number;
+  avatarYaw: number;
 };
 
 function parseYouTubeId(input: string): string | null {
@@ -293,7 +295,12 @@ export default function ConstructGame() {
     applyStudios: (studios: PublicStudio[]) => void;
     applyWall: (unit: string, wall: WallSlot) => void;
     applySign: (unit: string, name: string) => void;
-    applyAvatar: (unit: string, vrmSrc: string) => void;
+    applyAvatar: (
+      unit: string,
+      vrmSrc: string,
+      avatarScale: number,
+      avatarYaw: number,
+    ) => void;
   } | null>(null);
   const studiosRef = useRef<Map<string, PublicStudio>>(new Map());
   const ownedRef = useRef<Set<string>>(new Set());
@@ -516,6 +523,8 @@ export default function ConstructGame() {
         studioName: saved.studioName,
         walls: saved.walls,
         vrmSrc: saved.vrmSrc ?? current?.vrmSrc ?? "",
+        avatarScale: saved.avatarScale ?? current?.avatarScale ?? 1,
+        avatarYaw: saved.avatarYaw ?? current?.avatarYaw ?? 0,
       };
       studiosRef.current.set(saved.unit, entry);
       setStudioMap((prev) => new Map(prev).set(saved.unit, entry));
@@ -942,6 +951,9 @@ export default function ConstructGame() {
       vrm: VRM | null; // set only for VRM files (drives the procedural walk)
       mixer: THREE.AnimationMixer | null; // set when the model carries clips
       baseY: number; // rest height once scaled + stood on the floor
+      normScale: number; // auto-fit scale that brings it to a normal height
+      ownerScale: number; // owner's size multiplier on top of normScale
+      yawOffset: number; // owner's facing correction, radians
       onLeft: boolean;
       ends: [number, number]; // the two z coordinates it paces between
       targetEnd: 0 | 1;
@@ -991,6 +1003,16 @@ export default function ConstructGame() {
       else disposeObject3D(existing.root);
     };
 
+    // Stand a (freshly scaled) model's feet on the floor, and report the y it
+    // rests at so the walk bob can offset from it.
+    const restOnFloor = (root: THREE.Object3D) => {
+      root.position.y = 0;
+      root.updateMatrixWorld(true);
+      const minY = new THREE.Box3().setFromObject(root).min.y;
+      root.position.y = AVATAR_FLOOR_Y - minY;
+      return root.position.y;
+    };
+
     // Scale a freshly loaded model to a consistent height, stand it on the
     // floor at its unit's anchor, and register it as a pacing avatar.
     const placeAvatar = (
@@ -1000,6 +1022,8 @@ export default function ConstructGame() {
       root: THREE.Object3D,
       vrm: VRM | null,
       clips: THREE.AnimationClip[],
+      ownerScale: number,
+      yawOffset: number,
     ) => {
       if (sceneDisposed) {
         if (vrm) VRMUtils.deepDispose(vrm.scene);
@@ -1011,19 +1035,19 @@ export default function ConstructGame() {
         obj.frustumCulled = false;
       });
 
-      // Normalize scale to a sane height (FBX especially arrives in cm / huge).
+      // Auto-fit to a sane height (FBX especially arrives in cm / huge), then
+      // apply the owner's size multiplier on top.
+      root.position.set(anchor.x, 0, anchor.z);
+      root.rotation.y = idleYawFor(anchor.onLeft);
+      root.scale.setScalar(1);
       root.updateMatrixWorld(true);
       const size = new THREE.Box3().setFromObject(root).getSize(new THREE.Vector3());
       const height = size.y > 1e-3 ? size.y : 1;
-      root.scale.setScalar(AVATAR_TARGET_HEIGHT / height);
+      const normScale = AVATAR_TARGET_HEIGHT / height;
+      root.scale.setScalar(normScale * ownerScale);
 
       // Stand its feet on the floor at the unit anchor, facing the street.
-      root.position.set(anchor.x, 0, anchor.z);
-      root.rotation.y = idleYawFor(anchor.onLeft);
-      root.updateMatrixWorld(true);
-      const minY = new THREE.Box3().setFromObject(root).min.y;
-      root.position.y = AVATAR_FLOOR_Y - minY;
-      const baseY = root.position.y;
+      const baseY = restOnFloor(root);
       root.userData.vrmSrc = src;
       scene.add(root);
 
@@ -1039,6 +1063,9 @@ export default function ConstructGame() {
         vrm,
         mixer,
         baseY,
+        normScale,
+        ownerScale,
+        yawOffset,
         onLeft: anchor.onLeft,
         ends: [anchor.z - AVATAR_PATROL_HALF, anchor.z + AVATAR_PATROL_HALF],
         targetEnd: 0,
@@ -1061,7 +1088,12 @@ export default function ConstructGame() {
       });
     };
 
-    const loadAvatar = (unit: string, src: string) => {
+    const loadAvatar = (
+      unit: string,
+      src: string,
+      ownerScale: number,
+      yawOffset: number,
+    ) => {
       const anchor = avatarAnchors.get(unit);
       if (!anchor) return;
       // an avatar is decoration — a failed load shouldn't break the world
@@ -1069,7 +1101,17 @@ export default function ConstructGame() {
       if (avatarExt(src) === "fbx") {
         fbxLoader.load(
           src,
-          (obj) => placeAvatar(unit, anchor, src, obj, null, obj.animations ?? []),
+          (obj) =>
+            placeAvatar(
+              unit,
+              anchor,
+              src,
+              obj,
+              null,
+              obj.animations ?? [],
+              ownerScale,
+              yawOffset,
+            ),
           undefined,
           onError,
         );
@@ -1081,22 +1123,47 @@ export default function ConstructGame() {
           const vrm = (gltf.userData.vrm as VRM | undefined) ?? null;
           if (vrm) VRMUtils.rotateVRM0(vrm); // VRM0 faces -Z; align it to +Z
           const root = vrm ? vrm.scene : gltf.scene;
-          placeAvatar(unit, anchor, src, root, vrm, gltf.animations ?? []);
+          placeAvatar(
+            unit,
+            anchor,
+            src,
+            root,
+            vrm,
+            gltf.animations ?? [],
+            ownerScale,
+            yawOffset,
+          );
         },
         undefined,
         onError,
       );
     };
 
-    const applyAvatar = (unit: string, src: string) => {
+    const applyAvatar = (
+      unit: string,
+      src: string,
+      avatarScaleDeg: number,
+      avatarYawDeg: number,
+    ) => {
+      const scale = avatarScaleDeg > 0 ? avatarScaleDeg : 1;
+      const yawOffset = THREE.MathUtils.degToRad(avatarYawDeg || 0);
       const current = avatars.get(unit);
       if (!src) {
         removeAvatar(unit);
         return;
       }
-      // Skip a reload if this unit already shows this avatar.
-      if (current && current.root.userData.vrmSrc === src) return;
-      loadAvatar(unit, src);
+      // Same model already loaded: just re-apply the owner's size/facing in
+      // place instead of reloading the whole file.
+      if (current && current.root.userData.vrmSrc === src) {
+        if (current.ownerScale !== scale) {
+          current.ownerScale = scale;
+          current.root.scale.setScalar(current.normScale * scale);
+          current.baseY = restOnFloor(current.root);
+        }
+        current.yawOffset = yawOffset;
+        return;
+      }
+      loadAvatar(unit, src, scale, yawOffset);
     };
 
     // Set a normalized humanoid bone's pose (relative to its neutral rest).
@@ -1159,8 +1226,9 @@ export default function ConstructGame() {
           root.position.y = avatar.baseY;
         }
 
-        // Ease toward the desired facing along the shortest arc.
-        let diff = desiredYaw - root.rotation.y;
+        // Ease toward the desired facing (plus the owner's correction) along
+        // the shortest arc.
+        let diff = desiredYaw + avatar.yawOffset - root.rotation.y;
         diff = Math.atan2(Math.sin(diff), Math.cos(diff));
         root.rotation.y += diff * Math.min(1, delta * 6);
 
@@ -1175,7 +1243,12 @@ export default function ConstructGame() {
         for (const studio of studios) {
           applySign(studio.unit, studio.studioName);
           for (const wall of studio.walls) applyWall(wall, studio.unit);
-          applyAvatar(studio.unit, studio.vrmSrc ?? "");
+          applyAvatar(
+            studio.unit,
+            studio.vrmSrc ?? "",
+            studio.avatarScale ?? 1,
+            studio.avatarYaw ?? 0,
+          );
         }
       },
       applyWall(unit, wall) {
@@ -1184,8 +1257,8 @@ export default function ConstructGame() {
       applySign(unit, name) {
         applySign(unit, name);
       },
-      applyAvatar(unit, vrmSrc) {
-        applyAvatar(unit, vrmSrc);
+      applyAvatar(unit, vrmSrc, avatarScale, avatarYaw) {
+        applyAvatar(unit, vrmSrc, avatarScale, avatarYaw);
       },
     };
     // If studio data already arrived before the scene built, apply it now.

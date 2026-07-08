@@ -34,6 +34,10 @@ export type Studio = {
   // An uploaded VRM avatar that walks around inside the unit ("" = none).
   // Stored as the same-origin serve path: /api/studio/vrm?f=<uuid>.vrm
   vrmSrc: string;
+  // Owner tweaks for the avatar: a size multiplier on top of the auto-fit
+  // height, and a facing offset in degrees (some models face the wrong way).
+  avatarScale: number;
+  avatarYaw: number;
 };
 
 // What a visitor's client sees — no owner identity leaks out.
@@ -42,6 +46,8 @@ export type PublicStudio = {
   studioName: string;
   walls: WallSlot[];
   vrmSrc: string;
+  avatarScale: number;
+  avatarYaw: number;
 };
 
 // The three poster slots every unit gets: back wall + the two side walls.
@@ -97,7 +103,26 @@ function defaultStudio(unit: string): Studio {
     walls: WALL_IDS.map((id) => ({ id, kind: "empty", src: "", title: "" })),
     links: [],
     vrmSrc: "",
+    avatarScale: 1,
+    avatarYaw: 0,
   };
+}
+
+// Owners can grow the avatar but not turn it into a skyscraper — cap the
+// multiplier. (Auto-fit height ≈ 1.7 m, so 3x ≈ 5 m, under the 7 m ceiling.)
+export const AVATAR_SCALE_MIN = 0.5;
+export const AVATAR_SCALE_MAX = 3;
+
+function clampAvatarScale(value: unknown): number {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) return 1;
+  return Math.min(AVATAR_SCALE_MAX, Math.max(AVATAR_SCALE_MIN, n));
+}
+
+function normalizeAvatarYaw(value: unknown): number {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return ((Math.round(n) % 360) + 360) % 360;
 }
 
 // The avatar path is one we minted ourselves in /api/studio/vrm; only accept
@@ -186,6 +211,8 @@ export async function getPublicStudios(): Promise<PublicStudio[]> {
     studioName: s.studioName,
     walls: s.walls,
     vrmSrc: s.vrmSrc ?? "",
+    avatarScale: s.avatarScale ?? 1,
+    avatarYaw: s.avatarYaw ?? 0,
   }));
 }
 
@@ -233,6 +260,8 @@ export async function updateStudio(
     walls?: unknown;
     links?: unknown;
     vrmSrc?: unknown;
+    avatarScale?: unknown;
+    avatarYaw?: unknown;
   },
   by: { userId: string; isAdmin: boolean },
 ): Promise<Studio | { error: string }> {
@@ -262,7 +291,15 @@ export async function updateStudio(
     if (patch.vrmSrc !== undefined) {
       studio.vrmSrc = cleanVrmSrc(patch.vrmSrc);
     }
+    if (patch.avatarScale !== undefined) {
+      studio.avatarScale = clampAvatarScale(patch.avatarScale);
+    }
+    if (patch.avatarYaw !== undefined) {
+      studio.avatarYaw = normalizeAvatarYaw(patch.avatarYaw);
+    }
     studio.vrmSrc = studio.vrmSrc ?? "";
+    studio.avatarScale = studio.avatarScale ?? 1;
+    studio.avatarYaw = studio.avatarYaw ?? 0;
     store[unit] = studio;
     await writeStore(store);
     return studio;

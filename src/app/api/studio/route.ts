@@ -34,6 +34,8 @@ export async function PATCH(request: NextRequest) {
       walls: (body as { walls?: unknown }).walls,
       links: (body as { links?: unknown }).links,
       vrmSrc: (body as { vrmSrc?: unknown }).vrmSrc,
+      avatarScale: (body as { avatarScale?: unknown }).avatarScale,
+      avatarYaw: (body as { avatarYaw?: unknown }).avatarYaw,
     },
     { userId: user.id, isAdmin: user.role === "admin" },
   );

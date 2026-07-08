@@ -12,7 +12,12 @@ export type EditableStudio = {
   walls: WallSlot[];
   links: MerchLink[];
   vrmSrc: string;
+  avatarScale: number;
+  avatarYaw: number;
 };
+
+const AVATAR_SCALE_MIN = 0.5;
+const AVATAR_SCALE_MAX = 3;
 
 const WALL_LABELS: Record<string, string> = {
   center: "Back wall",
@@ -108,6 +113,8 @@ function StudioCard({
           walls: studio.walls,
           links: studio.links,
           vrmSrc: studio.vrmSrc,
+          avatarScale: studio.avatarScale,
+          avatarYaw: studio.avatarYaw,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -205,8 +212,8 @@ function StudioCard({
           store avatar
         </p>
         <AvatarUploader
-          vrmSrc={studio.vrmSrc}
-          onChange={(vrmSrc) => onChange({ ...studio, vrmSrc })}
+          studio={studio}
+          onChange={onChange}
         />
       </div>
 
@@ -233,15 +240,17 @@ function StudioCard({
 // Upload a .vrm avatar for the unit. The file is stored server-side and its
 // serve path saved onto the studio; the Construct loads it and walks it around.
 function AvatarUploader({
-  vrmSrc,
+  studio,
   onChange,
 }: {
-  vrmSrc: string;
-  onChange: (vrmSrc: string) => void;
+  studio: EditableStudio;
+  onChange: (next: EditableStudio) => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
+
+  const vrmSrc = studio.vrmSrc;
 
   const upload = async (file: File) => {
     setUploading(true);
@@ -252,7 +261,7 @@ function AvatarUploader({
       const res = await fetch("/api/studio/vrm", { method: "POST", body: form });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? "Upload failed.");
-      onChange(data.url);
+      onChange({ ...studio, vrmSrc: data.url });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed.");
     } finally {
@@ -287,7 +296,7 @@ function AvatarUploader({
             </span>
             <button
               type="button"
-              onClick={() => onChange("")}
+              onClick={() => onChange({ ...studio, vrmSrc: "" })}
               className="text-xs font-bold uppercase tracking-[0.14em] text-ink-dim transition-colors hover:text-pill-red"
             >
               remove
@@ -312,6 +321,87 @@ function AvatarUploader({
         uploading to apply it.
       </p>
       {error && <p className="mt-2 text-sm text-pill-red">{error}</p>}
+
+      {vrmSrc && (
+        <div className="mt-4 space-y-4 border-t border-line/60 pt-4">
+          {/* Size */}
+          <div>
+            <div className="flex items-center justify-between">
+              <label
+                htmlFor={`scale-${studio.unit}`}
+                className="text-[11px] font-bold uppercase tracking-[0.16em] text-ink-soft"
+              >
+                size
+              </label>
+              <span className="text-xs tabular-nums text-matrix">
+                {studio.avatarScale.toFixed(1)}×
+              </span>
+            </div>
+            <input
+              id={`scale-${studio.unit}`}
+              type="range"
+              min={AVATAR_SCALE_MIN}
+              max={AVATAR_SCALE_MAX}
+              step={0.1}
+              value={studio.avatarScale}
+              onChange={(e) =>
+                onChange({ ...studio, avatarScale: Number(e.target.value) })
+              }
+              className="mt-2 w-full accent-matrix"
+            />
+            <p className="mt-1 text-[11px] text-ink-dim">
+              Bigger or smaller, up to {AVATAR_SCALE_MAX}× (avatars are
+              auto-fit to a normal height first).
+            </p>
+          </div>
+
+          {/* Facing */}
+          <div>
+            <div className="flex items-center justify-between">
+              <label
+                htmlFor={`yaw-${studio.unit}`}
+                className="text-[11px] font-bold uppercase tracking-[0.16em] text-ink-soft"
+              >
+                facing
+              </label>
+              <span className="text-xs tabular-nums text-matrix">
+                {studio.avatarYaw}°
+              </span>
+            </div>
+            <input
+              id={`yaw-${studio.unit}`}
+              type="range"
+              min={0}
+              max={345}
+              step={15}
+              value={studio.avatarYaw}
+              onChange={(e) =>
+                onChange({ ...studio, avatarYaw: Number(e.target.value) })
+              }
+              className="mt-2 w-full accent-matrix"
+            />
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {[0, 90, 180, 270].map((deg) => (
+                <button
+                  key={deg}
+                  type="button"
+                  onClick={() => onChange({ ...studio, avatarYaw: deg })}
+                  className={`rounded-md border px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] transition-colors ${
+                    studio.avatarYaw === deg
+                      ? "border-matrix text-matrix"
+                      : "border-line text-ink-dim hover:text-ink-soft"
+                  }`}
+                >
+                  {deg}°
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-[11px] text-ink-dim">
+              If your avatar walks backwards, turn it 180°.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
