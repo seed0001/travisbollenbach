@@ -859,7 +859,7 @@ export default function GameLobbyPage() {
               </div>
             </div>
 
-            <div className="hud-glass pointer-events-auto fixed right-3 top-[max(0.75rem,env(safe-area-inset-top))] w-[5.75rem] rounded-full p-1.5 shadow-xl shadow-black/30 sm:static sm:w-full sm:max-w-sm sm:rounded-md sm:p-4">
+            <div className="hud-glass pointer-events-auto fixed right-[max(0.75rem,env(safe-area-inset-right))] top-[max(0.75rem,env(safe-area-inset-top))] w-[5.75rem] rounded-full p-1.5 shadow-xl shadow-black/30 sm:static sm:w-full sm:max-w-sm sm:rounded-md sm:p-4">
               <div className="flex items-center justify-between gap-3">
                 <div className="hidden sm:block">
                   <p className="text-xs font-black uppercase tracking-[0.2em] text-[#f5d06f]">
@@ -906,7 +906,7 @@ export default function GameLobbyPage() {
           </div>
 
           {panelOpen && (
-            <div className="hud-glass pointer-events-auto absolute inset-x-3 bottom-44 z-20 rounded-md p-3 shadow-2xl shadow-black/40 sm:hidden">
+            <div className="mobile-door-sheet hud-glass pointer-events-auto absolute inset-x-3 bottom-[calc(max(0.75rem,env(safe-area-inset-bottom))+10rem)] z-20 rounded-md p-3 shadow-2xl shadow-black/40 sm:hidden">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-[#89d8c2]">
@@ -932,9 +932,9 @@ export default function GameLobbyPage() {
             </div>
           )}
 
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex items-end justify-between gap-3 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <div className="pointer-events-none absolute inset-0 z-10">
             <div
-              className="hud-glass pointer-events-auto relative h-36 w-36 shrink-0 rounded-full shadow-xl shadow-black/30 sm:hidden"
+              className="hud-glass thumb-zone thumb-zone-left pointer-events-auto relative rounded-full shadow-xl shadow-black/30 sm:hidden"
               data-control
               onPointerDown={(event) => {
                 event.currentTarget.setPointerCapture(event.pointerId);
@@ -964,7 +964,7 @@ export default function GameLobbyPage() {
                 }}
               />
             </div>
-            <div className="flex flex-col items-end gap-3 sm:hidden">
+            <div className="thumb-zone-stack pointer-events-none sm:hidden">
               <button
                 type="button"
                 onClick={enableMotionLook}
@@ -975,7 +975,7 @@ export default function GameLobbyPage() {
                 Motion
               </button>
               <div
-                className="hud-glass pointer-events-auto relative h-36 w-36 shrink-0 rounded-full shadow-xl shadow-black/30"
+                className="hud-glass thumb-zone pointer-events-auto relative rounded-full shadow-xl shadow-black/30"
                 data-control
                 onPointerDown={(event) => {
                   event.currentTarget.setPointerCapture(event.pointerId);
@@ -1006,7 +1006,7 @@ export default function GameLobbyPage() {
                 />
               </div>
             </div>
-            <div className="hud-glass hidden rounded-md px-4 py-3 text-xs font-bold uppercase tracking-[0.14em] text-white/70 shadow-xl shadow-black/30 sm:block">
+            <div className="hud-glass hidden rounded-md px-4 py-3 text-xs font-bold uppercase tracking-[0.14em] text-white/70 shadow-xl shadow-black/30 sm:absolute sm:bottom-4 sm:left-4 sm:block">
               First-person lobby
             </div>
             <button
@@ -1019,7 +1019,7 @@ export default function GameLobbyPage() {
                 disconnectVoice();
                 setIsPlaying(false);
               }}
-              className="hud-glass pointer-events-auto min-h-11 rounded-md px-4 text-xs font-black uppercase tracking-[0.14em] text-white/78 shadow-xl shadow-black/30 transition hover:text-white"
+              className="hud-glass pointer-events-auto absolute bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 min-h-11 -translate-x-1/2 rounded-md px-4 text-xs font-black uppercase tracking-[0.14em] text-white/78 shadow-xl shadow-black/30 transition hover:text-white sm:bottom-4 sm:left-auto sm:right-4 sm:translate-x-0"
             >
               Exit lobby
             </button>

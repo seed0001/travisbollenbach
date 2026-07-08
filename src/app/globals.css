@@ -73,6 +73,56 @@ body:has(.immersive-lobby) {
   backdrop-filter: blur(18px) saturate(1.25);
 }
 
+.thumb-zone {
+  width: clamp(6.5rem, 28vmin, 9rem);
+  height: clamp(6.5rem, 28vmin, 9rem);
+}
+
+.thumb-zone-left {
+  position: absolute;
+  left: max(0.75rem, env(safe-area-inset-left));
+  bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+
+.thumb-zone-stack {
+  position: absolute;
+  right: max(0.75rem, env(safe-area-inset-right));
+  bottom: max(0.75rem, env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.6rem;
+}
+
+@media (orientation: landscape) and (max-height: 520px) {
+  .thumb-zone {
+    width: clamp(5.5rem, 24vmin, 7.75rem);
+    height: clamp(5.5rem, 24vmin, 7.75rem);
+  }
+
+  .thumb-zone-left,
+  .thumb-zone-stack {
+    bottom: max(0.45rem, env(safe-area-inset-bottom));
+  }
+
+  .thumb-zone-left {
+    left: max(0.45rem, env(safe-area-inset-left));
+  }
+
+  .thumb-zone-stack {
+    right: max(0.45rem, env(safe-area-inset-right));
+    gap: 0.4rem;
+  }
+
+  .mobile-door-sheet {
+    left: 18vw;
+    right: 18vw;
+    bottom: max(0.45rem, env(safe-area-inset-bottom));
+    max-height: calc(100dvh - 1rem);
+    overflow: auto;
+  }
+}
+
 .lobby-world::before,
 .lobby-world::after {
   content: "";
