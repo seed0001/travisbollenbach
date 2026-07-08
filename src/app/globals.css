@@ -448,3 +448,93 @@ body {
 .stage-fixed canvas {
   display: block;
 }
+
+/* --- Temporary coming-soon page --------------------------------------------- */
+
+.coming-soon {
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Helvetica, Arial,
+    sans-serif;
+  color-scheme: dark;
+}
+
+.coming-gradient {
+  background:
+    radial-gradient(circle at 18% 20%, rgba(103, 232, 249, 0.25), transparent 28%),
+    radial-gradient(circle at 78% 18%, rgba(251, 113, 133, 0.18), transparent 26%),
+    radial-gradient(circle at 65% 78%, rgba(167, 139, 250, 0.22), transparent 34%),
+    linear-gradient(135deg, #11121a 0%, #171827 42%, #101522 100%);
+  animation: coming-pan 18s ease-in-out infinite alternate;
+}
+
+.coming-orb {
+  animation: coming-float 8s ease-in-out infinite;
+  cursor: pointer;
+}
+
+.coming-orb-two {
+  animation-delay: -3.5s;
+}
+
+.coming-particle {
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow:
+    0 0 16px rgba(125, 211, 252, 0.55),
+    0 0 34px rgba(216, 180, 254, 0.35);
+  animation: coming-drift linear infinite;
+}
+
+.coming-spark {
+  background: #ffffff;
+  box-shadow:
+    0 0 16px rgba(103, 232, 249, 0.9),
+    0 0 28px rgba(244, 114, 182, 0.55);
+  animation: coming-spark 700ms ease-out forwards;
+}
+
+@keyframes coming-pan {
+  from {
+    transform: scale(1) translate3d(0, 0, 0);
+    filter: hue-rotate(0deg);
+  }
+  to {
+    transform: scale(1.06) translate3d(-1.5%, 1.5%, 0);
+    filter: hue-rotate(18deg);
+  }
+}
+
+@keyframes coming-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(18px, -24px, 0) scale(1.08);
+  }
+}
+
+@keyframes coming-drift {
+  from {
+    transform: translate3d(0, 0, 0) scale(0.75);
+    opacity: 0.2;
+  }
+  35% {
+    opacity: 0.9;
+  }
+  to {
+    transform: translate3d(32px, -72px, 0) scale(1.35);
+    opacity: 0.08;
+  }
+}
+
+@keyframes coming-spark {
+  from {
+    transform: translate3d(-50%, -50%, 0) scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: translate3d(calc(-50% + var(--spark-x)), calc(-50% + var(--spark-y)), 0)
+      scale(0);
+    opacity: 0;
+  }
+}
