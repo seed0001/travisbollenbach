@@ -167,161 +167,6 @@ function makeGlowTexture() {
   return new THREE.CanvasTexture(canvas);
 }
 
-// --- Procedural ambience (no audio files needed) ---------------------------
-
-type Ambience = {
-  setMuted(m: boolean): void;
-  dispose(): void;
-};
-
-function createAmbience(startMuted: boolean): Ambience | null {
-  try {
-    const ctx = new AudioContext();
-    const master = ctx.createGain();
-    master.gain.value = 0;
-    master.connect(ctx.destination);
-    const level = 0.5;
-    if (!startMuted) {
-      master.gain.linearRampToValueAtTime(level, ctx.currentTime + 2.5);
-    }
-
-    // An inviting outdoor bed that follows the visitor's local time of day:
-    // birdsong while the sun's up, a cricket chorus after dark. No drone, no
-    // wind, and nothing that swells when you walk up to a building.
-    const hour = new Date().getHours();
-    const isDay = hour >= 6 && hour < 19;
-
-    let closed = false;
-    const timers: ReturnType<typeof setTimeout>[] = [];
-
-    if (isDay) {
-      const birds = ctx.createGain();
-      birds.gain.value = 1;
-      birds.connect(master);
-
-      // A single bird "tweet": a quick pitch bend with a soft pluck envelope.
-      const tweet = (t0: number, freq: number, panX: number, gain: number) => {
-        const osc = ctx.createOscillator();
-        osc.type = "sine";
-        const g = ctx.createGain();
-        const panner = ctx.createStereoPanner();
-        panner.pan.value = panX;
-        osc.connect(g);
-        g.connect(panner);
-        panner.connect(birds);
-        osc.frequency.setValueAtTime(freq * 0.86, t0);
-        osc.frequency.exponentialRampToValueAtTime(freq * 1.12, t0 + 0.05);
-        osc.frequency.exponentialRampToValueAtTime(freq * 0.95, t0 + 0.13);
-        g.gain.setValueAtTime(0.0001, t0);
-        g.gain.exponentialRampToValueAtTime(gain, t0 + 0.012);
-        g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.17);
-        osc.start(t0);
-        osc.stop(t0 + 0.22);
-      };
-
-      // A phrase is a little run of one to four tweets, then a pause. Nearer
-      // birds are louder and more centered; far ones softer and wider.
-      const phrase = () => {
-        if (closed) return;
-        const notes = 1 + Math.floor(Math.random() * 4);
-        const base = 2600 + Math.random() * 1700;
-        const near = Math.random() < 0.6;
-        const panX = (Math.random() - 0.5) * (near ? 0.7 : 1.4);
-        const gain = near ? 0.13 : 0.06;
-        for (let i = 0; i < notes; i += 1) {
-          tweet(
-            ctx.currentTime + i * (0.1 + Math.random() * 0.06),
-            base * (1 + (Math.random() - 0.5) * 0.12),
-            panX,
-            gain,
-          );
-        }
-        timers.push(setTimeout(phrase, 700 + Math.random() * 2800));
-      };
-      phrase();
-    } else {
-      // Night: one looping noise source shaped into a few cricket voices.
-      const noiseBuffer = ctx.createBuffer(
-        1,
-        ctx.sampleRate * 2,
-        ctx.sampleRate,
-      );
-      const channel = noiseBuffer.getChannelData(0);
-      for (let i = 0; i < channel.length; i += 1) {
-        channel[i] = Math.random() * 2 - 1;
-      }
-      const noise = ctx.createBufferSource();
-      noise.buffer = noiseBuffer;
-      noise.loop = true;
-
-      const cricket = (
-        center: number,
-        q: number,
-        trillRate: number,
-        rhythmRate: number,
-        panX: number,
-        voiceLevel: number,
-      ) => {
-        const band = ctx.createBiquadFilter();
-        band.type = "bandpass";
-        band.frequency.value = center;
-        band.Q.value = q;
-        noise.connect(band);
-
-        // Fast trill gates the chirp on and off (the "chirr").
-        const vca = ctx.createGain();
-        vca.gain.value = 0.5;
-        const trill = ctx.createOscillator();
-        trill.type = "triangle";
-        trill.frequency.value = trillRate;
-        const trillDepth = ctx.createGain();
-        trillDepth.gain.value = 0.5;
-        trill.connect(trillDepth);
-        trillDepth.connect(vca.gain);
-
-        // Slow rhythm swells the whole voice, like crickets chirping in waves.
-        const out = ctx.createGain();
-        out.gain.value = voiceLevel;
-        const rhythm = ctx.createOscillator();
-        rhythm.type = "sine";
-        rhythm.frequency.value = rhythmRate;
-        const rhythmDepth = ctx.createGain();
-        rhythmDepth.gain.value = voiceLevel * 0.6;
-        rhythm.connect(rhythmDepth);
-        rhythmDepth.connect(out.gain);
-
-        const panner = ctx.createStereoPanner();
-        panner.pan.value = panX;
-
-        band.connect(vca);
-        vca.connect(out);
-        out.connect(panner);
-        panner.connect(master);
-        trill.start();
-        rhythm.start();
-      };
-
-      cricket(4200, 20, 52, 1.8, -0.4, 1.1);
-      cricket(4600, 22, 47, 2.1, 0.4, 0.9);
-      cricket(3900, 18, 58, 1.5, 0.0, 0.7);
-      noise.start();
-    }
-
-    return {
-      setMuted(m: boolean) {
-        master.gain.setTargetAtTime(m ? 0 : level, ctx.currentTime, 0.15);
-      },
-      dispose() {
-        closed = true;
-        timers.forEach((t) => clearTimeout(t));
-        ctx.close().catch(() => {});
-      },
-    };
-  } catch {
-    return null;
-  }
-}
-
 // --- Device-orientation camera quaternion (AR-style look) -------------------
 
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
@@ -347,8 +192,6 @@ export default function ConstructGame() {
   const hostRef = useRef<HTMLDivElement>(null);
   const lockFnRef = useRef<(() => void) | null>(null);
   const modeRef = useRef<ControlMode>("touch");
-  const ambienceRef = useRef<Ambience | null>(null);
-  const mutedRef = useRef(false);
   const lobbyRef = useRef<LobbyClient | null>(null);
   const sceneApiRef = useRef<SceneApi | null>(null);
   const sendMoveRef = useRef<
@@ -363,7 +206,6 @@ export default function ConstructGame() {
   const [locked, setLocked] = useState(false);
   const [entered, setEntered] = useState(false);
   const [mode, setMode] = useState<ControlMode>("touch");
-  const [muted, setMuted] = useState(false);
   const [nearStore, setNearStore] = useState<number>(-1);
   const [name, setName] = useState("");
   const [color, setColor] = useState(ORB_COLORS[0]);
@@ -421,19 +263,6 @@ export default function ConstructGame() {
     return () => window.removeEventListener("keydown", onKey);
   }, [nearStore, router]);
 
-  const startAudio = () => {
-    if (!ambienceRef.current) {
-      ambienceRef.current = createAmbience(mutedRef.current);
-    }
-  };
-
-  const toggleMute = () => {
-    const next = !mutedRef.current;
-    mutedRef.current = next;
-    setMuted(next);
-    ambienceRef.current?.setMuted(next);
-  };
-
   const toggleMic = async () => {
     const client = lobbyRef.current;
     if (!client) return;
@@ -487,13 +316,11 @@ export default function ConstructGame() {
     modeRef.current = nextMode;
     setMode(nextMode);
     ensureName();
-    startAudio();
     setEntered(true);
   };
 
   const enterDesktop = () => {
     ensureName();
-    startAudio();
     setEntered(true);
     lockFnRef.current?.();
   };
@@ -1115,8 +942,6 @@ export default function ConstructGame() {
       disposables.forEach((resource) => resource.dispose());
       renderer.dispose();
       renderer.domElement.remove();
-      ambienceRef.current?.dispose();
-      ambienceRef.current = null;
     };
   }, []);
 
@@ -1271,13 +1096,6 @@ export default function ConstructGame() {
                 </button>
               </>
             )}
-            <button
-              type="button"
-              onClick={toggleMute}
-              className="pointer-events-auto rounded-md border border-white/18 bg-white/[0.055] px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-[#dbe5ff] transition-colors hover:bg-[#dbe5ff] hover:text-[#0b1020]"
-            >
-              {muted ? "sound off" : "sound on"}
-            </button>
             <Link
               href="/rabbit-hole"
               className="pointer-events-auto rounded-md border border-white/18 bg-white/[0.055] px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-[#dbe5ff] transition-colors hover:bg-[#dbe5ff] hover:text-[#0b1020]"
