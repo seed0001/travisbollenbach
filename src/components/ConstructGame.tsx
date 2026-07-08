@@ -10,7 +10,7 @@ import {
   type FormEvent,
 } from "react";
 import * as THREE from "three";
-import { storefronts, type Storefront } from "@/lib/content";
+import { storefronts } from "@/lib/content";
 import {
   LobbyClient,
   type ChatMessage,
@@ -52,7 +52,7 @@ function subscribeToPointerType(callback: () => void) {
 }
 
 // The lit sign band over each storefront: unit number + name in its accent.
-function makeSignTexture(store: Storefront) {
+function makeSignTexture(number: string, name: string, accent: string) {
   const canvas = document.createElement("canvas");
   canvas.width = 1024;
   canvas.height = 160;
@@ -60,21 +60,21 @@ function makeSignTexture(store: Storefront) {
   if (ctx) {
     ctx.fillStyle = "#0b1020";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = store.accent;
+    ctx.fillStyle = accent;
     ctx.fillRect(0, 0, canvas.width, 5);
     ctx.fillRect(0, canvas.height - 5, canvas.width, 5);
 
     ctx.textBaseline = "middle";
-    ctx.shadowColor = store.accent;
+    ctx.shadowColor = accent;
     ctx.shadowBlur = 22;
     ctx.textAlign = "left";
     ctx.font = "800 96px Arial";
-    ctx.fillStyle = store.accent;
-    ctx.fillText(store.number, 44, canvas.height / 2 + 4);
+    ctx.fillStyle = accent;
+    ctx.fillText(number, 44, canvas.height / 2 + 4);
 
     ctx.font = "700 74px Arial";
     ctx.fillStyle = "#dbe5ff";
-    ctx.fillText(store.name.toUpperCase(), 210, canvas.height / 2 + 2);
+    ctx.fillText(name.toUpperCase(), 210, canvas.height / 2 + 2);
   }
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
@@ -274,6 +274,7 @@ export default function ConstructGame() {
   const wallApiRef = useRef<{
     applyStudios: (studios: PublicStudio[]) => void;
     applyWall: (unit: string, wall: WallSlot) => void;
+    applySign: (unit: string, name: string) => void;
   } | null>(null);
   const studiosRef = useRef<Map<string, PublicStudio>>(new Map());
   const ownedRef = useRef<Set<string>>(new Set());
@@ -498,6 +499,7 @@ export default function ConstructGame() {
       };
       studiosRef.current.set(saved.unit, entry);
       setStudioMap((prev) => new Map(prev).set(saved.unit, entry));
+      wallApiRef.current?.applySign(saved.unit, saved.studioName);
       for (const w of saved.walls) wallApiRef.current?.applyWall(saved.unit, w);
       setEditor(null);
     } catch (err) {
@@ -679,6 +681,11 @@ export default function ConstructGame() {
       ownTex: THREE.Texture | null; // texture we created for this slot (to dispose)
     };
     const posters = new Map<string, Poster>();
+    // Each unit's lit sign, so an owner's name change can be re-rendered onto it.
+    const signs = new Map<
+      string,
+      { material: THREE.MeshBasicMaterial; ownTex: THREE.Texture }
+    >();
     const posterMeshes: THREE.Mesh[] = [];
     const textureLoader = new THREE.TextureLoader();
     let sceneDisposed = false;
@@ -743,6 +750,19 @@ export default function ConstructGame() {
       );
     };
 
+    // Re-render a unit's awning sign with the owner's chosen studio name,
+    // falling back to the static content name when none is set.
+    const applySign = (unit: string, name: string) => {
+      const entry = signs.get(unit);
+      const store = storefronts.find((s) => s.number === unit);
+      if (!entry || !store) return;
+      const tex = makeSignTexture(store.number, name || store.name, store.accent);
+      entry.material.map = tex;
+      entry.material.needsUpdate = true;
+      entry.ownTex.dispose();
+      entry.ownTex = tex;
+    };
+
     const storePositions: THREE.Vector3[] = [];
     storefronts.forEach((store, i) => {
       const onLeft = i < 5;
@@ -799,8 +819,9 @@ export default function ConstructGame() {
       sill.position.set(STORE_D / 2, 0.05, 0);
       group.add(sill);
 
-      // Lit sign on the awning, facing the street
-      const signTex = makeSignTexture(store);
+      // Lit sign on the awning, facing the street. Registered so the owner's
+      // studio name can replace the static content name once studios load.
+      const signTex = makeSignTexture(store.number, store.name, store.accent);
       const signMat = new THREE.MeshBasicMaterial({
         map: signTex,
         transparent: true,
@@ -810,6 +831,7 @@ export default function ConstructGame() {
       sign.rotation.y = Math.PI / 2;
       group.add(sign);
       disposables.push(signTex, signMat);
+      signs.set(store.number, { material: signMat, ownTex: signTex });
 
       // Three customizable poster walls: the back wall and the two sides.
       const posterSlots: {
@@ -876,11 +898,15 @@ export default function ConstructGame() {
     wallApiRef.current = {
       applyStudios(studios) {
         for (const studio of studios) {
+          applySign(studio.unit, studio.studioName);
           for (const wall of studio.walls) applyWall(wall, studio.unit);
         }
       },
       applyWall(unit, wall) {
         applyWall(wall, unit);
+      },
+      applySign(unit, name) {
+        applySign(unit, name);
       },
     };
     // If studio data already arrived before the scene built, apply it now.

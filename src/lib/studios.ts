@@ -87,7 +87,7 @@ function defaultStudio(unit: string): Studio {
     unit,
     ownerUserId: null,
     ownerEmail: null,
-    studioName: front && front.status !== "vacant" ? front.name : `Unit ${unit}`,
+    studioName: front ? front.name : `Unit ${unit}`,
     walls: WALL_IDS.map((id) => ({ id, kind: "empty", src: "", title: "" })),
     links: [],
   };
