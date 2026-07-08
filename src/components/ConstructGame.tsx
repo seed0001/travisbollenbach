@@ -122,6 +122,11 @@ function wallImageUrl(wall: WallSlot): string | null {
       `https://img.youtube.com/vi/${id}/hqdefault.jpg`,
     )}`;
   }
+  if (wall.kind === "website") {
+    if (!/^https?:\/\//i.test(wall.src)) return null;
+    // A rendered snapshot of the site's front page, served as an image.
+    return `/api/shot?url=${encodeURIComponent(wall.src)}`;
+  }
   return null;
 }
 
@@ -706,26 +711,32 @@ export default function ConstructGame() {
         }
       };
 
-      if (wall.kind === "empty") {
+      const setTex = (tex: THREE.Texture) => {
         clearOwn();
-        poster.material.map = blankPosterTex;
-        poster.material.needsUpdate = true;
-        return;
-      }
-      if (wall.kind === "website") {
-        clearOwn();
-        const tex = makeWebsitePosterTexture(wall.src, wall.title);
         poster.ownTex = tex;
         poster.material.map = tex;
         poster.material.needsUpdate = true;
-        return;
-      }
-      // image or youtube: show blank while the bitmap loads
-      const url = wallImageUrl(wall);
-      if (!url) {
+      };
+      const setBlank = () => {
         clearOwn();
         poster.material.map = blankPosterTex;
         poster.material.needsUpdate = true;
+      };
+      // If a website screenshot can't be fetched, fall back to a poster naming
+      // the site so the wall still reads as that destination.
+      const setWebsitePoster = () =>
+        setTex(makeWebsitePosterTexture(wall.src, wall.title));
+
+      if (wall.kind === "empty") {
+        setBlank();
+        return;
+      }
+
+      // image / youtube thumbnail / website screenshot all load as a bitmap
+      const url = wallImageUrl(wall);
+      if (!url) {
+        if (wall.kind === "website") setWebsitePoster();
+        else setBlank();
         return;
       }
       textureLoader.load(
@@ -736,16 +747,12 @@ export default function ConstructGame() {
             return;
           }
           tex.colorSpace = THREE.SRGBColorSpace;
-          clearOwn();
-          poster.ownTex = tex;
-          poster.material.map = tex;
-          poster.material.needsUpdate = true;
+          setTex(tex);
         },
         undefined,
         () => {
-          clearOwn();
-          poster.material.map = blankPosterTex;
-          poster.material.needsUpdate = true;
+          if (wall.kind === "website") setWebsitePoster();
+          else setBlank();
         },
       );
     };

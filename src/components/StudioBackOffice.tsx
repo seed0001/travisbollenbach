@@ -347,6 +347,19 @@ function WallEditor({
                 </p>
               )
             ))}
+          {wall.kind === "website" && /^https?:\/\//i.test(wall.src) && (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`/api/shot?url=${encodeURIComponent(wall.src)}`}
+                alt=""
+                className="mt-1 max-h-40 rounded-md border border-line object-contain"
+              />
+              <p className="text-[11px] text-ink-dim">
+                A snapshot of this site&apos;s front page hangs on the wall.
+              </p>
+            </>
+          )}
         </div>
       )}
     </div>
