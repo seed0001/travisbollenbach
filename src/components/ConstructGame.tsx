@@ -1,9 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type FormEvent,
+} from "react";
 import * as THREE from "three";
 import { monoliths } from "@/lib/content";
+import {
+  LobbyClient,
+  type ChatMessage,
+  type LobbyStatus,
+  type PeerInfo,
+} from "@/lib/lobby";
 
 const EYE_HEIGHT = 2.2;
 const MOVE_SPEED = 12;
@@ -11,7 +23,26 @@ const BOUNDS = { x: 70, zMin: -140, zMax: 20 };
 const REVEAL_RADIUS = 10;
 const RAIN_COUNT = 2200;
 
+const ORB_COLORS = [
+  "#8fb3ff",
+  "#66e0ff",
+  "#7dffa8",
+  "#f0c36a",
+  "#ff8fd6",
+  "#ff6b6b",
+  "#b28dff",
+  "#e8ecff",
+];
+
 type ControlMode = "touch" | "gyro";
+
+type SceneApi = {
+  upsertPeer(peer: PeerInfo): void;
+  movePeer(id: string, x: number, z: number): void;
+  removePeer(id: string): void;
+  recolorPeer(id: string, color: string): void;
+  clearPeers(): void;
+};
 
 function subscribeToPointerType(callback: () => void) {
   const query = window.matchMedia("(pointer: coarse)");
@@ -36,6 +67,41 @@ function makeLabelTexture(text: string) {
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
+}
+
+function makePeerLabelTexture(text: string) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 96;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    ctx.font = "700 40px Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.shadowColor = "#0b1020";
+    ctx.shadowBlur = 12;
+    ctx.fillStyle = "#e8ecff";
+    ctx.fillText(text, 256, 48);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+function makeGlowTexture() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+    gradient.addColorStop(0, "rgba(255,255,255,0.85)");
+    gradient.addColorStop(0.35, "rgba(255,255,255,0.28)");
+    gradient.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 128, 128);
+  }
+  return new THREE.CanvasTexture(canvas);
 }
 
 // --- Procedural ambience (no audio files needed) ---------------------------
@@ -161,17 +227,58 @@ export default function ConstructGame() {
   const modeRef = useRef<ControlMode>("touch");
   const ambienceRef = useRef<Ambience | null>(null);
   const mutedRef = useRef(false);
+  const lobbyRef = useRef<LobbyClient | null>(null);
+  const sceneApiRef = useRef<SceneApi | null>(null);
+  const sendMoveRef = useRef<
+    ((x: number, z: number, yaw: number) => void) | null
+  >(null);
+  const chatInputRef = useRef<HTMLInputElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+  const nameRef = useRef("");
+  const colorRef = useRef(ORB_COLORS[0]);
 
   const [locked, setLocked] = useState(false);
   const [entered, setEntered] = useState(false);
   const [mode, setMode] = useState<ControlMode>("touch");
   const [muted, setMuted] = useState(false);
   const [nearMonolith, setNearMonolith] = useState<number>(-1);
+  const [name, setName] = useState("");
+  const [color, setColor] = useState(ORB_COLORS[0]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [chatText, setChatText] = useState("");
+  const [chatOpen, setChatOpen] = useState(false);
+  const [micOn, setMicOn] = useState(false);
+  const [online, setOnline] = useState(1);
+  const [lobbyStatus, setLobbyStatus] = useState<LobbyStatus>("connecting");
   const isTouch = useSyncExternalStore(
     subscribeToPointerType,
     () => window.matchMedia("(pointer: coarse)").matches,
     () => false,
   );
+
+  // saved identity + default chat visibility (desktop open, mobile closed);
+  // localStorage is client-only, so this can't be a state initializer
+  useEffect(() => {
+    const savedName = localStorage.getItem("construct-name");
+    const savedColor = localStorage.getItem("construct-color");
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setName(savedName || `guest-${Math.floor(1000 + Math.random() * 9000)}`);
+    if (savedColor && ORB_COLORS.includes(savedColor)) setColor(savedColor);
+    setChatOpen(!window.matchMedia("(pointer: coarse)").matches);
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, []);
+
+  useEffect(() => {
+    nameRef.current = name;
+  }, [name]);
+
+  useEffect(() => {
+    colorRef.current = color;
+  }, [color]);
+
+  useEffect(() => {
+    chatScrollRef.current?.scrollTo({ top: 999999 });
+  }, [messages]);
 
   const startAudio = () => {
     if (!ambienceRef.current) {
@@ -184,6 +291,38 @@ export default function ConstructGame() {
     mutedRef.current = next;
     setMuted(next);
     ambienceRef.current?.setMuted(next);
+  };
+
+  const toggleMic = async () => {
+    const client = lobbyRef.current;
+    if (!client) return;
+    if (client.micEnabled) {
+      client.disableMic();
+      setMicOn(false);
+    } else {
+      setMicOn(await client.enableMic());
+    }
+  };
+
+  const pickColor = (value: string) => {
+    setColor(value);
+    localStorage.setItem("construct-color", value);
+    lobbyRef.current?.setColor(value);
+  };
+
+  const ensureName = () => {
+    const finalName =
+      name.trim() || `guest-${Math.floor(1000 + Math.random() * 9000)}`;
+    if (finalName !== name) setName(finalName);
+    nameRef.current = finalName;
+    localStorage.setItem("construct-name", finalName);
+  };
+
+  const submitChat = (event: FormEvent) => {
+    event.preventDefault();
+    const text = chatText.trim();
+    if (text) lobbyRef.current?.sendChat(text);
+    setChatText("");
   };
 
   const enterTouch = async (wantGyro: boolean) => {
@@ -206,8 +345,16 @@ export default function ConstructGame() {
     }
     modeRef.current = nextMode;
     setMode(nextMode);
+    ensureName();
     startAudio();
     setEntered(true);
+  };
+
+  const enterDesktop = () => {
+    ensureName();
+    startAudio();
+    setEntered(true);
+    lockFnRef.current?.();
   };
 
   useEffect(() => {
@@ -330,6 +477,90 @@ export default function ConstructGame() {
     scene.add(rain);
     disposables.push(rainGeometry, rainMaterial);
 
+    // --- Other visitors: glowing orbs -----------------------------------------
+    type RemoteOrb = {
+      group: THREE.Group;
+      material: THREE.MeshBasicMaterial;
+      glowMaterial: THREE.SpriteMaterial;
+      labelTexture: THREE.CanvasTexture;
+      labelMaterial: THREE.SpriteMaterial;
+      target: THREE.Vector2;
+      phase: number;
+    };
+    const remoteOrbs = new Map<string, RemoteOrb>();
+    const orbGeometry = new THREE.SphereGeometry(0.5, 24, 24);
+    const glowTexture = makeGlowTexture();
+    disposables.push(orbGeometry, glowTexture);
+
+    const removeOrb = (id: string) => {
+      const orb = remoteOrbs.get(id);
+      if (!orb) return;
+      remoteOrbs.delete(id);
+      scene.remove(orb.group);
+      orb.material.dispose();
+      orb.glowMaterial.dispose();
+      orb.labelTexture.dispose();
+      orb.labelMaterial.dispose();
+    };
+
+    sceneApiRef.current = {
+      upsertPeer(peer) {
+        removeOrb(peer.id);
+        const group = new THREE.Group();
+        group.position.set(peer.x, 1.6, peer.z);
+
+        const material = new THREE.MeshBasicMaterial({ color: peer.color });
+        group.add(new THREE.Mesh(orbGeometry, material));
+
+        const glowMaterial = new THREE.SpriteMaterial({
+          map: glowTexture,
+          color: peer.color,
+          transparent: true,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          opacity: 0.9,
+        });
+        const glow = new THREE.Sprite(glowMaterial);
+        glow.scale.set(3.2, 3.2, 1);
+        group.add(glow);
+
+        const labelTexture = makePeerLabelTexture(peer.name);
+        const labelMaterial = new THREE.SpriteMaterial({
+          map: labelTexture,
+          transparent: true,
+          depthWrite: false,
+        });
+        const label = new THREE.Sprite(labelMaterial);
+        label.scale.set(4.5, 0.85, 1);
+        label.position.y = 1.2;
+        group.add(label);
+
+        scene.add(group);
+        remoteOrbs.set(peer.id, {
+          group,
+          material,
+          glowMaterial,
+          labelTexture,
+          labelMaterial,
+          target: new THREE.Vector2(peer.x, peer.z),
+          phase: Math.random() * Math.PI * 2,
+        });
+      },
+      movePeer(id, x, z) {
+        remoteOrbs.get(id)?.target.set(x, z);
+      },
+      removePeer: removeOrb,
+      recolorPeer(id, value) {
+        const orb = remoteOrbs.get(id);
+        if (!orb) return;
+        orb.material.color.set(value);
+        orb.glowMaterial.color.set(value);
+      },
+      clearPeers() {
+        for (const id of [...remoteOrbs.keys()]) removeOrb(id);
+      },
+    };
+
     // --- Controls state ---------------------------------------------------------
     const keys = new Set<string>();
     let yaw = 0; // spawn facing down the -z corridor of monoliths
@@ -356,10 +587,28 @@ export default function ConstructGame() {
       );
     };
 
+    const isTyping = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      return (
+        !!target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")
+      );
+    };
+
     const onKeyDown = (event: KeyboardEvent) => {
+      if (isTyping(event)) return;
+      if (event.code === "Enter" || event.code === "NumpadEnter") {
+        // jump to the group chat: free the cursor, open + focus the box
+        if (document.pointerLockElement === renderer.domElement) {
+          document.exitPointerLock();
+        }
+        setChatOpen(true);
+        window.setTimeout(() => chatInputRef.current?.focus(), 50);
+        return;
+      }
       keys.add(event.code);
     };
     const onKeyUp = (event: KeyboardEvent) => {
+      if (isTyping(event)) return;
       keys.delete(event.code);
     };
 
@@ -474,6 +723,9 @@ export default function ConstructGame() {
     const velocity = new THREE.Vector3();
     let currentNear = -1;
     let animationFrame = 0;
+    let lastBroadcast = 0;
+    const lastSent = new THREE.Vector2(Infinity, Infinity);
+    let lastSentYaw = 0;
 
     const animate = () => {
       animationFrame = window.requestAnimationFrame(animate);
@@ -550,6 +802,28 @@ export default function ConstructGame() {
       }
       rainGeometry.attributes.position.needsUpdate = true;
 
+      // remote orbs drift toward their latest reported spot and bob gently
+      const smoothing = 1 - Math.exp(-8 * delta);
+      remoteOrbs.forEach((orb) => {
+        orb.group.position.x +=
+          (orb.target.x - orb.group.position.x) * smoothing;
+        orb.group.position.z +=
+          (orb.target.y - orb.group.position.z) * smoothing;
+        orb.group.position.y = 1.6 + Math.sin(elapsed * 1.8 + orb.phase) * 0.14;
+      });
+
+      // share our own position with the lobby ~10x/sec, only when it changed
+      if (elapsed - lastBroadcast > 0.1) {
+        const dx = camera.position.x - lastSent.x;
+        const dz = camera.position.z - lastSent.y;
+        if (dx * dx + dz * dz > 0.0004 || Math.abs(yaw - lastSentYaw) > 0.02) {
+          sendMoveRef.current?.(camera.position.x, camera.position.z, yaw);
+          lastSent.set(camera.position.x, camera.position.z);
+          lastSentYaw = yaw;
+        }
+        lastBroadcast = elapsed;
+      }
+
       // proximity check
       let nearest = -1;
       let nearestDistance = REVEAL_RADIUS;
@@ -592,6 +866,8 @@ export default function ConstructGame() {
       if (document.pointerLockElement === renderer.domElement) {
         document.exitPointerLock();
       }
+      sceneApiRef.current?.clearPeers();
+      sceneApiRef.current = null;
       disposables.forEach((resource) => resource.dispose());
       renderer.dispose();
       renderer.domElement.remove();
@@ -600,9 +876,102 @@ export default function ConstructGame() {
     };
   }, []);
 
+  // --- Join the shared lobby once the visitor enters ------------------------
+  useEffect(() => {
+    if (!entered) return;
+
+    const pushSystem = (text: string) => {
+      setMessages((prev) => [
+        ...prev.slice(-80),
+        {
+          id: `sys-${Date.now()}-${Math.random()}`,
+          name: "",
+          color: "#8fb3ff",
+          text,
+          ts: Date.now(),
+          system: true,
+        },
+      ]);
+    };
+
+    const client = new LobbyClient({
+      onStatus: setLobbyStatus,
+      onWelcome: (_selfId, peers) => {
+        setOnline(peers.length + 1);
+        peers.forEach((peer) => sceneApiRef.current?.upsertPeer(peer));
+      },
+      onPeerJoined: (peer) => {
+        setOnline((count) => count + 1);
+        sceneApiRef.current?.upsertPeer(peer);
+        pushSystem(`${peer.name} entered the construct`);
+      },
+      onPeerLeft: (id, peerName) => {
+        setOnline((count) => Math.max(1, count - 1));
+        sceneApiRef.current?.removePeer(id);
+        pushSystem(`${peerName} left`);
+      },
+      onPeerMoved: (id, x, z) => sceneApiRef.current?.movePeer(id, x, z),
+      onPeerColor: (id, value) => sceneApiRef.current?.recolorPeer(id, value),
+      onChat: (message) =>
+        setMessages((prev) => [...prev.slice(-80), message]),
+      onReset: () => {
+        setOnline(1);
+        sceneApiRef.current?.clearPeers();
+      },
+    });
+
+    client.connect(nameRef.current, colorRef.current, 0, 10, 0);
+    lobbyRef.current = client;
+    sendMoveRef.current = (x, z, yaw) => client.sendMove(x, z, yaw);
+
+    return () => {
+      sendMoveRef.current = null;
+      lobbyRef.current = null;
+      client.dispose();
+      setMicOn(false);
+    };
+  }, [entered]);
+
   const near = nearMonolith >= 0 ? monoliths[nearMonolith] : null;
   const showTouchOverlay = isTouch && !entered;
   const showDesktopOverlay = !isTouch && !entered;
+
+  const identityControls = (
+    <div className="flex w-full max-w-xs flex-col gap-4">
+      <label className="flex flex-col gap-2 text-left">
+        <span className="text-[10px] uppercase tracking-[0.25em] text-ink-dim">
+          your name
+        </span>
+        <input
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          maxLength={24}
+          className="rounded-md border border-white/18 bg-white/[0.055] px-3 py-2 text-sm text-[#dbe5ff] outline-none focus:border-[#8fb3ff]/60"
+        />
+      </label>
+      <div className="flex flex-col gap-2 text-left">
+        <span className="text-[10px] uppercase tracking-[0.25em] text-ink-dim">
+          your orb
+        </span>
+        <div className="flex flex-wrap gap-2.5">
+          {ORB_COLORS.map((value) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => pickColor(value)}
+              aria-label={`orb color ${value}`}
+              className={`h-8 w-8 rounded-full transition-transform ${
+                color === value
+                  ? "scale-110 ring-2 ring-white/80 ring-offset-2 ring-offset-black"
+                  : "opacity-70 hover:opacity-100"
+              }`}
+              style={{ backgroundColor: value, boxShadow: `0 0 16px ${value}` }}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div className="fixed inset-0 overflow-hidden bg-black">
@@ -614,11 +983,44 @@ export default function ConstructGame() {
         <div className="absolute left-1/2 top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#dbe5ff]/80" />
 
         {/* top bar */}
-        <div className="absolute inset-x-0 top-0 flex items-center justify-between p-4">
-          <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#dbe5ff]">
-            immersive environment
-          </p>
+        <div className="absolute inset-x-0 top-0 flex flex-wrap items-center justify-between gap-2 p-4">
+          <div className="flex items-center gap-3">
+            <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#dbe5ff]">
+              the construct
+            </p>
+            {entered && (
+              <p className="text-[11px] uppercase tracking-[0.2em] text-ink-dim">
+                {lobbyStatus === "connected"
+                  ? `${online} online`
+                  : lobbyStatus === "connecting"
+                    ? "connecting…"
+                    : "reconnecting…"}
+              </p>
+            )}
+          </div>
           <div className="flex items-center gap-2">
+            {entered && (
+              <>
+                <button
+                  type="button"
+                  onClick={toggleMic}
+                  className={`pointer-events-auto rounded-md border px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] transition-colors ${
+                    micOn
+                      ? "border-[#7dffa8]/70 bg-[#7dffa8]/15 text-[#7dffa8]"
+                      : "border-white/18 bg-white/[0.055] text-[#dbe5ff] hover:bg-[#dbe5ff] hover:text-[#0b1020]"
+                  }`}
+                >
+                  {micOn ? "mic live" : "mic off"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setChatOpen((open) => !open)}
+                  className="pointer-events-auto rounded-md border border-white/18 bg-white/[0.055] px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-[#dbe5ff] transition-colors hover:bg-[#dbe5ff] hover:text-[#0b1020]"
+                >
+                  chat
+                </button>
+              </>
+            )}
             <button
               type="button"
               onClick={toggleMute}
@@ -642,9 +1044,55 @@ export default function ConstructGame() {
               ? "move your phone to look — left thumb: walk — swipe right side: turn"
               : "left thumb: walk — right thumb: look"
             : locked
-              ? "wasd / arrows: move — mouse: look — esc: release cursor"
+              ? "wasd / arrows: move — mouse: look — enter: chat — esc: release cursor"
               : "cursor released — click the scene to look around again"}
         </p>
+
+        {/* group chat */}
+        {entered && chatOpen && (
+          <div className="pointer-events-auto absolute bottom-14 left-4 flex w-[min(320px,78vw)] flex-col rounded-lg border border-white/14 bg-[#0b1020]/85 backdrop-blur-sm">
+            <div
+              ref={chatScrollRef}
+              className="flex max-h-44 flex-col gap-1.5 overflow-y-auto p-3"
+            >
+              {messages.length === 0 && (
+                <p className="text-[11px] text-ink-dim">
+                  group chat — anyone in the construct can read this
+                </p>
+              )}
+              {messages.map((message, index) =>
+                message.system ? (
+                  <p
+                    key={`${message.ts}-${index}`}
+                    className="text-[11px] italic text-ink-dim"
+                  >
+                    {message.text}
+                  </p>
+                ) : (
+                  <p
+                    key={`${message.ts}-${index}`}
+                    className="break-words text-xs leading-snug text-ink-soft"
+                  >
+                    <span className="font-bold" style={{ color: message.color }}>
+                      {message.name}
+                    </span>{" "}
+                    {message.text}
+                  </p>
+                ),
+              )}
+            </div>
+            <form onSubmit={submitChat} className="border-t border-white/10 p-2">
+              <input
+                ref={chatInputRef}
+                value={chatText}
+                onChange={(event) => setChatText(event.target.value)}
+                maxLength={280}
+                placeholder="type to chat…"
+                className="w-full bg-transparent px-1 text-xs text-[#dbe5ff] outline-none placeholder:text-ink-dim"
+              />
+            </form>
+          </div>
+        )}
 
         {/* monolith inscription */}
         {near && (
@@ -661,29 +1109,27 @@ export default function ConstructGame() {
         )}
       </div>
 
-      {/* click-to-enter overlay (desktop) */}
+      {/* enter overlay (desktop) */}
       {showDesktopOverlay && (
-        <div
-          onClick={() => {
-            startAudio();
-            setEntered(true);
-            lockFnRef.current?.();
-          }}
-          className="absolute inset-0 z-20 flex cursor-pointer flex-col items-center justify-center gap-6 bg-black/70 text-center"
-        >
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-6 overflow-y-auto bg-black/80 px-6 py-10 text-center">
           <p className="text-2xl font-black uppercase tracking-[0.24em] text-[#dbe5ff]">
-            immersive environment
+            the construct
           </p>
-          <p className="max-w-sm px-6 text-sm leading-relaxed text-ink-soft">
-            Five questions are placed in the dark. Walk up to them.
+          <p className="max-w-sm text-sm leading-relaxed text-ink-soft">
+            A shared space. Five questions stand in the dark, and anyone else
+            inside appears as a glowing orb — talk, or type in the group chat.
           </p>
-          <p className="animate-pulse text-xs uppercase tracking-[0.3em] text-ink-dim">
-            click anywhere to enter
-          </p>
+          {identityControls}
+          <button
+            type="button"
+            onClick={enterDesktop}
+            className="w-full max-w-xs rounded-md border border-[#8fb3ff]/60 bg-[#121826]/72 px-6 py-4 text-sm font-bold uppercase tracking-[0.16em] text-[#dbe5ff] transition-colors hover:bg-[#dbe5ff] hover:text-[#0b1020]"
+          >
+            enter the construct
+          </button>
           <Link
             href="/rabbit-hole"
-            onClick={(event) => event.stopPropagation()}
-            className="z-30 mt-4 text-xs uppercase tracking-[0.22em] text-ink-dim underline-offset-4 transition-colors hover:text-[#dbe5ff] hover:underline"
+            className="text-xs uppercase tracking-[0.22em] text-ink-dim underline-offset-4 transition-colors hover:text-[#dbe5ff] hover:underline"
           >
             back to the environment page
           </Link>
@@ -692,13 +1138,15 @@ export default function ConstructGame() {
 
       {/* tap-to-enter overlay (mobile) — pick control style */}
       {showTouchOverlay && (
-        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-6 bg-black/80 px-6 text-center">
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-5 overflow-y-auto bg-black/85 px-6 py-10 text-center">
           <p className="text-2xl font-black uppercase tracking-[0.24em] text-[#dbe5ff]">
-            immersive environment
+            the construct
           </p>
           <p className="max-w-sm text-sm leading-relaxed text-ink-soft">
-            Five questions are placed in the dark. Walk up to them.
+            A shared space. Anyone else inside appears as a glowing orb — talk,
+            or type in the group chat.
           </p>
+          {identityControls}
           <button
             type="button"
             onClick={() => enterTouch(true)}
