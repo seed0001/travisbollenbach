@@ -7,11 +7,16 @@ import { VRM_DIR } from "@/lib/studios";
 
 export const dynamic = "force-dynamic";
 
-// VRM avatars are glTF binaries and run big; allow more room than wall images.
-const MAX_BYTES = 40 * 1024 * 1024; // 40 MB
+// Avatar models run big (FBX with baked textures especially); give them room.
+const MAX_BYTES = 60 * 1024 * 1024; // 60 MB
 
-// Content types browsers/three actually use for .vrm / .glb payloads.
-const SERVE_TYPE = "model/gltf-binary";
+// Accepted avatar formats and the content type we serve each one back as.
+const AVATAR_TYPES: Record<string, string> = {
+  vrm: "model/gltf-binary",
+  glb: "model/gltf-binary",
+  gltf: "model/gltf+json",
+  fbx: "application/octet-stream",
+};
 
 // POST: a signed-in member uploads a .vrm (or .glb) avatar. Ownership of the
 // unit is enforced when the returned path is saved onto the studio.
@@ -28,17 +33,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "No file uploaded." }, { status: 400 });
   }
 
-  const lower = file.name.toLowerCase();
-  const ext = lower.endsWith(".vrm") ? "vrm" : lower.endsWith(".glb") ? "glb" : "";
+  const ext = file.name.toLowerCase().match(/\.(vrm|glb|gltf|fbx)$/)?.[1] ?? "";
   if (!ext) {
     return NextResponse.json(
-      { error: "Upload a .vrm (or .glb) avatar file." },
+      { error: "Upload a .vrm, .glb, .gltf, or .fbx avatar file." },
       { status: 400 },
     );
   }
   if (file.size > MAX_BYTES) {
     return NextResponse.json(
-      { error: "Avatar must be under 40 MB." },
+      { error: "Avatar must be under 60 MB." },
       { status: 413 },
     );
   }
@@ -55,14 +59,16 @@ export async function POST(request: NextRequest) {
 // the uuid.ext shape so it can't escape the directory.
 export async function GET(request: NextRequest) {
   const name = request.nextUrl.searchParams.get("f") ?? "";
-  if (!/^[a-f0-9-]{36}\.(vrm|glb)$/i.test(name)) {
+  const match = name.match(/^[a-f0-9-]{36}\.(vrm|glb|gltf|fbx)$/i);
+  if (!match) {
     return NextResponse.json({ error: "Not found." }, { status: 404 });
   }
   try {
     const data = await fs.readFile(path.join(VRM_DIR, name));
     return new NextResponse(new Uint8Array(data), {
       headers: {
-        "Content-Type": SERVE_TYPE,
+        "Content-Type":
+          AVATAR_TYPES[match[1].toLowerCase()] ?? "application/octet-stream",
         "Cache-Control": "public, max-age=31536000, immutable",
       },
     });

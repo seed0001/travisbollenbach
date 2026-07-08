@@ -11,6 +11,7 @@ import {
 } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
 import {
   VRMLoaderPlugin,
   VRMUtils,
@@ -932,66 +933,120 @@ export default function ConstructGame() {
       storePositions.push(new THREE.Vector3(doorX, 0, z));
     });
 
-    // --- Uploaded VRM avatars: a host that walks around inside each unit -------
+    // --- Uploaded avatars: a host that walks around inside each unit ----------
+    // Formats: VRM gets a procedural humanoid walk; GLB/glTF/FBX that ship
+    // their own animation clip play that clip while pacing; anything rigless
+    // just glides along the path.
     type Avatar = {
-      vrm: VRM;
+      root: THREE.Object3D; // what we add to the scene and move
+      vrm: VRM | null; // set only for VRM files (drives the procedural walk)
+      mixer: THREE.AnimationMixer | null; // set when the model carries clips
+      baseY: number; // rest height once scaled + stood on the floor
       onLeft: boolean;
       ends: [number, number]; // the two z coordinates it paces between
       targetEnd: 0 | 1;
       state: "walk" | "pause";
       pauseUntil: number;
-      gait: number; // walk-cycle accumulator
-      bones: Partial<Record<string, THREE.Object3D | null>>;
+      gait: number; // walk-cycle accumulator (procedural VRM walk)
+      bones: Partial<Record<string, THREE.Object3D | null>> | null;
     };
     const avatars = new Map<string, Avatar>();
     const AVATAR_PATROL_HALF = STORE_W / 2 - 3;
     const AVATAR_WALK_SPEED = 1.6; // metres/sec
     const AVATAR_FLOOR_Y = 0.12;
+    const AVATAR_TARGET_HEIGHT = 1.7; // metres — normalize every model to this
     const gltfLoader = new GLTFLoader();
     gltfLoader.register((parser) => new VRMLoaderPlugin(parser));
+    const fbxLoader = new FBXLoader();
 
     const bone = (vrm: VRM, name: VRMHumanBoneName) =>
       vrm.humanoid?.getNormalizedBoneNode(name) ?? null;
     const idleYawFor = (onLeft: boolean) => (onLeft ? Math.PI / 2 : -Math.PI / 2);
+    const avatarExt = (src: string) =>
+      (src.match(/\.(vrm|glb|gltf|fbx)$/i)?.[1] ?? "").toLowerCase();
+
+    // Prefer a locomotion clip; fall back to idle, then whatever's first.
+    const pickClip = (clips: THREE.AnimationClip[]) =>
+      clips.find((c) => /walk|run|move|locomo/i.test(c.name)) ??
+      clips.find((c) => /idle|stand|breath/i.test(c.name)) ??
+      clips[0];
+
+    const disposeObject3D = (obj: THREE.Object3D) => {
+      obj.traverse((child) => {
+        const mesh = child as THREE.Mesh;
+        mesh.geometry?.dispose?.();
+        const mat = mesh.material as THREE.Material | THREE.Material[] | undefined;
+        if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+        else mat?.dispose?.();
+      });
+    };
 
     const removeAvatar = (unit: string) => {
       const existing = avatars.get(unit);
       if (!existing) return;
       avatars.delete(unit);
-      scene.remove(existing.vrm.scene);
-      VRMUtils.deepDispose(existing.vrm.scene);
+      existing.mixer?.stopAllAction();
+      scene.remove(existing.root);
+      if (existing.vrm) VRMUtils.deepDispose(existing.vrm.scene);
+      else disposeObject3D(existing.root);
     };
 
-    const loadAvatar = (unit: string, vrmSrc: string) => {
-      const anchor = avatarAnchors.get(unit);
-      if (!anchor) return;
-      gltfLoader.load(
-        vrmSrc,
-        (gltf) => {
-          const vrm = gltf.userData.vrm as VRM | undefined;
-          if (!vrm) return;
-          if (sceneDisposed) {
-            VRMUtils.deepDispose(vrm.scene);
-            return;
-          }
-          removeAvatar(unit); // replace any previous avatar for this unit
-          VRMUtils.rotateVRM0(vrm); // VRM0 models face -Z; align them to +Z
-          vrm.scene.traverse((obj) => {
-            obj.frustumCulled = false;
-          });
-          vrm.scene.position.set(anchor.x, AVATAR_FLOOR_Y, anchor.z);
-          vrm.scene.rotation.y = idleYawFor(anchor.onLeft);
-          vrm.scene.userData.vrmSrc = vrmSrc;
-          scene.add(vrm.scene);
-          avatars.set(unit, {
-            vrm,
-            onLeft: anchor.onLeft,
-            ends: [anchor.z - AVATAR_PATROL_HALF, anchor.z + AVATAR_PATROL_HALF],
-            targetEnd: 0,
-            state: "pause",
-            pauseUntil: 0,
-            gait: 0,
-            bones: {
+    // Scale a freshly loaded model to a consistent height, stand it on the
+    // floor at its unit's anchor, and register it as a pacing avatar.
+    const placeAvatar = (
+      unit: string,
+      anchor: { x: number; z: number; onLeft: boolean },
+      src: string,
+      root: THREE.Object3D,
+      vrm: VRM | null,
+      clips: THREE.AnimationClip[],
+    ) => {
+      if (sceneDisposed) {
+        if (vrm) VRMUtils.deepDispose(vrm.scene);
+        else disposeObject3D(root);
+        return;
+      }
+      removeAvatar(unit); // replace any previous avatar for this unit
+      root.traverse((obj) => {
+        obj.frustumCulled = false;
+      });
+
+      // Normalize scale to a sane height (FBX especially arrives in cm / huge).
+      root.updateMatrixWorld(true);
+      const size = new THREE.Box3().setFromObject(root).getSize(new THREE.Vector3());
+      const height = size.y > 1e-3 ? size.y : 1;
+      root.scale.setScalar(AVATAR_TARGET_HEIGHT / height);
+
+      // Stand its feet on the floor at the unit anchor, facing the street.
+      root.position.set(anchor.x, 0, anchor.z);
+      root.rotation.y = idleYawFor(anchor.onLeft);
+      root.updateMatrixWorld(true);
+      const minY = new THREE.Box3().setFromObject(root).min.y;
+      root.position.y = AVATAR_FLOOR_Y - minY;
+      const baseY = root.position.y;
+      root.userData.vrmSrc = src;
+      scene.add(root);
+
+      // Non-VRM models animate via their own clips (if any).
+      let mixer: THREE.AnimationMixer | null = null;
+      if (!vrm && clips.length > 0) {
+        mixer = new THREE.AnimationMixer(root);
+        mixer.clipAction(pickClip(clips)).play();
+      }
+
+      avatars.set(unit, {
+        root,
+        vrm,
+        mixer,
+        baseY,
+        onLeft: anchor.onLeft,
+        ends: [anchor.z - AVATAR_PATROL_HALF, anchor.z + AVATAR_PATROL_HALF],
+        targetEnd: 0,
+        state: "pause",
+        pauseUntil: 0,
+        gait: 0,
+        bones: vrm
+          ? {
               spine: bone(vrm, VRMHumanBoneName.Spine),
               chest: bone(vrm, VRMHumanBoneName.Chest),
               head: bone(vrm, VRMHumanBoneName.Head),
@@ -1001,25 +1056,47 @@ export default function ConstructGame() {
               rightUpperLeg: bone(vrm, VRMHumanBoneName.RightUpperLeg),
               leftLowerLeg: bone(vrm, VRMHumanBoneName.LeftLowerLeg),
               rightLowerLeg: bone(vrm, VRMHumanBoneName.RightLowerLeg),
-            },
-          });
+            }
+          : null,
+      });
+    };
+
+    const loadAvatar = (unit: string, src: string) => {
+      const anchor = avatarAnchors.get(unit);
+      if (!anchor) return;
+      // an avatar is decoration — a failed load shouldn't break the world
+      const onError = () => {};
+      if (avatarExt(src) === "fbx") {
+        fbxLoader.load(
+          src,
+          (obj) => placeAvatar(unit, anchor, src, obj, null, obj.animations ?? []),
+          undefined,
+          onError,
+        );
+        return;
+      }
+      gltfLoader.load(
+        src,
+        (gltf) => {
+          const vrm = (gltf.userData.vrm as VRM | undefined) ?? null;
+          if (vrm) VRMUtils.rotateVRM0(vrm); // VRM0 faces -Z; align it to +Z
+          const root = vrm ? vrm.scene : gltf.scene;
+          placeAvatar(unit, anchor, src, root, vrm, gltf.animations ?? []);
         },
         undefined,
-        () => {
-          /* an avatar is decoration — a failed load shouldn't break the world */
-        },
+        onError,
       );
     };
 
-    const applyAvatar = (unit: string, vrmSrc: string) => {
+    const applyAvatar = (unit: string, src: string) => {
       const current = avatars.get(unit);
-      if (!vrmSrc) {
+      if (!src) {
         removeAvatar(unit);
         return;
       }
       // Skip a reload if this unit already shows this avatar.
-      if (current && current.vrm.scene.userData.vrmSrc === vrmSrc) return;
-      loadAvatar(unit, vrmSrc);
+      if (current && current.root.userData.vrmSrc === src) return;
+      loadAvatar(unit, src);
     };
 
     // Set a normalized humanoid bone's pose (relative to its neutral rest).
@@ -1029,58 +1106,66 @@ export default function ConstructGame() {
 
     const updateAvatars = (elapsed: number, delta: number) => {
       avatars.forEach((avatar) => {
-        const scene3 = avatar.vrm.scene;
+        const root = avatar.root;
         const b = avatar.bones;
         let desiredYaw: number;
 
         if (avatar.state === "walk") {
           const targetZ = avatar.ends[avatar.targetEnd];
-          const dz = targetZ - scene3.position.z;
+          const dz = targetZ - root.position.z;
           const dir = dz >= 0 ? 1 : -1;
           const step = AVATAR_WALK_SPEED * delta;
           if (Math.abs(dz) <= step) {
-            scene3.position.z = targetZ;
+            root.position.z = targetZ;
             avatar.state = "pause";
             avatar.pauseUntil = elapsed + 1 + Math.random() * 2.5;
           } else {
-            scene3.position.z += dir * step;
+            root.position.z += dir * step;
           }
           desiredYaw = dir > 0 ? 0 : Math.PI; // face the way we're walking
-          avatar.gait += delta * 6.5;
-          const swing = Math.sin(avatar.gait) * 0.5;
-          poseBone(b.leftUpperLeg, swing);
-          poseBone(b.rightUpperLeg, -swing);
-          poseBone(b.leftLowerLeg, -Math.max(0, -swing) * 0.6);
-          poseBone(b.rightLowerLeg, -Math.max(0, swing) * 0.6);
-          poseBone(b.leftUpperArm, -swing * 0.45);
-          poseBone(b.rightUpperArm, swing * 0.45);
-          poseBone(b.spine, Math.abs(swing) * 0.05);
-          scene3.position.y = AVATAR_FLOOR_Y + Math.abs(Math.sin(avatar.gait)) * 0.04;
+          if (b) {
+            // procedural humanoid gait (VRM only)
+            avatar.gait += delta * 6.5;
+            const swing = Math.sin(avatar.gait) * 0.5;
+            poseBone(b.leftUpperLeg, swing);
+            poseBone(b.rightUpperLeg, -swing);
+            poseBone(b.leftLowerLeg, -Math.max(0, -swing) * 0.6);
+            poseBone(b.rightLowerLeg, -Math.max(0, swing) * 0.6);
+            poseBone(b.leftUpperArm, -swing * 0.45);
+            poseBone(b.rightUpperArm, swing * 0.45);
+            poseBone(b.spine, Math.abs(swing) * 0.05);
+            root.position.y = avatar.baseY + Math.abs(Math.sin(avatar.gait)) * 0.04;
+          } else {
+            root.position.y = avatar.baseY;
+          }
         } else {
           if (elapsed >= avatar.pauseUntil) {
             avatar.targetEnd = avatar.targetEnd === 0 ? 1 : 0;
             avatar.state = "walk";
           }
           desiredYaw = idleYawFor(avatar.onLeft); // face the street
-          const breathe = Math.sin(elapsed * 1.6) * 0.04;
-          poseBone(b.spine, breathe);
-          poseBone(b.chest, breathe * 0.5);
-          poseBone(b.head, Math.sin(elapsed * 0.9) * 0.03);
-          poseBone(b.leftUpperLeg, 0);
-          poseBone(b.rightUpperLeg, 0);
-          poseBone(b.leftLowerLeg, 0);
-          poseBone(b.rightLowerLeg, 0);
-          poseBone(b.leftUpperArm, 0);
-          poseBone(b.rightUpperArm, 0);
-          scene3.position.y = AVATAR_FLOOR_Y;
+          if (b) {
+            const breathe = Math.sin(elapsed * 1.6) * 0.04;
+            poseBone(b.spine, breathe);
+            poseBone(b.chest, breathe * 0.5);
+            poseBone(b.head, Math.sin(elapsed * 0.9) * 0.03);
+            poseBone(b.leftUpperLeg, 0);
+            poseBone(b.rightUpperLeg, 0);
+            poseBone(b.leftLowerLeg, 0);
+            poseBone(b.rightLowerLeg, 0);
+            poseBone(b.leftUpperArm, 0);
+            poseBone(b.rightUpperArm, 0);
+          }
+          root.position.y = avatar.baseY;
         }
 
         // Ease toward the desired facing along the shortest arc.
-        let diff = desiredYaw - scene3.rotation.y;
+        let diff = desiredYaw - root.rotation.y;
         diff = Math.atan2(Math.sin(diff), Math.cos(diff));
-        scene3.rotation.y += diff * Math.min(1, delta * 6);
+        root.rotation.y += diff * Math.min(1, delta * 6);
 
-        avatar.vrm.update(delta);
+        avatar.mixer?.update(delta);
+        avatar.vrm?.update(delta);
       });
     };
 
@@ -1533,11 +1618,7 @@ export default function ConstructGame() {
       sceneDisposed = true;
       wallApiRef.current = null;
       posters.forEach((p) => p.ownTex?.dispose());
-      avatars.forEach((avatar) => {
-        scene.remove(avatar.vrm.scene);
-        VRMUtils.deepDispose(avatar.vrm.scene);
-      });
-      avatars.clear();
+      [...avatars.keys()].forEach(removeAvatar);
       window.cancelAnimationFrame(animationFrame);
       document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("keyup", onKeyUp);

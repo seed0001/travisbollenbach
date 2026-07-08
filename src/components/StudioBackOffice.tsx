@@ -265,7 +265,7 @@ function AvatarUploader({
       <p className="text-sm text-ink-soft">
         {vrmSrc
           ? "An avatar is set — it walks around inside your unit in the city."
-          : "Upload a VRM avatar. It walks around inside your unit in the city."}
+          : "Upload an avatar. It walks around inside your unit in the city."}
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <button
@@ -297,7 +297,7 @@ function AvatarUploader({
         <input
           ref={fileRef}
           type="file"
-          accept=".vrm,.glb,model/gltf-binary"
+          accept=".vrm,.glb,.gltf,.fbx,model/gltf-binary"
           className="hidden"
           onChange={(e) => {
             const f = e.target.files?.[0];
@@ -307,8 +307,9 @@ function AvatarUploader({
         />
       </div>
       <p className="mt-2 text-[11px] leading-relaxed text-ink-dim">
-        VRM (or .glb) file, up to 40 MB. Save the storefront after uploading to
-        apply it.
+        VRM, GLB, glTF, or FBX, up to 60 MB. A VRM walks on its own; GLB/FBX
+        walk if the file includes an animation. Save the storefront after
+        uploading to apply it.
       </p>
       {error && <p className="mt-2 text-sm text-pill-red">{error}</p>}
     </div>

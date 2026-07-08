@@ -106,7 +106,9 @@ function cleanVrmSrc(value: unknown): string {
   if (typeof value !== "string") return "";
   const s = value.trim().slice(0, MAX_URL);
   if (!s) return "";
-  return /^\/api\/studio\/vrm\?f=[a-f0-9-]{36}\.(vrm|glb)$/i.test(s) ? s : "";
+  return /^\/api\/studio\/vrm\?f=[a-f0-9-]{36}\.(vrm|glb|gltf|fbx)$/i.test(s)
+    ? s
+    : "";
 }
 
 // Parse a YouTube video id out of a URL (or a bare id). Shared by the back
