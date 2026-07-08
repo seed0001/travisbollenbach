@@ -18,6 +18,11 @@ const DATA_DIR =
 const USERS_FILE = path.join(DATA_DIR, "users.json");
 const SESSIONS_FILE = path.join(DATA_DIR, "sessions.json");
 
+// The one account that owns the ship. Set ADMIN_EMAIL in the environment
+// (e.g. a Railway variable); whoever signs up with this email is minted admin.
+// Falls back to first-registered-wins only if ADMIN_EMAIL is unset.
+const ADMIN_EMAIL = normalizeEmail(process.env.ADMIN_EMAIL) ?? null;
+
 export const SESSION_COOKIE = "tb_session";
 export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30; // 30 days
 
@@ -124,8 +129,12 @@ export async function createUser(input: {
       email: input.email,
       name: input.name,
       passwordHash: await hashPassword(input.password),
-      // The first account to register owns the ship
-      role: users.length === 0 ? "admin" : "user",
+      // The owner is whoever signs up with ADMIN_EMAIL. If that's unset, fall
+      // back to first-registered-wins so a fresh install still gets an owner.
+      role:
+        (ADMIN_EMAIL ? input.email === ADMIN_EMAIL : users.length === 0)
+          ? "admin"
+          : "user",
       createdAt: new Date().toISOString(),
     };
     users.push(user);

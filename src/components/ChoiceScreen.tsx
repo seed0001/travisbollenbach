@@ -27,7 +27,13 @@ const paths = [
 
 export default function ChoiceScreen() {
   return (
-    <main className="choice-screen min-h-svh bg-[#0c0f14] text-white">
+    <main className="choice-screen relative min-h-svh bg-[#0c0f14] text-white">
+      <Link
+        href="/account"
+        className="absolute right-5 top-6 z-20 text-xs font-bold uppercase tracking-[0.2em] text-white/55 transition-colors hover:text-white md:right-8 lg:right-12"
+      >
+        Sign in
+      </Link>
       <section className="mx-auto grid min-h-svh w-full max-w-7xl items-center gap-10 px-5 py-8 md:grid-cols-[0.9fr_1.1fr] md:px-8 lg:px-12">
         <motion.div
           initial={{ opacity: 0, y: 18 }}
