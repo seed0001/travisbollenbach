@@ -14,15 +14,20 @@ export const WALK_RADIUS = 62; // players are held inside this ring
 export const PLAZA_RADIUS = 16;
 export const LOBBY_WATER_LEVEL = 0;
 
-/** Sealed gates around the plaza — the future escape rooms. Angles are on the
- * plaza ring; each gate is a doorway that will open when its room ships. */
-export const GATES = [
+/** Gates around the plaza — the escape rooms. Angles are on the plaza ring;
+ * a gate with an href is open and walkable, the rest are sealed. */
+export const GATES: {
+  id: string;
+  title: string;
+  angle: number;
+  href?: string;
+}[] = [
   { id: "room-01", title: "Room 01 — The Cipher Gate", angle: 0 },
   { id: "room-02", title: "Room 02 — sealed", angle: (Math.PI * 2) / 5 },
   { id: "room-03", title: "Room 03 — sealed", angle: (Math.PI * 4) / 5 },
   { id: "room-04", title: "Room 04 — sealed", angle: (Math.PI * 6) / 5 },
   { id: "room-05", title: "Room 05 — sealed", angle: (Math.PI * 8) / 5 },
-] as const;
+];
 
 export const GATE_RING_RADIUS = 34;
 
@@ -41,11 +46,11 @@ export function islandHeightAt(x: number, z: number): number {
   return THREE.MathUtils.lerp(2.2, wild, plaza);
 }
 
-// Night palette — the matrix identity, but as a place instead of a screen
-const C_GRASS = new THREE.Color(0x1d4a2c);
-const C_GRASS_LIT = new THREE.Color(0x2e7a42);
-const C_SAND = new THREE.Color(0x4a5046);
-const C_PLAZA = new THREE.Color(0x1a2c1e);
+// Natural night palette — moonlit moss, cool stone, pale shore
+const C_GRASS = new THREE.Color(0x2b4234);
+const C_GRASS_LIT = new THREE.Color(0x49694c);
+const C_SAND = new THREE.Color(0x6e6a5c);
+const C_PLAZA = new THREE.Color(0x363b44);
 
 export function buildIslandGeometry(): THREE.BufferGeometry {
   const size = (ISLAND_RADIUS + 20) * 2;

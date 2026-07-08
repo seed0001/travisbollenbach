@@ -12,12 +12,13 @@ import {
   buildIslandGeometry,
   islandHeightAt,
 } from "@/lib/lobby-island";
+import { createGalaxySky } from "@/lib/galaxy";
 import { createVoiceMesh, requestMicrophone, type VoiceMesh } from "@/lib/voice";
 
 const EYE_HEIGHT = 2.0;
 const MOVE_SPEED = 8;
 const RUN_SPEED = 14;
-const SKY_COLOR = 0x030f0a;
+const SKY_COLOR = 0x05060f; // horizon fog — deep space indigo
 const GATE_REVEAL_RADIUS = 9;
 const POS_SEND_INTERVAL_MS = 100;
 
@@ -55,9 +56,9 @@ function makeNameTexture(text: string) {
     ctx.font = "bold 44px monospace";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.shadowColor = "rgba(0,255,102,0.8)";
+    ctx.shadowColor = "rgba(190,215,255,0.85)";
     ctx.shadowBlur = 14;
-    ctx.fillStyle = "#e8fff1";
+    ctx.fillStyle = "#f2f6ff";
     ctx.fillText(text.slice(0, 20), canvas.width / 2, canvas.height / 2);
   }
   const texture = new THREE.CanvasTexture(canvas);
@@ -99,7 +100,7 @@ function createAvatar(name: string, hue: number): Avatar {
 
   const ringGeometry = new THREE.TorusGeometry(0.42, 0.045, 8, 24);
   const ringMaterial = new THREE.MeshBasicMaterial({
-    color: 0x00ff66,
+    color: 0x9fe8ff,
     transparent: true,
     opacity: 0.9,
   });
@@ -250,12 +251,17 @@ export default function Lobby() {
 
     const disposables: { dispose(): void }[] = [];
 
-    const skyLight = new THREE.HemisphereLight(0x2e6b52, 0x0a120c, 1.15);
+    const skyLight = new THREE.HemisphereLight(0x8895b8, 0x1b1d22, 1.0);
     scene.add(skyLight);
-    const moon = new THREE.DirectionalLight(0xb4e8d2, 0.8);
+    const moon = new THREE.DirectionalLight(0xdfe6ff, 0.85);
     moon.position.set(-120, 200, 80);
     scene.add(moon);
     disposables.push(skyLight, moon);
+
+    // the galaxy overhead — painted at load, wrapped on an inward sphere
+    const sky = createGalaxySky(420);
+    scene.add(sky.mesh);
+    disposables.push(sky);
 
     // island
     const islandGeometry = buildIslandGeometry();
@@ -266,7 +272,7 @@ export default function Lobby() {
     // dark water ring
     const waterGeometry = new THREE.PlaneGeometry(700, 700);
     const waterMaterial = new THREE.MeshLambertMaterial({
-      color: 0x06231c,
+      color: 0x0d2137,
       transparent: true,
       opacity: 0.85,
     });
@@ -276,36 +282,10 @@ export default function Lobby() {
     scene.add(water);
     disposables.push(waterGeometry, waterMaterial);
 
-    // star dome
-    const starPositions = new Float32Array(700 * 3);
-    for (let i = 0; i < 700; i += 1) {
-      const theta = Math.random() * Math.PI * 2;
-      const phi = Math.acos(1 - Math.random() * 0.85);
-      const r = 380;
-      starPositions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-      starPositions[i * 3 + 1] = r * Math.cos(phi) + 20;
-      starPositions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
-    }
-    const starGeometry = new THREE.BufferGeometry();
-    starGeometry.setAttribute(
-      "position",
-      new THREE.BufferAttribute(starPositions, 3),
-    );
-    const starMaterial = new THREE.PointsMaterial({
-      color: 0x9fffc9,
-      size: 1.1,
-      sizeAttenuation: false,
-      transparent: true,
-      opacity: 0.7,
-      fog: false,
-    });
-    scene.add(new THREE.Points(starGeometry, starMaterial));
-    disposables.push(starGeometry, starMaterial);
-
-    // central beacon — the heart of the nexus
+    // central beacon — the heart of the nexus, moonlight made solid
     const beaconGeometry = new THREE.CylinderGeometry(0.6, 1.1, 26, 6, 1, true);
     const beaconMaterial = new THREE.MeshBasicMaterial({
-      color: 0x00ff66,
+      color: 0xbfe8ff,
       transparent: true,
       opacity: 0.32,
       side: THREE.DoubleSide,
@@ -315,12 +295,12 @@ export default function Lobby() {
     scene.add(beacon);
     // solid core so the pillar reads from anywhere on the island
     const coreGeometry = new THREE.CylinderGeometry(0.22, 0.22, 26, 6);
-    const coreMaterial = new THREE.MeshBasicMaterial({ color: 0xbaffdd });
+    const coreMaterial = new THREE.MeshBasicMaterial({ color: 0xf0f7ff });
     const core = new THREE.Mesh(coreGeometry, coreMaterial);
     core.position.copy(beacon.position);
     scene.add(core);
     disposables.push(coreGeometry, coreMaterial);
-    const beaconLight = new THREE.PointLight(0x00ff66, 60, 60, 1.6);
+    const beaconLight = new THREE.PointLight(0xa8d4ff, 60, 60, 1.6);
     beaconLight.position.set(0, islandHeightAt(0, 0) + 4, 0);
     scene.add(beaconLight);
     disposables.push(beaconGeometry, beaconMaterial, beaconLight);
@@ -329,14 +309,22 @@ export default function Lobby() {
     const pillarGeometry = new THREE.BoxGeometry(0.9, 7, 0.9);
     const lintelGeometry = new THREE.BoxGeometry(5.4, 0.9, 0.9);
     const sealGeometry = new THREE.PlaneGeometry(3.6, 6.1);
-    const gateMaterial = new THREE.MeshLambertMaterial({ color: 0x0a0f0c });
+    const gateMaterial = new THREE.MeshLambertMaterial({ color: 0x12141c });
     const sealMaterial = new THREE.MeshBasicMaterial({
-      color: 0x00140a,
+      color: 0x05060d,
       transparent: true,
       opacity: 0.92,
       side: THREE.DoubleSide,
     });
-    const gateEdgeMaterial = new THREE.LineBasicMaterial({ color: 0x00ff66 });
+    // an open gate glows like a doorway full of dawn
+    const openSealMaterial = new THREE.MeshBasicMaterial({
+      color: 0x9fd8ff,
+      transparent: true,
+      opacity: 0.4,
+      side: THREE.DoubleSide,
+    });
+    const gateEdgeMaterial = new THREE.LineBasicMaterial({ color: 0xc9a45e });
+    const openEdgeMaterial = new THREE.LineBasicMaterial({ color: 0xd8ecff });
     const pillarEdges = new THREE.EdgesGeometry(pillarGeometry);
     const lintelEdges = new THREE.EdgesGeometry(lintelGeometry);
     disposables.push(
@@ -345,7 +333,9 @@ export default function Lobby() {
       sealGeometry,
       gateMaterial,
       sealMaterial,
+      openSealMaterial,
       gateEdgeMaterial,
+      openEdgeMaterial,
       pillarEdges,
       lintelEdges,
     );
@@ -365,7 +355,11 @@ export default function Lobby() {
       right.position.set(2.25, 3.5, 0);
       const lintel = new THREE.Mesh(lintelGeometry, gateMaterial);
       lintel.position.set(0, 7.2, 0);
-      const seal = new THREE.Mesh(sealGeometry, sealMaterial);
+      const open = Boolean(gate.href);
+      const seal = new THREE.Mesh(
+        sealGeometry,
+        open ? openSealMaterial : sealMaterial,
+      );
       seal.position.set(0, 3.4, 0);
       group.add(left, right, lintel, seal);
       [
@@ -373,10 +367,19 @@ export default function Lobby() {
         [pillarEdges, right] as const,
         [lintelEdges, lintel] as const,
       ].forEach(([edges, mesh]) => {
-        const line = new THREE.LineSegments(edges, gateEdgeMaterial);
+        const line = new THREE.LineSegments(
+          edges,
+          open ? openEdgeMaterial : gateEdgeMaterial,
+        );
         line.position.copy(mesh.position);
         group.add(line);
       });
+      if (open) {
+        const doorLight = new THREE.PointLight(0x9fd8ff, 30, 26, 1.8);
+        doorLight.position.set(0, 4, 2.5);
+        group.add(doorLight);
+        disposables.push(doorLight);
+      }
 
       scene.add(group);
       gatePositions.push(new THREE.Vector3(gx, 0, gz));
@@ -850,9 +853,17 @@ export default function Lobby() {
                 </p>
                 <p className="mt-2 text-sm leading-relaxed text-ink-soft">
                   {gate.id === "room-01"
-                    ? "Behind this seal, a room is being built — a locked space, a mind that holds the way out, and a way out that must be earned. The first escape room of the Nexus opens soon."
+                    ? "Behind this seal, a room is being built — a locked space, a mind that holds the way out, and a voice you will have to out-talk. The first escape room of the Nexus opens soon."
                     : "Sealed. Something is growing behind this door."}
                 </p>
+                {gate.href && (
+                  <Link
+                    href={gate.href}
+                    className="pointer-events-auto mt-4 inline-block rounded-full border border-matrix px-6 py-2 text-xs font-bold uppercase tracking-[0.2em] text-matrix transition-colors hover:bg-matrix hover:text-black"
+                  >
+                    step through →
+                  </Link>
+                )}
               </div>
             </div>
           )}
