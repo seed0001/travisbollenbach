@@ -134,6 +134,11 @@ export async function createUser(input: {
   });
 }
 
+export async function countUsers(): Promise<number> {
+  const users = await readJson<User[]>(USERS_FILE, []);
+  return users.length;
+}
+
 export async function authenticate(
   email: string,
   password: string,

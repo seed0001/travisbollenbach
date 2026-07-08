@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 import { choice, site } from "@/lib/content";
 import Pill3D from "./Pill3D";
+import SiteStats from "./SiteStats";
 
 const paths = [
   {
@@ -45,6 +46,7 @@ export default function ChoiceScreen() {
             other is an immersive environment for the stranger questions behind
             the work.
           </p>
+          <SiteStats />
         </motion.div>
 
         <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-1 xl:grid-cols-2">

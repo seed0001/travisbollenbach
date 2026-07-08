@@ -1,5 +1,7 @@
 import { createServer } from "node:http";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { promises as fs } from "node:fs";
+import path from "node:path";
 import next from "next";
 import { WebSocketServer } from "ws";
 
@@ -7,6 +9,12 @@ const port = Number.parseInt(process.env.PORT ?? "3000", 10);
 const dev = process.env.NODE_ENV === "development";
 const app = next({ dev, hostname: "0.0.0.0", port });
 const handle = app.getRequestHandler();
+
+// Same volume convention as src/lib/auth.ts
+const DATA_DIR =
+  process.env.DATA_DIR ??
+  process.env.COMMENTS_DIR ??
+  path.join(process.cwd(), "data");
 
 const MAX_LOBBY_SIZE = 32;
 const MAX_CHAT_LENGTH = 280;
@@ -56,6 +64,47 @@ function leaveLobby(socket) {
   lobby.delete(id);
   socket.lobbyId = undefined;
   broadcast({ type: "peer-left", id });
+  updatePresence();
+}
+
+// Presence snapshot shared with Next API routes (same process) for /api/stats
+function updatePresence() {
+  let hostOnline = false;
+  for (const peer of lobby.values()) {
+    if (peer.socket.isAdmin) {
+      hostOnline = true;
+      break;
+    }
+  }
+  globalThis.__lobbyPresence = { count: lobby.size, hostOnline };
+}
+updatePresence();
+
+// Check the tb_session cookie against the auth store so "the host is online"
+// can't be spoofed by picking the right display name.
+async function isAdminRequest(request) {
+  try {
+    const match = (request.headers.cookie ?? "").match(
+      /(?:^|;\s*)tb_session=([^;]+)/,
+    );
+    if (!match) return false;
+    const tokenHash = createHash("sha256")
+      .update(decodeURIComponent(match[1]))
+      .digest("hex");
+    const sessions = JSON.parse(
+      await fs.readFile(path.join(DATA_DIR, "sessions.json"), "utf8"),
+    );
+    const session = sessions.find(
+      (s) => s.tokenHash === tokenHash && Date.parse(s.expiresAt) > Date.now(),
+    );
+    if (!session) return false;
+    const users = JSON.parse(
+      await fs.readFile(path.join(DATA_DIR, "users.json"), "utf8"),
+    );
+    return users.some((u) => u.id === session.userId && u.role === "admin");
+  } catch {
+    return false;
+  }
 }
 
 app.prepare().then(() => {
@@ -76,10 +125,16 @@ app.prepare().then(() => {
     });
   });
 
-  wss.on("connection", (socket) => {
+  wss.on("connection", (socket, request) => {
     socket.isAlive = true;
     socket.on("pong", () => {
       socket.isAlive = true;
+    });
+
+    socket.isAdmin = false;
+    isAdminRequest(request).then((admin) => {
+      socket.isAdmin = admin;
+      if (admin) updatePresence();
     });
 
     socket.on("message", (raw) => {
@@ -115,6 +170,7 @@ app.prepare().then(() => {
             .map(([peerId, other]) => publicPeer(peerId, other)),
         });
         broadcast({ type: "peer-joined", peer: publicPeer(id, peer) }, id);
+        updatePresence();
         return;
       }
 
