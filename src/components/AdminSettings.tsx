@@ -1,6 +1,12 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useState,
+  type CSSProperties,
+} from "react";
 
 // Integration credentials manager. Secrets are write-only: the server returns
 // set/unset + a last-4 preview, and inputs left blank are left unchanged on
@@ -209,15 +215,27 @@ export default function AdminSettings() {
           </span>
         </div>
         <div className="mt-1.5 flex gap-2">
+          {/* type=text + masking font instead of type=password: password
+              managers autofill password fields with saved site logins, and a
+              silent autofill here once overwrote a working API key on save */}
           <input
             id={key}
-            type="password"
+            type="text"
             value={drafts[key] ?? ""}
             onChange={(e) =>
               setDrafts((d) => ({ ...d, [key]: e.target.value }))
             }
             placeholder={placeholder}
             autoComplete="off"
+            data-1p-ignore
+            data-lpignore="true"
+            data-form-type="other"
+            spellCheck={false}
+            style={
+              (drafts[key] ?? "")
+                ? ({ WebkitTextSecurity: "disc" } as CSSProperties)
+                : undefined
+            }
             className={inputClass}
           />
           {view.set && (
