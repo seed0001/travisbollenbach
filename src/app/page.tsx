@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import ComingSoonPage from "@/components/ComingSoonPage";
 
 export const metadata: Metadata = {
-  title: "Travis Bollenbach - Under Construction",
-  description: "Webpage is currently under construction, features to come.",
+  title: "Travis Bollenbach - Game Lobby",
+  description: "Enter the game lobby and preview the level door map.",
   robots: { index: false, follow: false },
 };
 
