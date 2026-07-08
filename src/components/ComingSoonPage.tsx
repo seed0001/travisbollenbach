@@ -1,6 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import {
+  Room,
+  RoomEvent,
+  Track,
+  createLocalAudioTrack,
+  type LocalAudioTrack,
+  type RemoteParticipant,
+  type RemoteTrack,
+} from "livekit-client";
+import { useEffect, useMemo, useRef, useState } from "react";
+import * as THREE from "three";
 
 type AccessRule = "free" | "subscription" | "age-gated" | "subscription-age";
 
@@ -12,10 +22,8 @@ type LevelDoor = {
   description: string;
   access: AccessRule;
   minimumAge?: number;
-  position: {
-    left: string;
-    top: string;
-  };
+  position: THREE.Vector3Tuple;
+  color: number;
 };
 
 const levelDoors: LevelDoor[] = [
@@ -24,47 +32,52 @@ const levelDoors: LevelDoor[] = [
     name: "Training Yard",
     shortName: "Yard",
     zone: "starter",
-    description: "A free tutorial space for movement, controls, and basic interactions.",
+    description: "Free tutorial space for movement, controls, and basic interactions.",
     access: "free",
-    position: { left: "18%", top: "62%" },
+    position: [-8, 0, -7],
+    color: 0x89d8c2,
   },
   {
     id: "arcade-run",
     name: "Arcade Run",
     shortName: "Arcade",
     zone: "starter",
-    description: "A quick free challenge level with score chasing and short loops.",
+    description: "Free challenge level with score chasing and short loops.",
     access: "free",
-    position: { left: "29%", top: "29%" },
+    position: [0, 0, -10],
+    color: 0xf5d06f,
   },
   {
     id: "sky-workshop",
     name: "Sky Workshop",
     shortName: "Workshop",
     zone: "premium",
-    description: "A subscription area with build tools, experiments, and advanced puzzles.",
+    description: "Subscription area with build tools, experiments, and advanced puzzles.",
     access: "subscription",
-    position: { left: "52%", top: "20%" },
+    position: [8, 0, -7],
+    color: 0x7da7ff,
   },
   {
     id: "neon-district",
     name: "Neon District",
     shortName: "Neon",
     zone: "age gate",
-    description: "An age-gated social zone with sharper themes and moderated interactions.",
+    description: "Age-gated social zone for mature themes and moderated interactions.",
     access: "age-gated",
     minimumAge: 18,
-    position: { left: "71%", top: "39%" },
+    position: [10, 0, 4],
+    color: 0xff6aa2,
   },
   {
     id: "deep-vault",
     name: "Deep Vault",
     shortName: "Vault",
     zone: "premium age gate",
-    description: "A subscription and age-gated late-game level for mature story content.",
+    description: "Subscription and age-gated late-game space for mature story content.",
     access: "subscription-age",
     minimumAge: 18,
-    position: { left: "58%", top: "70%" },
+    position: [-10, 0, 4],
+    color: 0xb58cff,
   },
 ];
 
@@ -82,16 +95,365 @@ const accessDescriptions: Record<AccessRule, string> = {
   "subscription-age": "Requires both paid access and age confirmation.",
 };
 
+const lobbyBounds = 11.5;
+const doorTriggerDistance = 2.6;
+
+function makeLabelTexture(label: string) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 160;
+  const context = canvas.getContext("2d");
+  if (!context) return new THREE.CanvasTexture(canvas);
+
+  context.fillStyle = "rgba(17, 19, 24, 0.86)";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.strokeStyle = "rgba(245, 208, 111, 0.8)";
+  context.lineWidth = 6;
+  context.strokeRect(8, 8, canvas.width - 16, canvas.height - 16);
+  context.fillStyle = "#ffffff";
+  context.font = "700 42px Arial";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText(label, canvas.width / 2, canvas.height / 2);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+function createDoor(door: LevelDoor) {
+  const group = new THREE.Group();
+  group.position.set(...door.position);
+  group.userData = { doorId: door.id };
+
+  const portalMaterial = new THREE.MeshStandardMaterial({
+    color: door.color,
+    emissive: door.color,
+    emissiveIntensity: 0.75,
+    roughness: 0.35,
+    metalness: 0.12,
+  });
+  const frameMaterial = new THREE.MeshStandardMaterial({
+    color: 0x17191f,
+    roughness: 0.55,
+    metalness: 0.25,
+  });
+
+  const portal = new THREE.Mesh(new THREE.BoxGeometry(2.6, 3.9, 0.22), portalMaterial);
+  portal.position.y = 2;
+  group.add(portal);
+
+  const leftFrame = new THREE.Mesh(new THREE.BoxGeometry(0.25, 4.4, 0.45), frameMaterial);
+  leftFrame.position.set(-1.45, 2.05, 0);
+  group.add(leftFrame);
+
+  const rightFrame = leftFrame.clone();
+  rightFrame.position.x = 1.45;
+  group.add(rightFrame);
+
+  const topFrame = new THREE.Mesh(new THREE.BoxGeometry(3.15, 0.25, 0.45), frameMaterial);
+  topFrame.position.set(0, 4.2, 0);
+  group.add(topFrame);
+
+  const label = new THREE.Mesh(
+    new THREE.PlaneGeometry(2.9, 0.9),
+    new THREE.MeshBasicMaterial({
+      map: makeLabelTexture(door.shortName),
+      transparent: true,
+    }),
+  );
+  label.position.set(0, 5, 0.04);
+  group.add(label);
+
+  group.lookAt(0, 0, 0);
+  return group;
+}
+
 export default function ComingSoonPage() {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const audioRef = useRef<HTMLDivElement | null>(null);
+  const roomRef = useRef<Room | null>(null);
+  const localAudioRef = useRef<LocalAudioTrack | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [selectedDoorId, setSelectedDoorId] = useState(levelDoors[0].id);
-  const selectedDoor = useMemo(
-    () => levelDoors.find((door) => door.id === selectedDoorId) ?? levelDoors[0],
-    [selectedDoorId],
+  const [activeDoorId, setActiveDoorId] = useState(levelDoors[0].id);
+  const [voiceState, setVoiceState] = useState<
+    "idle" | "connecting" | "connected" | "error"
+  >("idle");
+  const [voiceMessage, setVoiceMessage] = useState("");
+  const [remoteSpeakers, setRemoteSpeakers] = useState<string[]>([]);
+
+  const activeDoor = useMemo(
+    () => levelDoors.find((door) => door.id === activeDoorId) ?? levelDoors[0],
+    [activeDoorId],
   );
 
+  useEffect(() => {
+    if (!isPlaying || !canvasRef.current) return;
+
+    const canvas = canvasRef.current;
+    const renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: true,
+      alpha: false,
+    });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x101318);
+    scene.fog = new THREE.Fog(0x101318, 15, 36);
+
+    const camera = new THREE.PerspectiveCamera(
+      62,
+      canvas.clientWidth / canvas.clientHeight,
+      0.1,
+      100,
+    );
+    camera.position.set(0, 8.2, 10);
+    camera.lookAt(0, 1, 0);
+
+    const ambient = new THREE.AmbientLight(0xffffff, 0.48);
+    scene.add(ambient);
+
+    const keyLight = new THREE.DirectionalLight(0xffffff, 2.2);
+    keyLight.position.set(5, 9, 7);
+    scene.add(keyLight);
+
+    const floor = new THREE.Mesh(
+      new THREE.CircleGeometry(13.2, 80),
+      new THREE.MeshStandardMaterial({
+        color: 0x202a2d,
+        roughness: 0.82,
+        metalness: 0.08,
+      }),
+    );
+    floor.rotation.x = -Math.PI / 2;
+    scene.add(floor);
+
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(6.6, 0.08, 10, 96),
+      new THREE.MeshStandardMaterial({
+        color: 0xf5d06f,
+        emissive: 0xf5d06f,
+        emissiveIntensity: 0.22,
+      }),
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.04;
+    scene.add(ring);
+
+    const spawn = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.45, 1.45, 0.18, 48),
+      new THREE.MeshStandardMaterial({
+        color: 0x89d8c2,
+        emissive: 0x89d8c2,
+        emissiveIntensity: 0.25,
+      }),
+    );
+    spawn.position.y = 0.09;
+    scene.add(spawn);
+
+    const player = new THREE.Group();
+    const body = new THREE.Mesh(
+      new THREE.CapsuleGeometry(0.42, 1.05, 8, 16),
+      new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        roughness: 0.38,
+      }),
+    );
+    body.position.y = 1.02;
+    player.add(body);
+    const visor = new THREE.Mesh(
+      new THREE.SphereGeometry(0.22, 16, 16),
+      new THREE.MeshStandardMaterial({
+        color: 0x89d8c2,
+        emissive: 0x89d8c2,
+        emissiveIntensity: 0.6,
+      }),
+    );
+    visor.position.set(0, 1.55, -0.32);
+    player.add(visor);
+    player.position.set(0, 0, 0);
+    scene.add(player);
+
+    const doorGroups = levelDoors.map((door) => {
+      const group = createDoor(door);
+      scene.add(group);
+      const light = new THREE.PointLight(door.color, 8, 8);
+      light.position.set(...door.position);
+      light.position.y = 2.2;
+      scene.add(light);
+      return group;
+    });
+
+    const keys = new Set<string>();
+    const onKeyDown = (event: KeyboardEvent) => keys.add(event.key.toLowerCase());
+    const onKeyUp = (event: KeyboardEvent) => keys.delete(event.key.toLowerCase());
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+
+    let animationFrame = 0;
+    let lastTime = performance.now();
+
+    const resize = () => {
+      const width = canvas.clientWidth;
+      const height = canvas.clientHeight;
+      if (canvas.width !== width || canvas.height !== height) {
+        renderer.setSize(width, height, false);
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+      }
+    };
+
+    const animate = (time: number) => {
+      const delta = Math.min((time - lastTime) / 1000, 0.05);
+      lastTime = time;
+      resize();
+
+      const move = new THREE.Vector3();
+      if (keys.has("w") || keys.has("arrowup")) move.z -= 1;
+      if (keys.has("s") || keys.has("arrowdown")) move.z += 1;
+      if (keys.has("a") || keys.has("arrowleft")) move.x -= 1;
+      if (keys.has("d") || keys.has("arrowright")) move.x += 1;
+      if (move.lengthSq() > 0) {
+        move.normalize().multiplyScalar(5.4 * delta);
+        player.position.add(move);
+        player.position.x = THREE.MathUtils.clamp(player.position.x, -lobbyBounds, lobbyBounds);
+        player.position.z = THREE.MathUtils.clamp(player.position.z, -lobbyBounds, lobbyBounds);
+        player.rotation.y = Math.atan2(move.x, move.z);
+      }
+
+      let nearestDoor = levelDoors[0];
+      let nearestDistance = Number.POSITIVE_INFINITY;
+      const playerFlat = new THREE.Vector2(player.position.x, player.position.z);
+      for (const door of levelDoors) {
+        const doorFlat = new THREE.Vector2(door.position[0], door.position[2]);
+        const distance = playerFlat.distanceTo(doorFlat);
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearestDoor = door;
+        }
+      }
+      if (nearestDistance < doorTriggerDistance) {
+        setActiveDoorId((current) =>
+          current === nearestDoor.id ? current : nearestDoor.id,
+        );
+      }
+
+      for (const group of doorGroups) {
+        const pulse = Math.sin(time * 0.003 + group.position.x) * 0.04;
+        group.scale.setScalar(1 + pulse);
+      }
+
+      camera.position.x = THREE.MathUtils.lerp(camera.position.x, player.position.x, 0.08);
+      camera.position.z = THREE.MathUtils.lerp(camera.position.z, player.position.z + 10, 0.08);
+      camera.lookAt(player.position.x, 1.1, player.position.z);
+      renderer.render(scene, camera);
+      animationFrame = requestAnimationFrame(animate);
+    };
+
+    animationFrame = requestAnimationFrame(animate);
+
+    return () => {
+      cancelAnimationFrame(animationFrame);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      renderer.dispose();
+      scene.traverse((object) => {
+        if (object instanceof THREE.Mesh) {
+          object.geometry.dispose();
+          const materials = Array.isArray(object.material)
+            ? object.material
+            : [object.material];
+          materials.forEach((material) => material.dispose());
+        }
+      });
+    };
+  }, [isPlaying]);
+
+  const connectVoice = async () => {
+    if (voiceState === "connecting" || voiceState === "connected") return;
+    setVoiceState("connecting");
+    setVoiceMessage("Connecting voice...");
+    try {
+      const identity =
+        globalThis.crypto?.randomUUID?.() ?? `player-${Date.now().toString(36)}`;
+      const response = await fetch("/api/voice/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ room: "main-lobby", identity }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || typeof data.token !== "string" || typeof data.url !== "string") {
+        throw new Error(
+          typeof data.error === "string"
+            ? data.error
+            : "Voice service is not configured.",
+        );
+      }
+
+      const room = new Room({ adaptiveStream: true, dynacast: true });
+      roomRef.current = room;
+
+      const attachRemoteAudio = (
+        track: RemoteTrack,
+        _publication: unknown,
+        participant: RemoteParticipant,
+      ) => {
+        if (track.kind !== Track.Kind.Audio || !audioRef.current) return;
+        const element = track.attach();
+        element.dataset.participant = participant.identity;
+        audioRef.current.appendChild(element);
+        setRemoteSpeakers((current) =>
+          current.includes(participant.identity)
+            ? current
+            : [...current, participant.identity],
+        );
+      };
+
+      room.on(RoomEvent.TrackSubscribed, attachRemoteAudio);
+      room.on(RoomEvent.ParticipantDisconnected, (participant) => {
+        setRemoteSpeakers((current) =>
+          current.filter((identity) => identity !== participant.identity),
+        );
+      });
+
+      await room.connect(data.url, data.token);
+      const localAudio = await createLocalAudioTrack({
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      });
+      localAudioRef.current = localAudio;
+      await room.localParticipant.publishTrack(localAudio);
+      setVoiceState("connected");
+      setVoiceMessage("Voice is live in the lobby.");
+    } catch (error) {
+      setVoiceState("error");
+      setVoiceMessage(error instanceof Error ? error.message : "Voice failed.");
+      roomRef.current?.disconnect();
+      roomRef.current = null;
+      localAudioRef.current?.stop();
+      localAudioRef.current = null;
+    }
+  };
+
+  const disconnectVoice = () => {
+    localAudioRef.current?.stop();
+    localAudioRef.current = null;
+    roomRef.current?.disconnect();
+    roomRef.current = null;
+    if (audioRef.current) audioRef.current.replaceChildren();
+    setRemoteSpeakers([]);
+    setVoiceState("idle");
+    setVoiceMessage("");
+  };
+
+  useEffect(() => disconnectVoice, []);
+
   return (
-    <main className="game-shell min-h-svh bg-[#111318] text-white">
+    <main className="game-shell min-h-svh bg-[#101318] text-white">
       {!isPlaying ? (
         <section className="welcome-screen mx-auto flex min-h-svh max-w-5xl flex-col items-center justify-center px-6 text-center">
           <p className="text-sm font-bold uppercase tracking-[0.28em] text-[#89d8c2]">
@@ -112,111 +474,108 @@ export default function ComingSoonPage() {
           </button>
         </section>
       ) : (
-        <section className="lobby-screen mx-auto grid min-h-svh max-w-7xl gap-5 px-4 py-4 lg:grid-cols-[1fr_360px] lg:px-6 lg:py-6">
-          <div className="lobby-world relative min-h-[620px] overflow-hidden rounded-md border border-white/12 bg-[#182023] shadow-2xl shadow-black/35">
-            <div className="lobby-path absolute left-[12%] top-[50%] h-[18%] w-[74%] -translate-y-1/2 rounded-[50%] border border-[#ead08a]/24 bg-[#d8b45b]/16" />
-            <div className="lobby-path absolute left-[42%] top-[12%] h-[74%] w-[16%] rounded-[50%] border border-[#ead08a]/18 bg-[#d8b45b]/12" />
-            <div className="absolute left-1/2 top-1/2 grid h-28 w-28 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-[#89d8c2]/45 bg-[#111318]/88 shadow-[0_0_50px_rgba(137,216,194,0.2)]">
-              <span className="text-center text-xs font-black uppercase tracking-[0.18em] text-[#89d8c2]">
-                Lobby
-              </span>
+        <section className="immersive-lobby relative min-h-svh overflow-hidden">
+          <canvas
+            ref={canvasRef}
+            className="absolute inset-0 h-full w-full"
+            aria-label="3D multiplayer lobby"
+          />
+          <div ref={audioRef} className="hidden" />
+
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-wrap items-start justify-between gap-4 p-4">
+            <div className="pointer-events-auto max-w-md rounded-md border border-white/12 bg-[#101318]/82 p-4 shadow-xl shadow-black/30 backdrop-blur">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-[#89d8c2]">
+                3D Lobby
+              </p>
+              <h2 className="mt-2 text-2xl font-black tracking-tight">
+                {activeDoor.name}
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-white/68">
+                {activeDoor.description}
+              </p>
+              <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                <div className="rounded-md border border-white/10 bg-white/[0.045] p-3">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/45">
+                    Access
+                  </p>
+                  <p className="mt-1 text-sm font-bold">
+                    {accessLabels[activeDoor.access]}
+                  </p>
+                </div>
+                <div className="rounded-md border border-white/10 bg-white/[0.045] p-3">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/45">
+                    Rule
+                  </p>
+                  <p className="mt-1 text-sm font-bold">
+                    {activeDoor.minimumAge
+                      ? `${activeDoor.minimumAge}+`
+                      : accessDescriptions[activeDoor.access]}
+                  </p>
+                </div>
+              </div>
             </div>
 
-            {levelDoors.map((door) => (
-              <button
-                key={door.id}
-                type="button"
-                onClick={() => setSelectedDoorId(door.id)}
-                className={`level-door absolute grid h-24 w-24 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-t-full border px-2 text-center text-[11px] font-black uppercase tracking-[0.08em] transition hover:-translate-y-[54%] focus:outline-none focus:ring-4 ${
-                  selectedDoor.id === door.id
-                    ? "border-[#f5d06f] bg-[#f5d06f] text-[#15120b] shadow-[0_0_32px_rgba(245,208,111,0.38)] focus:ring-[#f5d06f]/30"
-                    : "border-white/18 bg-[#111318]/86 text-white shadow-[0_12px_30px_rgba(0,0,0,0.32)] focus:ring-white/20"
-                }`}
-                style={{ left: door.position.left, top: door.position.top }}
-                aria-label={`Inspect ${door.name}`}
-              >
-                <span>{door.shortName}</span>
-              </button>
-            ))}
+            <div className="pointer-events-auto w-full max-w-sm rounded-md border border-white/12 bg-[#101318]/82 p-4 shadow-xl shadow-black/30 backdrop-blur">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.2em] text-[#f5d06f]">
+                    Voice
+                  </p>
+                  <p className="mt-1 text-sm text-white/66">
+                    {voiceMessage || "Connect your mic to talk in the lobby."}
+                  </p>
+                </div>
+                <span
+                  className={`h-3 w-3 rounded-full ${
+                    voiceState === "connected"
+                      ? "bg-[#89d8c2]"
+                      : voiceState === "error"
+                        ? "bg-[#ff6a6a]"
+                        : "bg-white/28"
+                  }`}
+                  aria-label={`Voice state: ${voiceState}`}
+                />
+              </div>
+              <div className="mt-4 flex gap-2">
+                <button
+                  type="button"
+                  onClick={connectVoice}
+                  disabled={voiceState === "connecting" || voiceState === "connected"}
+                  className="min-h-11 flex-1 rounded-md bg-[#89d8c2] px-4 text-xs font-black uppercase tracking-[0.14em] text-[#08110f] transition hover:bg-[#a3f1dd] disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  {voiceState === "connecting" ? "Connecting" : "Mic on"}
+                </button>
+                <button
+                  type="button"
+                  onClick={disconnectVoice}
+                  className="min-h-11 rounded-md border border-white/16 px-4 text-xs font-black uppercase tracking-[0.14em] text-white/72 transition hover:border-white/34 hover:text-white"
+                >
+                  Mic off
+                </button>
+              </div>
+              <p className="mt-3 text-xs leading-5 text-white/45">
+                {remoteSpeakers.length > 0
+                  ? `Remote voice: ${remoteSpeakers.join(", ")}`
+                  : "No remote speakers connected."}
+              </p>
+            </div>
           </div>
 
-          <aside className="lobby-panel rounded-md border border-white/12 bg-[#17191f] p-5 shadow-xl shadow-black/20">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.2em] text-[#89d8c2]">
-                  Door map
-                </p>
-                <h2 className="mt-2 text-3xl font-black tracking-tight">
-                  {selectedDoor.name}
-                </h2>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsPlaying(false)}
-                className="rounded-md border border-white/14 px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] text-white/70 transition hover:border-white/35 hover:text-white"
-              >
-                Exit
-              </button>
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex flex-wrap items-end justify-between gap-4 p-4">
+            <div className="rounded-md border border-white/12 bg-[#101318]/82 px-4 py-3 text-xs font-bold uppercase tracking-[0.14em] text-white/70 shadow-xl shadow-black/30 backdrop-blur">
+              WASD / arrows to move. Walk near a doorway to inspect it.
             </div>
-
-            <dl className="mt-5 grid grid-cols-2 gap-3">
-              <div className="rounded-md border border-white/10 bg-white/[0.04] p-3">
-                <dt className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/45">
-                  Zone
-                </dt>
-                <dd className="mt-1 text-sm font-bold capitalize text-white">
-                  {selectedDoor.zone}
-                </dd>
-              </div>
-              <div className="rounded-md border border-white/10 bg-white/[0.04] p-3">
-                <dt className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/45">
-                  Access
-                </dt>
-                <dd className="mt-1 text-sm font-bold text-white">
-                  {accessLabels[selectedDoor.access]}
-                </dd>
-              </div>
-            </dl>
-
-            <p className="mt-5 text-sm leading-6 text-white/68">
-              {selectedDoor.description}
-            </p>
-
-            <div className="mt-5 rounded-md border border-[#f5d06f]/24 bg-[#f5d06f]/10 p-4">
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-[#f5d06f]">
-                Entry rule
-              </p>
-              <p className="mt-2 text-sm leading-6 text-white/76">
-                {accessDescriptions[selectedDoor.access]}
-                {selectedDoor.minimumAge
-                  ? ` Minimum age: ${selectedDoor.minimumAge}.`
-                  : ""}
-              </p>
-            </div>
-
-            <div className="mt-6 space-y-2">
-              {levelDoors.map((door) => (
-                <button
-                  key={door.id}
-                  type="button"
-                  onClick={() => setSelectedDoorId(door.id)}
-                  className="grid w-full grid-cols-[1fr_auto] items-center gap-3 rounded-md border border-white/10 bg-white/[0.035] px-3 py-3 text-left transition hover:border-white/24 hover:bg-white/[0.06]"
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-bold">
-                      {door.name}
-                    </span>
-                    <span className="mt-1 block text-xs text-white/45">
-                      {door.zone}
-                    </span>
-                  </span>
-                  <span className="rounded-sm bg-white/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-white/72">
-                    {accessLabels[door.access]}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </aside>
+            <button
+              type="button"
+              onClick={() => {
+                disconnectVoice();
+                setIsPlaying(false);
+              }}
+              className="pointer-events-auto min-h-11 rounded-md border border-white/16 bg-[#101318]/82 px-4 text-xs font-black uppercase tracking-[0.14em] text-white/72 shadow-xl shadow-black/30 backdrop-blur transition hover:border-white/34 hover:text-white"
+            >
+              Exit lobby
+            </button>
+          </div>
         </section>
       )}
     </main>
