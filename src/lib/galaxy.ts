@@ -1,158 +1,219 @@
 import * as THREE from "three";
 
 // ---------------------------------------------------------------------------
-// A painted galaxy. Generates an equirectangular night-sky texture on a
-// canvas — thousands of stars, a tilted Milky Way band with dust lanes, and
-// a few faint nebulae — and wraps it on an inward-facing sphere. No assets,
-// no network: the whole sky is painted at load time.
+// A real point-cloud galaxy. No painted sky texture — that stretched into
+// fuzzy blobs and seam walls. Instead: thousands of individual stars as
+// screen-space points (always crisp), a Milky Way made of genuine star
+// density along a tilted great circle, and a whisper of additive glow.
 // ---------------------------------------------------------------------------
 
-const SKY_W = 2048;
-const SKY_H = 1024;
-
-function paintGalaxy(ctx: CanvasRenderingContext2D) {
-  // deep space: near-black with a whisper of blue at the horizon
-  const base = ctx.createLinearGradient(0, 0, 0, SKY_H);
-  base.addColorStop(0, "#03040a");
-  base.addColorStop(0.55, "#050614");
-  base.addColorStop(1, "#070a18");
-  ctx.fillStyle = base;
-  ctx.fillRect(0, 0, SKY_W, SKY_H);
-
-  // the galactic band runs as a gentle sine across the sky
-  const bandY = (x: number) =>
-    SKY_H * 0.5 + Math.sin((x / SKY_W) * Math.PI * 2) * SKY_H * 0.16;
-  const bandHalf = SKY_H * 0.14;
-
-  // far starfield — smaller and denser inside the band
-  const starColors = [
-    "255,255,255",
-    "200,215,255",
-    "255,240,220",
-    "180,200,255",
-    "255,220,200",
-  ];
-  for (let i = 0; i < 4200; i += 1) {
-    const x = Math.random() * SKY_W;
-    const y = Math.random() * SKY_H;
-    const inBand = Math.abs(y - bandY(x)) < bandHalf * (0.7 + Math.random());
-    if (!inBand && Math.random() < 0.55) continue; // thin out the open sky
-    const r = inBand ? Math.random() * 0.9 + 0.2 : Math.random() * 1.4 + 0.3;
-    const alpha = Math.random() * 0.7 + 0.25;
-    ctx.fillStyle = `rgba(${starColors[(Math.random() * starColors.length) | 0]},${alpha})`;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // milky glow: layered soft blobs along the band
-  for (let i = 0; i < 900; i += 1) {
-    const x = Math.random() * SKY_W;
-    const spread = (Math.random() - 0.5) * bandHalf * 2.2;
-    const y = bandY(x) + spread;
-    const radius = Math.random() * 55 + 18;
-    const core = 1 - Math.abs(spread) / (bandHalf * 1.3);
-    if (core <= 0) continue;
-    const g = ctx.createRadialGradient(x, y, 0, x, y, radius);
-    const tint =
-      Math.random() < 0.75
-        ? "205,215,235"
-        : Math.random() < 0.5
-          ? "185,170,220"
-          : "160,190,225";
-    g.addColorStop(0, `rgba(${tint},${0.028 * core})`);
-    g.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.fillStyle = g;
-    ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
-  }
-
-  // dust lanes: dark ragged blobs threading the bright band
-  for (let i = 0; i < 260; i += 1) {
-    const x = Math.random() * SKY_W;
-    const y = bandY(x) + (Math.random() - 0.5) * bandHalf * 0.9;
-    const radius = Math.random() * 34 + 10;
-    const g = ctx.createRadialGradient(x, y, 0, x, y, radius);
-    g.addColorStop(0, `rgba(4,4,10,${Math.random() * 0.16 + 0.05})`);
-    g.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.fillStyle = g;
-    ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
-  }
-
-  // bright band stars sprinkled over the glow
-  for (let i = 0; i < 1400; i += 1) {
-    const x = Math.random() * SKY_W;
-    const y = bandY(x) + (Math.random() - 0.5) * bandHalf * 1.6;
-    const r = Math.random() * 0.8 + 0.15;
-    ctx.fillStyle = `rgba(235,240,255,${Math.random() * 0.8 + 0.2})`;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // a few distant nebulae off the band
-  const nebulae = [
-    { tint: "150,110,200", a: 0.05 },
-    { tint: "110,150,210", a: 0.045 },
-    { tint: "200,120,160", a: 0.035 },
-  ];
-  for (const n of nebulae) {
-    const x = Math.random() * SKY_W;
-    const y = Math.random() * SKY_H * 0.6 + SKY_H * 0.1;
-    for (let i = 0; i < 14; i += 1) {
-      const px = x + (Math.random() - 0.5) * 160;
-      const py = y + (Math.random() - 0.5) * 110;
-      const radius = Math.random() * 70 + 30;
-      const g = ctx.createRadialGradient(px, py, 0, px, py, radius);
-      g.addColorStop(0, `rgba(${n.tint},${n.a * Math.random()})`);
-      g.addColorStop(1, "rgba(0,0,0,0)");
-      ctx.fillStyle = g;
-      ctx.fillRect(px - radius, py - radius, radius * 2, radius * 2);
-    }
-  }
-
-  // a handful of hero stars with glow
-  for (let i = 0; i < 26; i += 1) {
-    const x = Math.random() * SKY_W;
-    const y = Math.random() * SKY_H * 0.8;
-    const r = Math.random() * 1.3 + 0.9;
-    ctx.shadowColor = "rgba(220,230,255,0.9)";
-    ctx.shadowBlur = 8;
-    ctx.fillStyle = "rgba(255,255,255,0.95)";
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.shadowBlur = 0;
-  }
+// gaussian via Box-Muller — the band's thickness falls off naturally
+function gauss(): number {
+  let u = 0;
+  let v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
 }
 
-/** Inward-facing sky sphere carrying the painted galaxy. Caller owns disposal
- * of geometry, material, and texture (all returned). */
-export function createGalaxySky(radius: number): {
-  mesh: THREE.Mesh;
-  dispose(): void;
-} {
+/** small round soft-edged dot, shared by all star layers */
+function makeStarTexture(): THREE.CanvasTexture {
   const canvas = document.createElement("canvas");
-  canvas.width = SKY_W;
-  canvas.height = SKY_H;
+  canvas.width = 64;
+  canvas.height = 64;
   const ctx = canvas.getContext("2d");
-  if (ctx) paintGalaxy(ctx);
-
+  if (ctx) {
+    const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    g.addColorStop(0, "rgba(255,255,255,1)");
+    g.addColorStop(0.35, "rgba(255,255,255,0.85)");
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 64, 64);
+  }
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
-  const geometry = new THREE.SphereGeometry(radius, 48, 32);
-  const material = new THREE.MeshBasicMaterial({
-    map: texture,
-    side: THREE.BackSide,
-    fog: false,
+  return texture;
+}
+
+/** larger, much softer blob for the band glow and nebulae */
+function makeGlowTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement("canvas");
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+    g.addColorStop(0, "rgba(255,255,255,0.5)");
+    g.addColorStop(0.5, "rgba(255,255,255,0.14)");
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 128, 128);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+// realistic-ish stellar tints: blue-white giants to warm dwarfs
+const STAR_TINTS = [
+  [0.72, 0.8, 1.0],
+  [0.85, 0.9, 1.0],
+  [1.0, 1.0, 1.0],
+  [1.0, 0.95, 0.85],
+  [1.0, 0.85, 0.7],
+] as const;
+
+function pickTint(dim: number): [number, number, number] {
+  const t = STAR_TINTS[(Math.random() * STAR_TINTS.length) | 0];
+  return [t[0] * dim, t[1] * dim, t[2] * dim];
+}
+
+export function createGalaxySky(radius: number): {
+  mesh: THREE.Object3D;
+  dispose(): void;
+} {
+  const group = new THREE.Group();
+  group.renderOrder = -1;
+  const disposables: { dispose(): void }[] = [];
+
+  const starTexture = makeStarTexture();
+  const glowTexture = makeGlowTexture();
+  disposables.push(starTexture, glowTexture);
+
+  // the galactic plane: a great circle tilted across the sky
+  const bandRotation = new THREE.Quaternion().setFromUnitVectors(
+    new THREE.Vector3(0, 1, 0),
+    new THREE.Vector3(0.42, 0.78, 0.46).normalize(),
+  );
+
+  const pointOnSphere = (out: THREE.Vector3) => {
+    const z = Math.random() * 2 - 1;
+    const t = Math.random() * Math.PI * 2;
+    const s = Math.sqrt(1 - z * z);
+    out.set(s * Math.cos(t), z, s * Math.sin(t));
+  };
+
+  const pointInBand = (out: THREE.Vector3, sigma: number) => {
+    const t = Math.random() * Math.PI * 2;
+    out.set(Math.cos(t), gauss() * sigma, Math.sin(t));
+    out.normalize().applyQuaternion(bandRotation);
+  };
+
+  const addStarLayer = (
+    count: number,
+    size: number,
+    opacity: number,
+    place: (out: THREE.Vector3) => void,
+    dimRange: [number, number],
+  ) => {
+    const positions = new Float32Array(count * 3);
+    const colors = new Float32Array(count * 3);
+    const p = new THREE.Vector3();
+    for (let i = 0; i < count; i += 1) {
+      place(p);
+      p.multiplyScalar(radius);
+      positions[i * 3] = p.x;
+      positions[i * 3 + 1] = p.y;
+      positions[i * 3 + 2] = p.z;
+      const [r, g, b] = pickTint(
+        dimRange[0] + Math.random() * (dimRange[1] - dimRange[0]),
+      );
+      colors[i * 3] = r;
+      colors[i * 3 + 1] = g;
+      colors[i * 3 + 2] = b;
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    const material = new THREE.PointsMaterial({
+      size,
+      map: starTexture,
+      vertexColors: true,
+      transparent: true,
+      opacity,
+      sizeAttenuation: false, // constant pixel size — stars stay pin-sharp
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      fog: false,
+    });
+    disposables.push(geometry, material);
+    group.add(new THREE.Points(geometry, material));
+  };
+
+  // open-sky stars: mostly faint, a few bright, everywhere
+  addStarLayer(1600, 1.6, 0.9, pointOnSphere, [0.35, 0.8]);
+  addStarLayer(500, 2.6, 0.95, pointOnSphere, [0.55, 1.0]);
+  addStarLayer(110, 4.2, 1.0, pointOnSphere, [0.8, 1.0]);
+
+  // the Milky Way: density, not paint — a core lane and a wider halo
+  addStarLayer(2600, 1.4, 0.8, (o) => pointInBand(o, 0.055), [0.3, 0.75]);
+  addStarLayer(1500, 1.8, 0.85, (o) => pointInBand(o, 0.13), [0.3, 0.7]);
+  addStarLayer(300, 2.6, 0.9, (o) => pointInBand(o, 0.08), [0.6, 1.0]);
+
+  // faint glow hugging the band — additive sprites, far too dim to read as
+  // geometry, just enough to make the lane feel luminous
+  const glowMaterial = new THREE.SpriteMaterial({
+    map: glowTexture,
+    color: new THREE.Color(0.55, 0.62, 0.78),
+    transparent: true,
+    opacity: 0.055,
+    blending: THREE.AdditiveBlending,
     depthWrite: false,
+    fog: false,
   });
-  const mesh = new THREE.Mesh(geometry, material);
+  disposables.push(glowMaterial);
+  const glowPoint = new THREE.Vector3();
+  for (let i = 0; i < 90; i += 1) {
+    pointInBand(glowPoint, 0.05);
+    const sprite = new THREE.Sprite(glowMaterial);
+    sprite.position.copy(glowPoint).multiplyScalar(radius * 0.985);
+    const s = radius * (0.1 + Math.random() * 0.12);
+    sprite.scale.set(s, s * (0.5 + Math.random() * 0.4), 1);
+    group.add(sprite);
+  }
+
+  // two quiet nebulae off the band
+  const nebulaTints = [
+    new THREE.Color(0.5, 0.36, 0.62),
+    new THREE.Color(0.32, 0.44, 0.66),
+  ];
+  nebulaTints.forEach((tint) => {
+    const material = new THREE.SpriteMaterial({
+      map: glowTexture,
+      color: tint,
+      transparent: true,
+      opacity: 0.05,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      fog: false,
+    });
+    disposables.push(material);
+    const center = new THREE.Vector3();
+    pointOnSphere(center);
+    center.y = Math.abs(center.y) * 0.6 + 0.25; // keep them up in the sky
+    center.normalize();
+    for (let i = 0; i < 7; i += 1) {
+      const sprite = new THREE.Sprite(material);
+      sprite.position
+        .copy(center)
+        .multiplyScalar(radius * 0.98)
+        .add(
+          new THREE.Vector3(
+            (Math.random() - 0.5) * radius * 0.12,
+            (Math.random() - 0.5) * radius * 0.08,
+            (Math.random() - 0.5) * radius * 0.12,
+          ),
+        );
+      const s = radius * (0.06 + Math.random() * 0.08);
+      sprite.scale.set(s, s, 1);
+      group.add(sprite);
+    }
+  });
+
   return {
-    mesh,
+    mesh: group,
     dispose() {
-      geometry.dispose();
-      material.dispose();
-      texture.dispose();
+      disposables.forEach((d) => d.dispose());
     },
   };
 }
