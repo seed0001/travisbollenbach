@@ -47,6 +47,29 @@ type Progress = { xp: number; points: number; avatarHue: number };
 
 // --- avatar construction ------------------------------------------------------
 
+// glowing room-number sign that hovers over each gate
+function makeRoomLabelTexture(text: string, color: string) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 128;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    ctx.font = "bold 72px monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 26;
+    ctx.fillStyle = color;
+    // double pass thickens the glow without blurring the letterforms
+    ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+    ctx.shadowBlur = 10;
+    ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
 function makeNameTexture(text: string) {
   const canvas = document.createElement("canvas");
   canvas.width = 512;
@@ -341,7 +364,9 @@ export default function Lobby() {
     );
 
     const gatePositions: THREE.Vector3[] = [];
-    GATES.forEach((gate) => {
+    const roomSigns: { sprite: THREE.Sprite; baseY: number; phase: number }[] =
+      [];
+    GATES.forEach((gate, gateIndex) => {
       const gx = Math.cos(gate.angle) * GATE_RING_RADIUS;
       const gz = Math.sin(gate.angle) * GATE_RING_RADIUS;
       const gy = islandHeightAt(gx, gz);
@@ -380,6 +405,26 @@ export default function Lobby() {
         group.add(doorLight);
         disposables.push(doorLight);
       }
+
+      // the room number, hovering and glowing above the doorway
+      const signText = `ROOM ${String(gateIndex + 1).padStart(2, "0")}`;
+      const signColor = open ? "#b8e6ff" : "#e8b662";
+      const signTexture = makeRoomLabelTexture(signText, signColor);
+      const signMaterial = new THREE.SpriteMaterial({
+        map: signTexture,
+        transparent: true,
+        depthWrite: false,
+      });
+      const sign = new THREE.Sprite(signMaterial);
+      sign.scale.set(6.4, 1.6, 1);
+      sign.position.y = 9.1; // floats above the lintel
+      group.add(sign);
+      disposables.push(signTexture, signMaterial);
+      roomSigns.push({
+        sprite: sign,
+        baseY: 9.1,
+        phase: gateIndex * 1.7,
+      });
 
       scene.add(group);
       gatePositions.push(new THREE.Vector3(gx, 0, gz));
@@ -692,6 +737,14 @@ export default function Lobby() {
       );
       const bob = Math.sin(elapsed * 1.4) * 0.03;
       camera.position.y = groundY + EYE_HEIGHT + bob;
+
+      // room signs hover and breathe their glow
+      for (const sign of roomSigns) {
+        sign.sprite.position.y =
+          sign.baseY + Math.sin(elapsed * 0.9 + sign.phase) * 0.22;
+        sign.sprite.material.opacity =
+          0.82 + Math.sin(elapsed * 1.6 + sign.phase) * 0.18;
+      }
 
       // breathe the beacon
       beaconMaterial.opacity = 0.26 + Math.sin(elapsed * 1.1) * 0.08;
