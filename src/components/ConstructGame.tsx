@@ -602,7 +602,7 @@ export default function ConstructGame() {
 
   const near = nearMonolith >= 0 ? monoliths[nearMonolith] : null;
   const showTouchOverlay = isTouch && !entered;
-  const showDesktopOverlay = !isTouch && !locked;
+  const showDesktopOverlay = !isTouch && !entered;
 
   return (
     <div className="fixed inset-0 overflow-hidden bg-black">
@@ -641,7 +641,9 @@ export default function ConstructGame() {
             ? mode === "gyro"
               ? "move your phone to look — left thumb: walk — swipe right side: turn"
               : "left thumb: walk — right thumb: look"
-            : "wasd / arrows: move — mouse: look — esc: release cursor"}
+            : locked
+              ? "wasd / arrows: move — mouse: look — esc: release cursor"
+              : "cursor released — click the scene to look around again"}
         </p>
 
         {/* monolith inscription */}
@@ -664,6 +666,7 @@ export default function ConstructGame() {
         <div
           onClick={() => {
             startAudio();
+            setEntered(true);
             lockFnRef.current?.();
           }}
           className="absolute inset-0 z-20 flex cursor-pointer flex-col items-center justify-center gap-6 bg-black/70 text-center"
