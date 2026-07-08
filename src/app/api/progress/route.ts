@@ -1,6 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserBySession, SESSION_COOKIE } from "@/lib/auth";
-import { getProgress, markLobbyJoin, setAvatarHue } from "@/lib/progress";
+import {
+  collectShard,
+  getProgress,
+  markLobbyJoin,
+  setAvatarHue,
+} from "@/lib/progress";
+import {
+  GALAXY_CLEAR_XP,
+  GALAXY_ROOM_ID,
+  SHARD_COUNT,
+  SHARD_XP,
+  isShardId,
+} from "@/lib/space";
 
 export async function GET(request: NextRequest) {
   const token = request.cookies.get(SESSION_COOKIE)?.value ?? "";
@@ -24,9 +36,10 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json({ error: "Bad request." }, { status: 400 });
   }
-  const { avatarHue, joinedLobby } = (body ?? {}) as {
+  const { avatarHue, joinedLobby, collectShard: shardId } = (body ?? {}) as {
     avatarHue?: unknown;
     joinedLobby?: unknown;
+    collectShard?: unknown;
   };
 
   if (typeof avatarHue === "number" && Number.isFinite(avatarHue)) {
@@ -34,6 +47,18 @@ export async function POST(request: NextRequest) {
   }
   if (joinedLobby === true) {
     return NextResponse.json({ progress: await markLobbyJoin(user.id) });
+  }
+  if (typeof shardId === "string") {
+    if (!isShardId(shardId)) {
+      return NextResponse.json({ error: "Unknown shard." }, { status: 400 });
+    }
+    const result = await collectShard(user.id, shardId, {
+      shardXp: SHARD_XP,
+      totalShards: SHARD_COUNT,
+      clearXp: GALAXY_CLEAR_XP,
+      roomId: GALAXY_ROOM_ID,
+    });
+    return NextResponse.json(result);
   }
   return NextResponse.json({ error: "Nothing to update." }, { status: 400 });
 }

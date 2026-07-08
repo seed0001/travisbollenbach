@@ -56,7 +56,9 @@ Two monoliths are doors. The Character Creation monolith opens the studio. The A
 
 The lobby of the game proper, at slash lobby — and the first place on the site that is truly multiplayer. Entering requires an account. That is the deal: sign in to play, and the game remembers you — your avatar, your experience points, and soon your cleared rooms all live on your account.
 
-The Nexus is a small night island under a dome of stars, rendered in the same low-poly style as the Construct but kept deliberately finite: one shore, one meadow, one plaza. A green beacon of light rises from the center of the island and can be seen from anywhere on it. Around the plaza stand five sealed gates. Behind each gate, an escape room is growing. None are open yet.
+The Nexus is a small night island under a real point-built galaxy — thousands of individual stars with a Milky Way lane of genuine star density. A white beacon of light rises from the center of the island and can be seen from anywhere on it. Around the plaza stand five gates, each wearing a glowing room number. Room 01 is open. The rest are sealed, growing their rooms.
+
+Room 01 is the Galaxy, at slash rooms slash galaxy. Step through the gate and there is no floor: you are given a star fighter — a real 3D model, credited asset — in open space with a sun and nine seeded uncharted planets, some ringed, each with a procedural name. Twelve shards of light drift near the planets. Fly with the mouse (the ship steers toward your cursor), throttle with W and S, boost with shift; on a phone, the right half of the screen steers and the left is the throttle. Every shard collected pays five XP, and bringing home all twelve clears the room for a hundred XP and fifty points. The world spec lives in source, lib, space dot T S; the scene in source, components, GalaxyRoom dot T S X; the ship model at public, models, star fighter dot G L B.
 
 Before entering, the visitor picks their form — a color on a wheel — and appears in the world as a glowing low-poly figure with their handle floating above their head. Everyone currently in the Nexus is really there, live: walk the island and you see the others walking too.
 

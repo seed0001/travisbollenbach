@@ -21,6 +21,8 @@ export type Progress = {
   avatarHue: number;
   /** room ids the player has escaped, in clear order */
   roomsCleared: string[];
+  /** shard ids collected in the galaxy room */
+  galaxyShards: string[];
   firstJoinedLobbyAt?: string;
   updatedAt: string;
 };
@@ -64,13 +66,17 @@ function blank(userId: string): Progress {
     points: 0,
     avatarHue: defaultHue(userId),
     roomsCleared: [],
+    galaxyShards: [],
     updatedAt: new Date().toISOString(),
   };
 }
 
 export async function getProgress(userId: string): Promise<Progress> {
   const all = await readAll();
-  return all[userId] ?? blank(userId);
+  const record = all[userId] ?? blank(userId);
+  // records written before the galaxy room existed lack the field
+  if (!Array.isArray(record.galaxyShards)) record.galaxyShards = [];
+  return record;
 }
 
 export async function setAvatarHue(
@@ -105,6 +111,39 @@ export async function addXp(
     all[userId] = record;
     await writeAll(all);
     return record;
+  });
+}
+
+/** Pick up a shard in the galaxy room. Idempotent per shard; collecting the
+ * full set clears the room and pays the bonus exactly once. */
+export async function collectShard(
+  userId: string,
+  shardId: string,
+  opts: { shardXp: number; totalShards: number; clearXp: number; roomId: string },
+): Promise<{ progress: Progress; added: boolean; clearedNow: boolean }> {
+  return withLock(async () => {
+    const all = await readAll();
+    const record = all[userId] ?? blank(userId);
+    if (!Array.isArray(record.galaxyShards)) record.galaxyShards = [];
+    if (record.galaxyShards.includes(shardId)) {
+      return { progress: record, added: false, clearedNow: false };
+    }
+    record.galaxyShards.push(shardId);
+    record.xp += opts.shardXp;
+    let clearedNow = false;
+    if (
+      record.galaxyShards.length >= opts.totalShards &&
+      !record.roomsCleared.includes(opts.roomId)
+    ) {
+      record.roomsCleared.push(opts.roomId);
+      record.xp += opts.clearXp;
+      record.points += 50;
+      clearedNow = true;
+    }
+    record.updatedAt = new Date().toISOString();
+    all[userId] = record;
+    await writeAll(all);
+    return { progress: record, added: true, clearedNow };
   });
 }
 

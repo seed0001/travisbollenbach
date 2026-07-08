@@ -22,7 +22,12 @@ export const GATES: {
   angle: number;
   href?: string;
 }[] = [
-  { id: "room-01", title: "Room 01 — The Cipher Gate", angle: 0 },
+  {
+    id: "room-01",
+    title: "Room 01 — The Galaxy",
+    angle: 0,
+    href: "/rooms/galaxy",
+  },
   { id: "room-02", title: "Room 02 — sealed", angle: (Math.PI * 2) / 5 },
   { id: "room-03", title: "Room 03 — sealed", angle: (Math.PI * 4) / 5 },
   { id: "room-04", title: "Room 04 — sealed", angle: (Math.PI * 6) / 5 },
