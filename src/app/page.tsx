@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
-import GameLobbyPage from "@/components/GameLobbyPage";
+import ChoiceScreen from "@/components/ChoiceScreen";
 
 export const metadata: Metadata = {
-  title: "Travis Bollenbach - Game Lobby",
-  description: "Enter the game lobby and preview the level door map.",
-  robots: { index: false, follow: false },
+  title: "Travis Bollenbach - Choose",
+  description:
+    "Choose the professional portfolio or enter an immersive 3D environment.",
 };
 
 export default function Home() {
-  return <GameLobbyPage />;
+  return <ChoiceScreen />;
 }

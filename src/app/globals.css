@@ -1,5 +1,23 @@
 @import "tailwindcss";
 
+@theme {
+  --color-matrix: #8fb3ff;
+  --color-matrix-dim: #536d99;
+  --color-matrix-dark: #172033;
+  --color-pill-blue: #38bdf8;
+  --color-pill-blue-deep: #0c4a6e;
+  --color-pill-red: #f43f5e;
+  --color-pill-red-deep: #7f1d1d;
+  --color-void: #090b10;
+  --color-ink: #f4f1ea;
+  --color-ink-soft: #c7c0b4;
+  --color-ink-dim: #817b72;
+  --color-line: #2f3440;
+  --color-surface: #151923;
+  --font-mono-display: "Courier New", ui-monospace, SFMono-Regular, Menlo,
+    monospace;
+}
+
 :root {
   color-scheme: dark;
 }
@@ -13,143 +31,296 @@ body {
   margin: 0;
   min-height: 100%;
   overflow-x: hidden;
-  overscroll-behavior: none;
 }
 
 body {
-  background: #111318;
-  color: #ffffff;
+  background: var(--color-void);
+  color: var(--color-ink);
   font-family:
     ui-sans-serif, system-ui, -apple-system, "Segoe UI", Helvetica, Arial,
     sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
-body:has(.immersive-lobby) {
-  overflow: hidden;
-}
-
 ::selection {
-  background: rgba(103, 232, 249, 0.35);
+  background: rgba(143, 179, 255, 0.3);
   color: #ffffff;
 }
 
-/* --- Game lobby ------------------------------------------------------------- */
-
-.game-shell {
-  color-scheme: dark;
+.choice-screen {
   background:
-    radial-gradient(circle at 50% 18%, rgba(55, 242, 192, 0.2), transparent 27%),
-    radial-gradient(circle at 18% 82%, rgba(255, 200, 87, 0.16), transparent 30%),
-    radial-gradient(circle at 82% 72%, rgba(170, 114, 255, 0.18), transparent 30%),
-    linear-gradient(145deg, #07090d, #111820 48%, #080a0f);
+    radial-gradient(circle at 16% 18%, rgba(56, 189, 248, 0.16), transparent 26rem),
+    radial-gradient(circle at 84% 78%, rgba(244, 63, 94, 0.12), transparent 24rem),
+    linear-gradient(145deg, #07090d, #111722 52%, #090b10);
 }
 
-.welcome-screen {
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
-  background-size: 56px 56px;
-}
-
-.immersive-lobby,
-.immersive-lobby canvas {
-  touch-action: none;
-  user-select: none;
-}
-
-.immersive-lobby {
-  min-height: 100dvh;
-}
-
-.hud-glass {
-  border: 1px solid rgba(255, 255, 255, 0.13);
+.choice-card {
+  border-color: rgba(255, 255, 255, 0.12);
   background:
-    linear-gradient(135deg, rgba(18, 27, 34, 0.72), rgba(8, 12, 18, 0.54)),
-    radial-gradient(circle at 20% 0%, rgba(55, 242, 192, 0.18), transparent 42%);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 18px 42px rgba(0, 0, 0, 0.34);
-  backdrop-filter: blur(18px) saturate(1.25);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.065), rgba(255, 255, 255, 0.025)),
+    rgba(12, 15, 20, 0.84);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.35);
 }
 
-.thumb-zone {
-  width: clamp(6.5rem, 28vmin, 9rem);
-  height: clamp(6.5rem, 28vmin, 9rem);
+.choice-card-blue:hover,
+.choice-card-blue:focus {
+  border-color: rgba(56, 189, 248, 0.5);
+  box-shadow: 0 30px 90px rgba(56, 189, 248, 0.14);
 }
 
-.thumb-zone-left {
+.choice-card-red:hover,
+.choice-card-red:focus {
+  border-color: rgba(244, 63, 94, 0.46);
+  box-shadow: 0 30px 90px rgba(244, 63, 94, 0.12);
+}
+
+/* --- CRT scanline overlay ------------------------------------------------ */
+
+.scanlines::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 3px,
+    rgba(255, 255, 255, 0.025) 4px,
+    rgba(255, 255, 255, 0.025) 5px
+  );
+  mix-blend-mode: soft-light;
+}
+
+/* --- Text effects --------------------------------------------------------- */
+
+.glow-green {
+  text-shadow:
+    0 0 10px rgba(143, 179, 255, 0.48),
+    0 0 32px rgba(143, 179, 255, 0.18);
+}
+
+.glow-blue {
+  text-shadow:
+    0 0 6px rgba(56, 189, 248, 0.9),
+    0 0 24px rgba(56, 189, 248, 0.35);
+}
+
+.glow-red {
+  text-shadow:
+    0 0 6px rgba(244, 63, 94, 0.9),
+    0 0 24px rgba(244, 63, 94, 0.35);
+}
+
+@keyframes cursor-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.type-cursor {
+  display: inline-block;
+  width: 0.6em;
+  animation: cursor-blink 1.06s steps(1) infinite;
+}
+
+@keyframes flicker {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  92% {
+    opacity: 1;
+  }
+  93% {
+    opacity: 0.6;
+  }
+  94% {
+    opacity: 1;
+  }
+  97% {
+    opacity: 0.8;
+  }
+}
+
+.flicker {
+  animation: flicker 5s linear infinite;
+}
+
+/* --- Choice screen ---------------------------------------------------------- */
+
+/* Dims the rain behind the centered content so text reads clearly */
+.choice-vignette {
+  background: radial-gradient(
+    ellipse 72% 64% at 50% 48%,
+    rgba(0, 0, 0, 0.88) 0%,
+    rgba(0, 0, 0, 0.55) 52%,
+    transparent 78%
+  );
+}
+
+/* Crisp terminal text: black halo to separate from rain + green glow */
+.terminal-text {
+  text-shadow:
+    0 2px 10px rgba(0, 0, 0, 0.62);
+}
+
+.glitch-title {
+  position: relative;
+  display: inline-block;
+}
+
+.glitch-title::before,
+.glitch-title::after {
+  content: attr(data-text);
   position: absolute;
-  left: max(0.75rem, env(safe-area-inset-left));
-  bottom: max(0.75rem, env(safe-area-inset-bottom));
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
 }
 
-.thumb-zone-stack {
-  position: absolute;
-  right: max(0.75rem, env(safe-area-inset-right));
-  bottom: max(0.75rem, env(safe-area-inset-bottom));
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.6rem;
+.glitch-title::before {
+  color: #ff3b5c;
+  animation: glitch-slice-r 3.8s steps(2, jump-none) infinite;
 }
 
-@media (orientation: landscape) and (max-height: 520px) {
-  .thumb-zone {
-    width: clamp(5.5rem, 24vmin, 7.75rem);
-    height: clamp(5.5rem, 24vmin, 7.75rem);
-  }
+.glitch-title::after {
+  color: #38bdf8;
+  animation: glitch-slice-b 3.8s steps(2, jump-none) infinite 0.1s;
+}
 
-  .thumb-zone-left,
-  .thumb-zone-stack {
-    bottom: max(0.45rem, env(safe-area-inset-bottom));
+@keyframes glitch-slice-r {
+  0%,
+  86%,
+  100% {
+    opacity: 0;
+    transform: none;
+    clip-path: inset(0 0 0 0);
   }
-
-  .thumb-zone-left {
-    left: max(0.45rem, env(safe-area-inset-left));
+  88% {
+    opacity: 0.85;
+    transform: translate(-5px, 1px);
+    clip-path: inset(10% 0 58% 0);
   }
-
-  .thumb-zone-stack {
-    right: max(0.45rem, env(safe-area-inset-right));
-    gap: 0.4rem;
+  91% {
+    opacity: 0.85;
+    transform: translate(4px, -1px);
+    clip-path: inset(52% 0 16% 0);
   }
-
-  .mobile-door-sheet {
-    left: 18vw;
-    right: 18vw;
-    bottom: max(0.45rem, env(safe-area-inset-bottom));
-    max-height: calc(100dvh - 1rem);
-    overflow: auto;
+  94% {
+    opacity: 0.85;
+    transform: translate(-3px, 0);
+    clip-path: inset(78% 0 2% 0);
+  }
+  96% {
+    opacity: 0;
   }
 }
 
-.lobby-world::before,
-.lobby-world::after {
+@keyframes glitch-slice-b {
+  0%,
+  86%,
+  100% {
+    opacity: 0;
+    transform: none;
+    clip-path: inset(0 0 0 0);
+  }
+  89% {
+    opacity: 0.85;
+    transform: translate(5px, -1px);
+    clip-path: inset(34% 0 34% 0);
+  }
+  92% {
+    opacity: 0.85;
+    transform: translate(-4px, 1px);
+    clip-path: inset(4% 0 76% 0);
+  }
+  95% {
+    opacity: 0;
+  }
+}
+
+@keyframes choose-pulse {
+  0%,
+  100% {
+    text-shadow:
+      0 0 8px rgba(143, 179, 255, 0.52),
+      0 0 30px rgba(143, 179, 255, 0.18);
+  }
+  50% {
+    text-shadow:
+      0 0 16px rgba(143, 179, 255, 0.78),
+      0 0 64px rgba(143, 179, 255, 0.28);
+  }
+}
+
+.choose-pulse {
+  animation: choose-pulse 2.4s ease-in-out infinite;
+}
+
+/* --- Choice transition ------------------------------------------------------ */
+
+@keyframes white-flash {
+  0% {
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.choice-flash {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  pointer-events: none;
+  animation: white-flash 0.9s ease-out forwards;
+}
+
+/* --- Matrix-tinted photo (rabbit hole) -------------------------------------- */
+
+.matrix-photo img {
+  filter: grayscale(0.6) contrast(1.03) brightness(0.92);
+}
+
+.matrix-photo::after {
   content: "";
   position: absolute;
   inset: 0;
   pointer-events: none;
-}
-
-.lobby-world::before {
   background:
-    radial-gradient(circle at 50% 46%, rgba(137, 216, 194, 0.18), transparent 0 22%, rgba(17, 19, 24, 0) 23%),
-    linear-gradient(135deg, #1b2a2d, #172023 42%, #231f28);
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent 2px,
+      rgba(0, 0, 0, 0.22) 3px,
+      rgba(0, 0, 0, 0.22) 4px
+    ),
+    radial-gradient(
+      ellipse at center,
+      transparent 55%,
+      rgba(1, 6, 4, 0.55) 100%
+    );
 }
 
-.lobby-world::after {
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
-  background-size: 44px 44px;
-  mask-image: radial-gradient(circle at center, black, transparent 72%);
+/* --- Full-viewport stages ----------------------------------------------------- */
+
+.stage-fixed,
+.stage-fixed canvas {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100svh;
 }
 
-.lobby-path,
-.level-door {
-  z-index: 1;
-}
-
-.lobby-panel {
-  align-self: start;
+.stage-fixed canvas {
+  display: block;
 }
