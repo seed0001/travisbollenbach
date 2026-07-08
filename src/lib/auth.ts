@@ -159,6 +159,14 @@ export async function countUsers(): Promise<number> {
   return users.length;
 }
 
+export async function getUserByEmail(
+  email: string,
+): Promise<PublicUser | null> {
+  const users = await readJson<User[]>(USERS_FILE, []);
+  const user = users.find((u) => u.email === email);
+  return user ? toPublicUser(user) : null;
+}
+
 // --- Member management (admin console) -------------------------------------
 
 export async function listUsers(): Promise<PublicUser[]> {

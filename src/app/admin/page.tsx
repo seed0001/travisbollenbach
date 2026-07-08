@@ -8,6 +8,7 @@ import {
   SESSION_COOKIE,
 } from "@/lib/auth";
 import { dayKey, readAnalytics, type DayStats } from "@/lib/analytics";
+import { listStudios } from "@/lib/studios";
 import AdminConsole, { type Traffic } from "@/components/AdminConsole";
 
 export const metadata: Metadata = {
@@ -81,7 +82,16 @@ export default async function AdminPage() {
     );
   }
 
-  const [data, members] = await Promise.all([readAnalytics(), listUsers()]);
+  const [data, members, allStudios] = await Promise.all([
+    readAnalytics(),
+    listUsers(),
+    listStudios(),
+  ]);
+  const studios = allStudios.map((s) => ({
+    unit: s.unit,
+    studioName: s.studioName,
+    ownerEmail: s.ownerEmail,
+  }));
   const days = lastDays(DAYS_SHOWN);
   const recentDays = days.slice(-TOP_WINDOW);
   const daily = days.map((day) => ({
@@ -129,6 +139,7 @@ export default async function AdminPage() {
         <AdminConsole
           ownerEmail={ownerEmail()}
           members={members}
+          studios={studios}
           traffic={traffic}
         />
       </div>

@@ -81,51 +81,121 @@ function makeSignTexture(store: Storefront) {
   return texture;
 }
 
-// The customizable back-wall panel — a tenant's art today is a placeholder;
-// this is the surface renters will drop their own images onto.
-function makeArtTexture(store: Storefront) {
+// --- Studio wall content (client-safe mirror of lib/studios) ----------------
+
+type WallKind = "empty" | "image" | "website" | "youtube";
+type WallSlot = { id: string; kind: WallKind; src: string; title: string };
+type PublicStudio = { unit: string; studioName: string; walls: WallSlot[] };
+
+function parseYouTubeId(input: string): string | null {
+  const s = (input ?? "").trim();
+  if (/^[a-zA-Z0-9_-]{11}$/.test(s)) return s;
+  try {
+    const u = new URL(s);
+    if (u.hostname.includes("youtu.be")) {
+      const id = u.pathname.slice(1, 12);
+      return /^[a-zA-Z0-9_-]{11}$/.test(id) ? id : null;
+    }
+    const v = u.searchParams.get("v");
+    if (v && /^[a-zA-Z0-9_-]{11}$/.test(v)) return v;
+    const m = u.pathname.match(/\/(?:embed|shorts)\/([a-zA-Z0-9_-]{11})/);
+    if (m) return m[1];
+  } catch {
+    /* not a url */
+  }
+  return null;
+}
+
+// The image URL to load onto a wall: uploads are same-origin, everything else
+// (external images, YouTube thumbnails) goes through our proxy to dodge CORS.
+function wallImageUrl(wall: WallSlot): string | null {
+  if (wall.kind === "image") {
+    if (!wall.src) return null;
+    return wall.src.startsWith("/api/uploads")
+      ? wall.src
+      : `/api/proxy?url=${encodeURIComponent(wall.src)}`;
+  }
+  if (wall.kind === "youtube") {
+    const id = parseYouTubeId(wall.src);
+    if (!id) return null;
+    return `/api/proxy?url=${encodeURIComponent(
+      `https://img.youtube.com/vi/${id}/hqdefault.jpg`,
+    )}`;
+  }
+  return null;
+}
+
+// A blank framed panel for empty wall slots.
+function makeBlankPosterTexture() {
   const canvas = document.createElement("canvas");
-  canvas.width = 800;
-  canvas.height = 600;
+  canvas.width = 512;
+  canvas.height = 288;
   const ctx = canvas.getContext("2d");
   if (ctx) {
-    ctx.fillStyle = "#0c1119";
+    ctx.fillStyle = "#0b1019";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.strokeStyle = store.accent;
-    ctx.lineWidth = 10;
-    ctx.strokeRect(20, 20, canvas.width - 40, canvas.height - 40);
+    ctx.strokeStyle = "rgba(143,179,255,0.16)";
+    ctx.lineWidth = 3;
+    ctx.setLineDash([10, 10]);
+    ctx.strokeRect(22, 22, canvas.width - 44, canvas.height - 44);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
 
+// A website slot renders as a poster naming the destination.
+function makeWebsitePosterTexture(url: string, title: string) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 640;
+  canvas.height = 360;
+  const ctx = canvas.getContext("2d");
+  let host = url;
+  try {
+    host = new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    /* keep raw */
+  }
+  if (ctx) {
+    ctx.fillStyle = "#0c1220";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = "rgba(143,179,255,0.5)";
+    ctx.lineWidth = 6;
+    ctx.strokeRect(16, 16, canvas.width - 32, canvas.height - 32);
     ctx.textAlign = "center";
-    ctx.shadowColor = store.accent;
-    ctx.shadowBlur = 24;
+    ctx.fillStyle = "#dbe5ff";
+    ctx.font = "800 48px Arial";
+    ctx.fillText(title || host, canvas.width / 2, 170, canvas.width - 80);
+    ctx.fillStyle = "#8fb3ff";
+    ctx.font = "600 30px Arial";
+    ctx.fillText(host, canvas.width / 2, 220, canvas.width - 80);
+    ctx.fillStyle = "#8b93a7";
+    ctx.font = "500 24px Arial";
+    ctx.fillText("click to visit", canvas.width / 2, 290);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
 
-    if (store.status === "vacant") {
-      ctx.fillStyle = store.accent;
-      ctx.font = "800 120px Arial";
-      ctx.fillText("FOR LEASE", canvas.width / 2, 250);
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = "#8b93a7";
-      ctx.font = "600 40px Arial";
-      ctx.fillText(`SPACE ${store.number}`, canvas.width / 2, 340);
-      ctx.font = "400 34px Arial";
-      ctx.fillText("Your images. Your products.", canvas.width / 2, 420);
-      ctx.fillText("Your brand, on this wall.", canvas.width / 2, 470);
-    } else {
-      ctx.fillStyle = "#dbe5ff";
-      ctx.font = "800 92px Arial";
-      ctx.fillText(store.name.toUpperCase(), canvas.width / 2, 270);
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = store.accent;
-      ctx.font = "600 44px Arial";
-      ctx.fillText(store.tagline, canvas.width / 2, 350);
-      ctx.fillStyle = "#8b93a7";
-      ctx.font = "400 32px Arial";
-      ctx.fillText(
-        store.status === "live" ? "Open — step inside" : "Now leasing this space",
-        canvas.width / 2,
-        430,
-      );
-    }
+// A translucent play triangle shown over video posters.
+function makePlayBadgeTexture() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    ctx.fillStyle = "rgba(6,10,18,0.72)";
+    ctx.beginPath();
+    ctx.arc(64, 64, 60, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.moveTo(50, 40);
+    ctx.lineTo(50, 88);
+    ctx.lineTo(92, 64);
+    ctx.closePath();
+    ctx.fill();
   }
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
@@ -201,12 +271,39 @@ export default function ConstructGame() {
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const nameRef = useRef("");
   const colorRef = useRef(ORB_COLORS[0]);
+  const wallApiRef = useRef<{
+    applyStudios: (studios: PublicStudio[]) => void;
+    applyWall: (unit: string, wall: WallSlot) => void;
+  } | null>(null);
+  const studiosRef = useRef<Map<string, PublicStudio>>(new Map());
+  const ownedRef = useRef<Set<string>>(new Set());
+  const overlayOpenRef = useRef(false);
 
   const router = useRouter();
   const [locked, setLocked] = useState(false);
   const [entered, setEntered] = useState(false);
   const [mode, setMode] = useState<ControlMode>("touch");
   const [nearStore, setNearStore] = useState<number>(-1);
+  const [focusedWall, setFocusedWall] = useState<{
+    unit: string;
+    wallId: string;
+  } | null>(null);
+  const [viewer, setViewer] = useState<{
+    kind: WallKind;
+    src: string;
+    title: string;
+  } | null>(null);
+  const [editor, setEditor] = useState<(WallSlot & { unit: string }) | null>(
+    null,
+  );
+  const [wallBusy, setWallBusy] = useState(false);
+  const [wallError, setWallError] = useState("");
+  const editorFileRef = useRef<HTMLInputElement>(null);
+  // Reactive copies of the studio data for the HUD (refs feed the scene/effects)
+  const [studioMap, setStudioMap] = useState<Map<string, PublicStudio>>(
+    new Map(),
+  );
+  const [ownedUnits, setOwnedUnits] = useState<Set<string>>(new Set());
   const [name, setName] = useState("");
   const [color, setColor] = useState(ORB_COLORS[0]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -245,23 +342,79 @@ export default function ConstructGame() {
     chatScrollRef.current?.scrollTo({ top: 999999 });
   }, [messages]);
 
-  // Press E inside a storefront that has an action (e.g. the Workshop) to open
-  // it — the FPS "press E to interact" convention, alongside the button.
+  // Load the studios' wall content once inside, and note which units are ours.
   useEffect(() => {
-    const target = nearStore >= 0 ? storefronts[nearStore] : null;
-    if (!target?.action) return;
-    const href = target.action.href;
+    if (!entered) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [pub, mine] = await Promise.all([
+          fetch("/api/studios/public", { cache: "no-store" }).then((r) =>
+            r.ok ? r.json() : { studios: [] },
+          ),
+          fetch("/api/studio", { cache: "no-store" }).then((r) =>
+            r.ok ? r.json() : { studios: [] },
+          ),
+        ]);
+        if (cancelled) return;
+        const map = new Map<string, PublicStudio>();
+        for (const s of pub.studios ?? []) map.set(s.unit, s);
+        const owned = new Set<string>(
+          (mine.studios ?? []).map((s: { unit: string }) => s.unit),
+        );
+        studiosRef.current = map;
+        ownedRef.current = owned;
+        setStudioMap(map);
+        setOwnedUnits(owned);
+        wallApiRef.current?.applyStudios([...map.values()]);
+      } catch {
+        /* studios are non-critical decoration */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [entered]);
+
+  useEffect(() => {
+    overlayOpenRef.current = !!(viewer || editor);
+  }, [viewer, editor]);
+
+  // Press E to interact with the wall under the crosshair: owners edit it,
+  // everyone else plays/visits its content. Falls back to a storefront action
+  // (the Workshop) when not looking at a wall. Esc closes any overlay.
+  useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const el = event.target as HTMLElement | null;
       if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA")) return;
-      if (event.code === "KeyE") {
+      if (event.code === "Escape") {
+        if (viewer) setViewer(null);
+        else if (editor) setEditor(null);
+        return;
+      }
+      if (event.code !== "KeyE" || viewer || editor) return;
+      if (focusedWall) {
+        const studio = studiosRef.current.get(focusedWall.unit);
+        const wall = studio?.walls.find((w) => w.id === focusedWall.wallId);
+        if (wall) {
+          if (document.pointerLockElement) document.exitPointerLock();
+          if (ownedRef.current.has(focusedWall.unit)) {
+            setEditor({ ...wall, unit: focusedWall.unit });
+          } else if (wall.kind !== "empty") {
+            setViewer({ kind: wall.kind, src: wall.src, title: wall.title });
+          }
+          return;
+        }
+      }
+      const target = nearStore >= 0 ? storefronts[nearStore] : null;
+      if (target?.action) {
         if (document.pointerLockElement) document.exitPointerLock();
-        router.push(href);
+        router.push(target.action.href);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [nearStore, router]);
+  }, [focusedWall, viewer, editor, nearStore, router]);
 
   const toggleMic = async () => {
     const client = lobbyRef.current;
@@ -293,6 +446,65 @@ export default function ConstructGame() {
     const text = chatText.trim();
     if (text) lobbyRef.current?.sendChat(text);
     setChatText("");
+  };
+
+  const uploadWallImage = async (file: File) => {
+    setWallBusy(true);
+    setWallError("");
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/studio/upload", {
+        method: "POST",
+        body: form,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Upload failed.");
+      setEditor((e) => (e ? { ...e, kind: "image", src: data.url } : e));
+    } catch (err) {
+      setWallError(err instanceof Error ? err.message : "Upload failed.");
+    } finally {
+      setWallBusy(false);
+    }
+  };
+
+  const saveWall = async () => {
+    if (!editor) return;
+    setWallBusy(true);
+    setWallError("");
+    const edited: WallSlot = {
+      id: editor.id,
+      kind: editor.kind,
+      src: editor.src,
+      title: editor.title,
+    };
+    const current = studiosRef.current.get(editor.unit);
+    const walls = (current?.walls ?? [edited]).map((w) =>
+      w.id === editor.id ? edited : w,
+    );
+    try {
+      const res = await fetch("/api/studio", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ unit: editor.unit, walls }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Save failed.");
+      const saved = data.studio as PublicStudio;
+      const entry = {
+        unit: saved.unit,
+        studioName: saved.studioName,
+        walls: saved.walls,
+      };
+      studiosRef.current.set(saved.unit, entry);
+      setStudioMap((prev) => new Map(prev).set(saved.unit, entry));
+      for (const w of saved.walls) wallApiRef.current?.applyWall(saved.unit, w);
+      setEditor(null);
+    } catch (err) {
+      setWallError(err instanceof Error ? err.message : "Save failed.");
+    } finally {
+      setWallBusy(false);
+    }
   };
 
   const enterTouch = async (wantGyro: boolean) => {
@@ -410,8 +622,17 @@ export default function ConstructGame() {
     const postGeo = new THREE.BoxGeometry(0.5, STORE_H, 0.5);
     const awningGeo = new THREE.BoxGeometry(0.6, 1.5, STORE_W);
     const signGeo = new THREE.PlaneGeometry(STORE_W - 1.4, 1.3);
-    const artGeo = new THREE.PlaneGeometry(STORE_W - 4, STORE_H - 3);
+    const posterGeo = new THREE.PlaneGeometry(6.4, 3.3);
+    const posterFrameGeo = new THREE.PlaneGeometry(6.9, 3.8);
+    const badgeGeo = new THREE.PlaneGeometry(1.5, 1.5);
     const sillGeo = new THREE.BoxGeometry(0.5, 0.08, STORE_W);
+    const blankPosterTex = makeBlankPosterTexture();
+    const playBadgeTex = makePlayBadgeTexture();
+    const badgeMat = new THREE.MeshBasicMaterial({
+      map: playBadgeTex,
+      transparent: true,
+      depthWrite: false,
+    });
     const backMat = new THREE.MeshBasicMaterial({ color: 0x161d2b });
     const sideMat = new THREE.MeshBasicMaterial({ color: 0x121826 });
     const ceilMat = new THREE.MeshBasicMaterial({ color: 0x0d121b });
@@ -431,7 +652,9 @@ export default function ConstructGame() {
       postGeo,
       awningGeo,
       signGeo,
-      artGeo,
+      posterGeo,
+      posterFrameGeo,
+      badgeGeo,
       sillGeo,
       backMat,
       sideMat,
@@ -440,7 +663,85 @@ export default function ConstructGame() {
       edgeMat,
       backEdges,
       sideEdges,
+      blankPosterTex,
+      playBadgeTex,
+      badgeMat,
     );
+
+    // Registry of every wall poster so their textures can be swapped when a
+    // studio loads or its owner edits it, and so clicks can be routed.
+    type Poster = {
+      unit: string;
+      wallId: string;
+      content: THREE.Mesh;
+      material: THREE.MeshBasicMaterial;
+      badge: THREE.Mesh;
+      ownTex: THREE.Texture | null; // texture we created for this slot (to dispose)
+    };
+    const posters = new Map<string, Poster>();
+    const posterMeshes: THREE.Mesh[] = [];
+    const textureLoader = new THREE.TextureLoader();
+    let sceneDisposed = false;
+
+    const posterKey = (unit: string, wallId: string) => `${unit}:${wallId}`;
+
+    // Point a poster at a wall's current content (image / youtube / website /
+    // blank), disposing whatever texture it held before.
+    const applyWall = (wall: WallSlot, unit: string) => {
+      const poster = posters.get(posterKey(unit, wall.id));
+      if (!poster) return;
+      poster.badge.visible = wall.kind === "youtube";
+
+      const clearOwn = () => {
+        if (poster.ownTex) {
+          poster.ownTex.dispose();
+          poster.ownTex = null;
+        }
+      };
+
+      if (wall.kind === "empty") {
+        clearOwn();
+        poster.material.map = blankPosterTex;
+        poster.material.needsUpdate = true;
+        return;
+      }
+      if (wall.kind === "website") {
+        clearOwn();
+        const tex = makeWebsitePosterTexture(wall.src, wall.title);
+        poster.ownTex = tex;
+        poster.material.map = tex;
+        poster.material.needsUpdate = true;
+        return;
+      }
+      // image or youtube: show blank while the bitmap loads
+      const url = wallImageUrl(wall);
+      if (!url) {
+        clearOwn();
+        poster.material.map = blankPosterTex;
+        poster.material.needsUpdate = true;
+        return;
+      }
+      textureLoader.load(
+        url,
+        (tex) => {
+          if (sceneDisposed) {
+            tex.dispose();
+            return;
+          }
+          tex.colorSpace = THREE.SRGBColorSpace;
+          clearOwn();
+          poster.ownTex = tex;
+          poster.material.map = tex;
+          poster.material.needsUpdate = true;
+        },
+        undefined,
+        () => {
+          clearOwn();
+          poster.material.map = blankPosterTex;
+          poster.material.needsUpdate = true;
+        },
+      );
+    };
 
     const storePositions: THREE.Vector3[] = [];
     storefronts.forEach((store, i) => {
@@ -510,14 +811,59 @@ export default function ConstructGame() {
       group.add(sign);
       disposables.push(signTex, signMat);
 
-      // Customizable back-wall art panel, facing the customer inside
-      const artTex = makeArtTexture(store);
-      const artMat = new THREE.MeshBasicMaterial({ map: artTex });
-      const art = new THREE.Mesh(artGeo, artMat);
-      art.position.set(-STORE_D / 2 + 0.18, STORE_H / 2 - 0.15, 0);
-      art.rotation.y = Math.PI / 2;
-      group.add(art);
-      disposables.push(artTex, artMat);
+      // Three customizable poster walls: the back wall and the two sides.
+      const posterSlots: {
+        wallId: string;
+        pos: [number, number, number];
+        rotY: number;
+      }[] = [
+        {
+          wallId: "center",
+          pos: [-STORE_D / 2 + 0.16, STORE_H / 2 + 0.1, 0],
+          rotY: Math.PI / 2,
+        },
+        {
+          wallId: "left",
+          pos: [-0.5, STORE_H / 2 + 0.1, STORE_W / 2 - 0.16],
+          rotY: Math.PI,
+        },
+        {
+          wallId: "right",
+          pos: [-0.5, STORE_H / 2 + 0.1, -STORE_W / 2 + 0.16],
+          rotY: 0,
+        },
+      ];
+      for (const slot of posterSlots) {
+        const posterGroup = new THREE.Group();
+        posterGroup.position.set(...slot.pos);
+        posterGroup.rotation.y = slot.rotY;
+
+        const frame = new THREE.Mesh(posterFrameGeo, accentMat);
+        posterGroup.add(frame);
+
+        const material = new THREE.MeshBasicMaterial({ map: blankPosterTex });
+        const content = new THREE.Mesh(posterGeo, material);
+        content.position.z = 0.04;
+        content.userData = { unit: store.number, wallId: slot.wallId };
+        posterGroup.add(content);
+        posterMeshes.push(content);
+
+        const badge = new THREE.Mesh(badgeGeo, badgeMat);
+        badge.position.z = 0.06;
+        badge.visible = false;
+        posterGroup.add(badge);
+
+        group.add(posterGroup);
+        disposables.push(material);
+        posters.set(posterKey(store.number, slot.wallId), {
+          unit: store.number,
+          wallId: slot.wallId,
+          content,
+          material,
+          badge,
+          ownTex: null,
+        });
+      }
 
       scene.add(group);
 
@@ -525,6 +871,22 @@ export default function ConstructGame() {
       const doorX = onLeft ? -STREET_HALF : STREET_HALF;
       storePositions.push(new THREE.Vector3(doorX, 0, z));
     });
+
+    // Let React push studio content onto the walls as it loads / is edited.
+    wallApiRef.current = {
+      applyStudios(studios) {
+        for (const studio of studios) {
+          for (const wall of studio.walls) applyWall(wall, studio.unit);
+        }
+      },
+      applyWall(unit, wall) {
+        applyWall(wall, unit);
+      },
+    };
+    // If studio data already arrived before the scene built, apply it now.
+    if (studiosRef.current.size > 0) {
+      wallApiRef.current.applyStudios([...studiosRef.current.values()]);
+    }
 
     // --- Falling code rain (3D points) ----------------------------------------
     const rainGeometry = new THREE.BufferGeometry();
@@ -800,6 +1162,10 @@ export default function ConstructGame() {
     let lastBroadcast = 0;
     const lastSent = new THREE.Vector2(Infinity, Infinity);
     let lastSentYaw = 0;
+    const focusRay = new THREE.Raycaster();
+    const SCREEN_CENTER = new THREE.Vector2(0, 0);
+    let focusKey: string | null = null;
+    let focusFrame = 0;
 
     const animate = () => {
       animationFrame = window.requestAnimationFrame(animate);
@@ -844,6 +1210,8 @@ export default function ConstructGame() {
         velocity.addScaledVector(forward, -touchState.moveDelta.y);
         velocity.addScaledVector(right, touchState.moveDelta.x);
       }
+
+      if (overlayOpenRef.current) velocity.set(0, 0, 0);
 
       if (velocity.lengthSq() > 0) {
         if (velocity.lengthSq() > 1) velocity.normalize();
@@ -916,12 +1284,32 @@ export default function ConstructGame() {
         setNearStore(nearest);
       }
 
+      // Which poster wall is under the crosshair (throttled, paused in overlays)
+      focusFrame += 1;
+      if (!overlayOpenRef.current && focusFrame % 4 === 0) {
+        focusRay.setFromCamera(SCREEN_CENTER, camera);
+        const hit = focusRay
+          .intersectObjects(posterMeshes, false)
+          .find((h) => h.distance <= 15);
+        const ud = hit
+          ? (hit.object.userData as { unit: string; wallId: string })
+          : null;
+        const key = ud ? posterKey(ud.unit, ud.wallId) : null;
+        if (key !== focusKey) {
+          focusKey = key;
+          setFocusedWall(ud);
+        }
+      }
+
       renderer.render(scene, camera);
     };
 
     animate();
 
     return () => {
+      sceneDisposed = true;
+      wallApiRef.current = null;
+      posters.forEach((p) => p.ownTex?.dispose());
       window.cancelAnimationFrame(animationFrame);
       document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("keyup", onKeyUp);
@@ -1008,6 +1396,33 @@ export default function ConstructGame() {
       : near?.status === "live"
         ? "open now"
         : "now open";
+  const nearMine = near ? ownedUnits.has(near.number) : false;
+
+  // Resolve the wall under the crosshair for the interaction prompt.
+  const focusWall = (() => {
+    if (!focusedWall) return null;
+    const studio = studioMap.get(focusedWall.unit);
+    const wall = studio?.walls.find((w) => w.id === focusedWall.wallId);
+    if (!wall) return null;
+    return { ...wall, mine: ownedUnits.has(focusedWall.unit) };
+  })();
+  const focusPrompt = focusWall
+    ? focusWall.mine
+      ? "Press E to edit this wall"
+      : focusWall.kind === "youtube"
+        ? "Press E to play"
+        : focusWall.kind === "website"
+          ? "Press E to visit"
+          : focusWall.kind === "image"
+            ? "Press E to view"
+            : ""
+    : "";
+
+  const viewerImageSrc =
+    viewer?.kind === "image" ? viewer.src : "";
+  const viewerYouTube =
+    viewer?.kind === "youtube" ? parseYouTubeId(viewer.src) : null;
+
   const showTouchOverlay = isTouch && !entered;
   const showDesktopOverlay = !isTouch && !entered;
 
@@ -1191,7 +1606,24 @@ export default function ConstructGame() {
                   </span>
                 </Link>
               )}
+              {nearMine && (
+                <Link
+                  href="/studio"
+                  className="pointer-events-auto mt-4 inline-block rounded-md border border-[#7dffa8]/60 bg-[#121826]/72 px-5 py-2.5 text-xs font-bold uppercase tracking-[0.16em] text-[#7dffa8] transition-colors hover:bg-[#7dffa8] hover:text-[#0b1020]"
+                >
+                  Manage your studio →
+                </Link>
+              )}
             </div>
+          </div>
+        )}
+
+        {/* wall interaction prompt (under the crosshair) */}
+        {focusPrompt && !viewer && !editor && (
+          <div className="absolute inset-x-0 top-[57%] flex justify-center px-4">
+            <p className="rounded-md border border-white/14 bg-[#0b1020]/85 px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-[#dbe5ff] backdrop-blur-sm">
+              {focusPrompt}
+            </p>
           </div>
         )}
       </div>
@@ -1262,6 +1694,172 @@ export default function ConstructGame() {
           >
             back to the environment page
           </Link>
+        </div>
+      )}
+
+      {/* Wall content viewer — one thing plays at a time */}
+      {viewer && (
+        <div className="pointer-events-auto absolute inset-0 z-40 flex flex-col items-center justify-center gap-4 bg-black/92 p-4">
+          <button
+            type="button"
+            onClick={() => setViewer(null)}
+            className="absolute right-4 top-4 rounded-md border border-white/20 px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-[#dbe5ff] transition-colors hover:bg-[#dbe5ff] hover:text-[#0b1020]"
+          >
+            close ✕
+          </button>
+          {viewer.title && (
+            <p className="text-sm font-bold uppercase tracking-[0.2em] text-[#dbe5ff]">
+              {viewer.title}
+            </p>
+          )}
+          {viewer.kind === "youtube" && viewerYouTube && (
+            <iframe
+              title={viewer.title || "video"}
+              className="aspect-video w-full max-w-4xl rounded-lg border border-white/12"
+              src={`https://www.youtube.com/embed/${viewerYouTube}?autoplay=1&rel=0`}
+              allow="autoplay; encrypted-media; fullscreen"
+              allowFullScreen
+            />
+          )}
+          {viewer.kind === "website" && (
+            <>
+              <iframe
+                title={viewer.title || "website"}
+                className="h-[70vh] w-full max-w-5xl rounded-lg border border-white/12 bg-white"
+                src={viewer.src}
+              />
+              <a
+                href={viewer.src}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs uppercase tracking-[0.2em] text-ink-dim transition-colors hover:text-[#dbe5ff]"
+              >
+                open in a new tab ↗
+              </a>
+            </>
+          )}
+          {viewer.kind === "image" && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={viewerImageSrc}
+              alt={viewer.title || ""}
+              className="max-h-[82vh] max-w-full rounded-lg border border-white/12 object-contain"
+            />
+          )}
+        </div>
+      )}
+
+      {/* Owner wall editor — walk up to your own wall and set what hangs there */}
+      {editor && (
+        <div className="pointer-events-auto absolute inset-0 z-40 flex items-center justify-center bg-black/85 p-4">
+          <div className="w-full max-w-md rounded-xl border border-white/14 bg-[#0b1020] p-6">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-bold uppercase tracking-[0.2em] text-[#dbe5ff]">
+                edit wall · unit {editor.unit}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditor(null);
+                  setWallError("");
+                }}
+                className="text-ink-dim transition-colors hover:text-[#dbe5ff]"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mt-4 flex gap-1.5">
+              {(["empty", "image", "website", "youtube"] as WallKind[]).map(
+                (k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => setEditor((e) => (e ? { ...e, kind: k } : e))}
+                    className={`rounded-md border px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.12em] transition-colors ${
+                      editor.kind === k
+                        ? "border-[#8fb3ff] text-[#8fb3ff]"
+                        : "border-white/18 text-ink-dim hover:text-ink-soft"
+                    }`}
+                  >
+                    {k === "empty" ? "blank" : k}
+                  </button>
+                ),
+              )}
+            </div>
+
+            {editor.kind !== "empty" && (
+              <div className="mt-4 space-y-3">
+                <input
+                  value={editor.src}
+                  onChange={(e) =>
+                    setEditor((x) => (x ? { ...x, src: e.target.value } : x))
+                  }
+                  placeholder={
+                    editor.kind === "image"
+                      ? "https://image-url… (or upload)"
+                      : editor.kind === "youtube"
+                        ? "https://youtube.com/watch?v=…"
+                        : "https://your-site.com"
+                  }
+                  className="w-full rounded-lg border border-white/18 bg-black/50 px-3 py-2 text-sm text-[#dbe5ff] outline-none focus:border-[#8fb3ff]"
+                />
+                <input
+                  value={editor.title}
+                  onChange={(e) =>
+                    setEditor((x) => (x ? { ...x, title: e.target.value } : x))
+                  }
+                  placeholder="caption (optional)"
+                  maxLength={80}
+                  className="w-full rounded-lg border border-white/18 bg-black/50 px-3 py-2 text-sm text-[#dbe5ff] outline-none focus:border-[#8fb3ff]"
+                />
+                {editor.kind === "image" && (
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => editorFileRef.current?.click()}
+                      disabled={wallBusy}
+                      className="rounded-md border border-white/18 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-ink-soft transition-colors hover:border-[#8fb3ff] hover:text-[#8fb3ff] disabled:opacity-50"
+                    >
+                      {wallBusy ? "uploading…" : "upload image"}
+                    </button>
+                    <input
+                      ref={editorFileRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/gif"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) uploadWallImage(f);
+                        e.target.value = "";
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {wallError && (
+              <p className="mt-3 text-sm text-pill-red">{wallError}</p>
+            )}
+
+            <div className="mt-5 flex items-center gap-4">
+              <button
+                type="button"
+                onClick={saveWall}
+                disabled={wallBusy}
+                className="rounded-lg border border-[#8fb3ff]/60 bg-[#121826]/72 px-5 py-2.5 text-xs font-bold uppercase tracking-[0.16em] text-[#dbe5ff] transition-colors hover:bg-[#dbe5ff] hover:text-[#0b1020] disabled:opacity-50"
+              >
+                {wallBusy ? "saving…" : "save wall"}
+              </button>
+              <Link
+                href="/studio"
+                className="text-xs uppercase tracking-[0.18em] text-ink-dim transition-colors hover:text-[#dbe5ff]"
+              >
+                full back office →
+              </Link>
+            </div>
+          </div>
         </div>
       )}
     </div>

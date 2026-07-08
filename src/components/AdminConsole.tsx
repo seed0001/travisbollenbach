@@ -18,11 +18,18 @@ export type Traffic = {
   topReferrers: [string, number][];
 };
 
-type Tab = "overview" | "members" | "traffic";
+export type AdminStudio = {
+  unit: string;
+  studioName: string;
+  ownerEmail: string | null;
+};
+
+type Tab = "overview" | "members" | "storefronts" | "traffic";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "overview", label: "overview" },
   { id: "members", label: "members" },
+  { id: "storefronts", label: "storefronts" },
   { id: "traffic", label: "traffic" },
 ];
 
@@ -36,14 +43,19 @@ function joined(iso: string): string {
 export default function AdminConsole({
   ownerEmail,
   members: initialMembers,
+  studios: initialStudios,
   traffic,
 }: {
   ownerEmail: string | null;
   members: Member[];
+  studios: AdminStudio[];
   traffic: Traffic;
 }) {
   const [tab, setTab] = useState<Tab>("overview");
   const [members, setMembers] = useState<Member[]>(initialMembers);
+  const [studios, setStudios] = useState<AdminStudio[]>(initialStudios);
+  const [assignEmail, setAssignEmail] = useState<Record<string, string>>({});
+  const [unitPending, setUnitPending] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
@@ -115,6 +127,55 @@ export default function AdminConsole({
     } finally {
       setPendingId(null);
       setConfirmId(null);
+    }
+  };
+
+  const assignUnit = async (unit: string) => {
+    const email = (assignEmail[unit] ?? "").trim();
+    if (!email) return;
+    setUnitPending(unit);
+    setError("");
+    try {
+      const res = await fetch("/api/admin/studios", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ unit, email }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Assign failed.");
+      setStudios((prev) =>
+        prev.map((s) =>
+          s.unit === unit
+            ? { ...s, ownerEmail: data.studio.ownerEmail }
+            : s,
+        ),
+      );
+      setAssignEmail((prev) => ({ ...prev, [unit]: "" }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Assign failed.");
+    } finally {
+      setUnitPending(null);
+    }
+  };
+
+  const vacateUnit = async (unit: string) => {
+    setUnitPending(unit);
+    setError("");
+    try {
+      const res = await fetch("/api/admin/studios", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ unit }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Vacate failed.");
+      setStudios((prev) =>
+        prev.map((s) => (s.unit === unit ? { ...s, ownerEmail: null } : s)),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Vacate failed.");
+    } finally {
+      setUnitPending(null);
     }
   };
 
@@ -306,6 +367,72 @@ export default function AdminConsole({
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* Storefronts */}
+      {tab === "storefronts" && (
+        <div className="mt-6 space-y-3">
+          <p className="text-sm text-ink-soft">
+            Assign a unit to any registered member by email. They can then dress
+            its walls and manage it from their back office at{" "}
+            <span className="text-matrix">/studio</span>.
+          </p>
+          {studios.map((s) => {
+            const busy = unitPending === s.unit;
+            return (
+              <div
+                key={s.unit}
+                className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-surface/70 p-5"
+              >
+                <span className="glow-green text-lg font-black text-matrix">
+                  {s.unit}
+                </span>
+                <div className="min-w-[8rem] flex-1">
+                  <p className="font-semibold text-ink">{s.studioName}</p>
+                  <p className="text-xs text-ink-dim">
+                    {s.ownerEmail ? (
+                      <>
+                        owned by{" "}
+                        <span className="text-ink-soft">{s.ownerEmail}</span>
+                      </>
+                    ) : (
+                      "vacant"
+                    )}
+                  </p>
+                </div>
+                <input
+                  value={assignEmail[s.unit] ?? ""}
+                  onChange={(e) =>
+                    setAssignEmail((prev) => ({
+                      ...prev,
+                      [s.unit]: e.target.value,
+                    }))
+                  }
+                  placeholder="member email"
+                  className="w-56 rounded-lg border border-line bg-black/50 px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-dim focus:border-matrix"
+                />
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => assignUnit(s.unit)}
+                  className="rounded-lg border border-matrix px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-matrix transition-colors hover:bg-matrix hover:text-black disabled:opacity-50"
+                >
+                  {s.ownerEmail ? "reassign" : "assign"}
+                </button>
+                {s.ownerEmail && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => vacateUnit(s.unit)}
+                    className="text-xs font-bold uppercase tracking-[0.14em] text-ink-dim transition-colors hover:text-pill-red disabled:opacity-50"
+                  >
+                    vacate
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
