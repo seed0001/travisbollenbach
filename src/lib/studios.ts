@@ -11,6 +11,7 @@ const DATA_DIR =
 const STUDIOS_FILE = path.join(DATA_DIR, "studios.json");
 export const UPLOADS_DIR = path.join(DATA_DIR, "uploads");
 export const VRM_DIR = path.join(DATA_DIR, "vrm");
+export const SHOTS_DIR = path.join(DATA_DIR, "shots");
 
 export type WallKind = "empty" | "image" | "website" | "youtube";
 
