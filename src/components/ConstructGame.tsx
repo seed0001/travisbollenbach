@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   useEffect,
   useRef,
@@ -237,6 +238,7 @@ export default function ConstructGame() {
   const nameRef = useRef("");
   const colorRef = useRef(ORB_COLORS[0]);
 
+  const router = useRouter();
   const [locked, setLocked] = useState(false);
   const [entered, setEntered] = useState(false);
   const [mode, setMode] = useState<ControlMode>("touch");
@@ -279,6 +281,24 @@ export default function ConstructGame() {
   useEffect(() => {
     chatScrollRef.current?.scrollTo({ top: 999999 });
   }, [messages]);
+
+  // Press E near a monolith that has an action (e.g. Character Creation) to
+  // open it — the FPS "press E to interact" convention, alongside the button.
+  useEffect(() => {
+    const target = nearMonolith >= 0 ? monoliths[nearMonolith] : null;
+    if (!target?.action) return;
+    const href = target.action.href;
+    const onKey = (event: KeyboardEvent) => {
+      const el = event.target as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA")) return;
+      if (event.code === "KeyE") {
+        if (document.pointerLockElement) document.exitPointerLock();
+        router.push(href);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [nearMonolith, router]);
 
   const startAudio = () => {
     if (!ambienceRef.current) {
@@ -1104,6 +1124,17 @@ export default function ConstructGame() {
               <p className="mt-2 text-sm leading-relaxed text-ink-soft">
                 {near.inscription}
               </p>
+              {near.action && (
+                <Link
+                  href={near.action.href}
+                  className="pointer-events-auto mt-4 inline-block rounded-md border border-[#8fb3ff]/60 bg-[#121826]/72 px-5 py-2.5 text-xs font-bold uppercase tracking-[0.16em] text-[#dbe5ff] transition-colors hover:bg-[#dbe5ff] hover:text-[#0b1020]"
+                >
+                  {near.action.label}
+                  <span className="ml-2 hidden text-[10px] text-ink-dim sm:inline">
+                    or press E
+                  </span>
+                </Link>
+              )}
             </div>
           </div>
         )}

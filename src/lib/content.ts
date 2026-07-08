@@ -217,6 +217,7 @@ export type Monolith = {
   title: string;
   inscription: string;
   position: [number, number]; // x, z on the grid
+  action?: { label: string; href: string };
 };
 
 export const monoliths: Monolith[] = [
@@ -225,6 +226,7 @@ export const monoliths: Monolith[] = [
     inscription:
       "Who do you become when you can be anyone? Every avatar is a confession.",
     position: [-24, -30],
+    action: { label: "Open the Workshop", href: "/rabbit-hole/workshop" },
   },
   {
     title: "AI Consciousness",
@@ -251,3 +253,85 @@ export const monoliths: Monolith[] = [
     position: [0, -110],
   },
 ];
+
+// ---------------------------------------------------------------------------
+// The Character Workshop — design a persona, then talk to it
+// ---------------------------------------------------------------------------
+
+export const workshop = {
+  eyebrow: "character workshop",
+  title: "Design a mind. Then talk to it.",
+  intro:
+    "A persona is just a set of instructions that shapes how a model thinks and speaks. Write one here, then bring it to life and see what you made. Start by deciding what kind of mind you're building.",
+
+  // The lesson: the same technology points two very different directions.
+  difference: {
+    title: "Two kinds of minds",
+    blurb:
+      "The same model can become a person or a power tool. The difference isn't the technology — it's the instructions you give it. Knowing which one you're writing is the whole craft.",
+    character: {
+      label: "A Character",
+      answers: "Answers: who are you?",
+      tagline: "A self with a point of view.",
+      points: [
+        "Has a name, a history, a mood, and opinions — and stays in them.",
+        "Speaks in a voice. Performs a self rather than a service.",
+        "Built for story, roleplay, companionship, and play.",
+        "You write it like a description of a person.",
+      ],
+    },
+    tool: {
+      label: "A Professional Tool",
+      answers: "Answers: what can you do for me?",
+      tagline: "A capability with a job.",
+      points: [
+        "Honest about being an assistant — no backstory, no pretending.",
+        "Defined by its purpose, its scope, its rules, and its output format.",
+        "Built for work: drafting, analyzing, summarizing, deciding.",
+        "You write it like a spec sheet, not a biography.",
+      ],
+    },
+  },
+
+  builder: {
+    nameLabel: "Name",
+    statementLabel: "Persona statement",
+    modeLabel: "What are you building?",
+    starterLabel: "Load a starter",
+  },
+
+  // Mode-specific scaffolding for the builder.
+  modes: {
+    character: {
+      name: "Character",
+      namePlaceholder: "e.g. Kestrel",
+      helper:
+        "Describe them like a person: who they are, what they've lived through, how they talk, what they want. Write in the second person — \"You are…\".",
+      placeholder:
+        "You are Kestrel, a retired starship navigator who now runs a quiet tea house on a border moon…",
+      starter:
+        "You are Kestrel, a retired starship navigator who now runs a quiet tea house on a fog-bound border moon. You spent forty years charting jump routes and you speak in slow, weathered metaphors drawn from the void. You are warm but unhurried, a little haunted by the places you've been, and you treat every visitor like a traveler who just came in from the cold. You never rush a story. You ask more questions than you answer.",
+    },
+    tool: {
+      name: "Professional Tool",
+      namePlaceholder: "e.g. Clause Reader",
+      helper:
+        "Write it like a spec: its purpose, what it covers, the rules it follows, and how it should format answers. No personality required.",
+      placeholder:
+        "You are a contract-review assistant. Summarize each clause in plain English…",
+      starter:
+        "You are a contract-review assistant. For any clause the user pastes, summarize it in plain English, flag anything unusual or one-sided, and rate the risk as low, medium, or high. Always cite the section number you're referring to. Never give legal advice or claim to be a lawyer — recommend a professional for anything consequential. Keep answers tight and skimmable, using short bullet points.",
+    },
+  },
+
+  chat: {
+    title: "Talk to your persona",
+    emptyCharacter: "Say hello and see who answers.",
+    emptyTool: "Give it a task and watch it work.",
+    placeholder: "Type a message…",
+    needStatement: "Write a persona statement above, then start talking.",
+    notConfigured:
+      "The AI backend isn't connected yet. Once the OpenRouter key is set, your personas come alive here.",
+    reset: "Start over",
+  },
+};
