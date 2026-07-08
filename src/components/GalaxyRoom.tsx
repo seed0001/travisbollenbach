@@ -226,8 +226,9 @@ export default function GalaxyRoom() {
       (gltf) => {
         if (disposed) return;
         const model = gltf.scene;
-        // the asset's nose points +z — turn it to face -z, our flight axis
-        model.rotation.y = Math.PI;
+        // flight axis is -z; confirmed in live flight: the asset needs this
+        // exact twist for the nose to lead
+        model.rotation.y = -Math.PI / 2;
         model.updateMatrixWorld(true);
         // normalize whatever scale the asset shipped at to ~7 units long
         const box = new THREE.Box3().setFromObject(model);
