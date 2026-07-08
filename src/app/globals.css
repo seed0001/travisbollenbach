@@ -25,6 +25,10 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+body:has(.immersive-lobby) {
+  overflow: hidden;
+}
+
 ::selection {
   background: rgba(103, 232, 249, 0.35);
   color: #ffffff;
@@ -51,6 +55,10 @@ body {
 .immersive-lobby canvas {
   touch-action: none;
   user-select: none;
+}
+
+.immersive-lobby {
+  min-height: 100dvh;
 }
 
 .lobby-world::before,

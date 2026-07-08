@@ -181,6 +181,7 @@ export default function GameLobbyPage() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [activeDoorId, setActiveDoorId] = useState(levelDoors[0].id);
   const [stick, setStick] = useState({ active: false, x: 0, y: 0 });
+  const [panelOpen, setPanelOpen] = useState(false);
   const [voiceState, setVoiceState] = useState<
     "idle" | "connecting" | "connected" | "error"
   >("idle");
@@ -237,12 +238,12 @@ export default function GameLobbyPage() {
     scene.fog = new THREE.Fog(0x101318, 15, 36);
 
     const camera = new THREE.PerspectiveCamera(
-      62,
+      68,
       canvas.clientWidth / canvas.clientHeight,
       0.1,
       100,
     );
-    camera.position.set(0, 8.2, 10);
+    camera.position.set(0, 5.8, 8);
     camera.lookAt(0, 1, 0);
 
     const ambient = new THREE.AmbientLight(0xffffff, 0.48);
@@ -288,13 +289,13 @@ export default function GameLobbyPage() {
 
     const player = new THREE.Group();
     const body = new THREE.Mesh(
-      new THREE.CapsuleGeometry(0.42, 1.05, 8, 16),
+      new THREE.CapsuleGeometry(0.5, 1.25, 8, 16),
       new THREE.MeshStandardMaterial({
         color: 0xffffff,
         roughness: 0.38,
       }),
     );
-    body.position.y = 1.02;
+    body.position.y = 1.12;
     player.add(body);
     const visor = new THREE.Mesh(
       new THREE.SphereGeometry(0.22, 16, 16),
@@ -304,7 +305,7 @@ export default function GameLobbyPage() {
         emissiveIntensity: 0.6,
       }),
     );
-    visor.position.set(0, 1.55, -0.32);
+    visor.position.set(0, 1.72, -0.38);
     player.add(visor);
     player.position.set(0, 0, 0);
     scene.add(player);
@@ -380,9 +381,13 @@ export default function GameLobbyPage() {
         group.scale.setScalar(1 + pulse);
       }
 
+      const isPortrait = canvas.clientHeight > canvas.clientWidth;
+      const cameraHeight = isPortrait ? 5.2 : 7.4;
+      const cameraDistance = isPortrait ? 7.3 : 9.5;
       camera.position.x = THREE.MathUtils.lerp(camera.position.x, player.position.x, 0.08);
-      camera.position.z = THREE.MathUtils.lerp(camera.position.z, player.position.z + 10, 0.08);
-      camera.lookAt(player.position.x, 1.1, player.position.z);
+      camera.position.y = THREE.MathUtils.lerp(camera.position.y, cameraHeight, 0.08);
+      camera.position.z = THREE.MathUtils.lerp(camera.position.z, player.position.z + cameraDistance, 0.08);
+      camera.lookAt(player.position.x, 1.3, player.position.z);
       renderer.render(scene, camera);
       animationFrame = requestAnimationFrame(animate);
     };
@@ -630,19 +635,35 @@ export default function GameLobbyPage() {
           />
           <div ref={audioRef} className="hidden" />
 
-          <div className="pointer-events-none absolute inset-x-0 top-0 z-10 grid gap-2 p-3 sm:flex sm:flex-wrap sm:items-start sm:justify-between sm:gap-4 sm:p-4">
-            <div className="pointer-events-auto rounded-md border border-white/12 bg-[#101318]/84 p-3 shadow-xl shadow-black/30 backdrop-blur sm:max-w-md sm:p-4">
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-10 p-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:flex sm:flex-wrap sm:items-start sm:justify-between sm:gap-4 sm:p-4">
+            <button
+              type="button"
+              onClick={() => setPanelOpen((open) => !open)}
+              className="pointer-events-auto flex max-w-[72vw] items-center gap-2 rounded-full border border-white/12 bg-[#101318]/76 px-3 py-2 text-left shadow-xl shadow-black/30 backdrop-blur sm:hidden"
+            >
+              <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#89d8c2]" />
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-black">
+                  {activeDoor.name}
+                </span>
+                <span className="block truncate text-[11px] font-bold uppercase tracking-[0.08em] text-white/54">
+                  {accessLabels[activeDoor.access]}
+                </span>
+              </span>
+            </button>
+
+            <div className="pointer-events-auto hidden rounded-md border border-white/12 bg-[#101318]/84 p-4 shadow-xl shadow-black/30 backdrop-blur sm:block sm:max-w-md">
               <p className="text-xs font-black uppercase tracking-[0.2em] text-[#89d8c2]">
                 3D Lobby
               </p>
-              <h2 className="mt-1 text-xl font-black tracking-tight sm:mt-2 sm:text-2xl">
+              <h2 className="mt-2 text-2xl font-black tracking-tight">
                 {activeDoor.name}
               </h2>
-              <p className="mt-1 text-xs leading-5 text-white/68 sm:mt-2 sm:text-sm sm:leading-6">
+              <p className="mt-2 text-sm leading-6 text-white/68">
                 {activeDoor.description}
               </p>
-              <div className="mt-3 grid grid-cols-2 gap-2 sm:mt-4">
-                <div className="rounded-md border border-white/10 bg-white/[0.045] p-2 sm:p-3">
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <div className="rounded-md border border-white/10 bg-white/[0.045] p-3">
                   <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/45">
                     Access
                   </p>
@@ -650,7 +671,7 @@ export default function GameLobbyPage() {
                     {accessLabels[activeDoor.access]}
                   </p>
                 </div>
-                <div className="rounded-md border border-white/10 bg-white/[0.045] p-2 sm:p-3">
+                <div className="rounded-md border border-white/10 bg-white/[0.045] p-3">
                   <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/45">
                     Rule
                   </p>
@@ -663,9 +684,9 @@ export default function GameLobbyPage() {
               </div>
             </div>
 
-            <div className="pointer-events-auto rounded-md border border-white/12 bg-[#101318]/84 p-3 shadow-xl shadow-black/30 backdrop-blur sm:w-full sm:max-w-sm sm:p-4">
+            <div className="pointer-events-auto fixed right-3 top-[max(0.75rem,env(safe-area-inset-top))] w-[5.75rem] rounded-full border border-white/12 bg-[#101318]/76 p-1.5 shadow-xl shadow-black/30 backdrop-blur sm:static sm:w-full sm:max-w-sm sm:rounded-md sm:p-4">
               <div className="flex items-center justify-between gap-3">
-                <div>
+                <div className="hidden sm:block">
                   <p className="text-xs font-black uppercase tracking-[0.2em] text-[#f5d06f]">
                     Voice
                   </p>
@@ -684,24 +705,24 @@ export default function GameLobbyPage() {
                   aria-label={`Voice state: ${voiceState}`}
                 />
               </div>
-              <div className="mt-3 flex gap-2 sm:mt-4">
+              <div className="flex gap-1 sm:mt-4 sm:gap-2">
                 <button
                   type="button"
                   onClick={connectVoice}
                   disabled={voiceState === "connecting" || voiceState === "connected"}
-                  className="min-h-11 flex-1 rounded-md bg-[#89d8c2] px-3 text-xs font-black uppercase tracking-[0.12em] text-[#08110f] transition hover:bg-[#a3f1dd] disabled:cursor-not-allowed disabled:opacity-45 sm:px-4 sm:tracking-[0.14em]"
+                  className="grid h-10 flex-1 place-items-center rounded-full bg-[#89d8c2] px-2 text-[10px] font-black uppercase tracking-[0.08em] text-[#08110f] transition hover:bg-[#a3f1dd] disabled:cursor-not-allowed disabled:opacity-45 sm:min-h-11 sm:rounded-md sm:px-4 sm:text-xs sm:tracking-[0.14em]"
                 >
-                  {voiceState === "connecting" ? "Connecting" : "Mic on"}
+                  {voiceState === "connecting" ? "..." : "Mic"}
                 </button>
                 <button
                   type="button"
                   onClick={disconnectVoice}
-                  className="min-h-11 rounded-md border border-white/16 px-3 text-xs font-black uppercase tracking-[0.12em] text-white/72 transition hover:border-white/34 hover:text-white sm:px-4 sm:tracking-[0.14em]"
+                  className="hidden min-h-11 rounded-md border border-white/16 px-4 text-xs font-black uppercase tracking-[0.14em] text-white/72 transition hover:border-white/34 hover:text-white sm:block"
                 >
                   Mic off
                 </button>
               </div>
-              <p className="mt-2 text-xs leading-5 text-white/45 sm:mt-3">
+              <p className="mt-3 hidden text-xs leading-5 text-white/45 sm:block">
                 {remoteSpeakers.length > 0
                   ? `Remote voice: ${remoteSpeakers.join(", ")}`
                   : "No remote speakers connected."}
@@ -709,9 +730,36 @@ export default function GameLobbyPage() {
             </div>
           </div>
 
+          {panelOpen && (
+            <div className="pointer-events-auto absolute inset-x-3 bottom-40 z-20 rounded-md border border-white/12 bg-[#101318]/90 p-3 shadow-2xl shadow-black/40 backdrop-blur sm:hidden">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-[#89d8c2]">
+                    Door
+                  </p>
+                  <h2 className="mt-1 text-xl font-black">{activeDoor.name}</h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPanelOpen(false)}
+                  className="rounded-md border border-white/12 px-3 py-2 text-xs font-black uppercase tracking-[0.1em] text-white/70"
+                >
+                  Close
+                </button>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-white/70">
+                {activeDoor.description}
+              </p>
+              <p className="mt-3 text-xs font-bold uppercase tracking-[0.12em] text-[#f5d06f]">
+                {accessLabels[activeDoor.access]}
+                {activeDoor.minimumAge ? ` · ${activeDoor.minimumAge}+` : ""}
+              </p>
+            </div>
+          )}
+
           <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex items-end justify-between gap-3 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
             <div
-              className="pointer-events-auto relative h-32 w-32 shrink-0 rounded-full border border-white/14 bg-[#101318]/62 shadow-xl shadow-black/30 backdrop-blur sm:hidden"
+              className="pointer-events-auto relative h-36 w-36 shrink-0 rounded-full border border-white/14 bg-[#101318]/48 shadow-xl shadow-black/30 backdrop-blur sm:hidden"
               onPointerDown={(event) => {
                 event.currentTarget.setPointerCapture(event.pointerId);
                 updateTouchMovement(event.clientX, event.clientY, event.currentTarget);
@@ -729,11 +777,11 @@ export default function GameLobbyPage() {
               role="application"
               aria-label="Move"
             >
-              <div className="absolute left-1/2 top-1/2 h-11 w-11 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/12 bg-white/10" />
+              <div className="absolute left-1/2 top-1/2 h-12 w-12 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/12 bg-white/10" />
               <div
-                className="absolute left-1/2 top-1/2 h-14 w-14 rounded-full bg-[#89d8c2] shadow-[0_0_28px_rgba(137,216,194,0.34)]"
+                className="absolute left-1/2 top-1/2 h-16 w-16 rounded-full bg-[#89d8c2] shadow-[0_0_28px_rgba(137,216,194,0.34)]"
                 style={{
-                  transform: `translate(calc(-50% + ${stick.x * 34}px), calc(-50% + ${stick.y * 34}px))`,
+                  transform: `translate(calc(-50% + ${stick.x * 38}px), calc(-50% + ${stick.y * 38}px))`,
                   opacity: stick.active ? 1 : 0.82,
                 }}
               />
