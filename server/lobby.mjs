@@ -70,18 +70,29 @@ async function authenticate(req) {
   };
 }
 
+const ROOM_NAMES = new Set(["lobby", "galaxy", "beach"]);
+
 export function createLobby() {
   const wss = new WebSocketServer({ noServer: true });
-  /** peerId -> { ws, userId, name, hue, p, ry, mic, alive, msgCount } */
-  const players = new Map();
+  /** room -> (peerId -> { ws, userId, name, hue, device, p, ry, mic, alive, msgCount }) */
+  const rooms = new Map();
+
+  const roomOf = (name) => {
+    let room = rooms.get(name);
+    if (!room) {
+      room = new Map();
+      rooms.set(name, room);
+    }
+    return room;
+  };
 
   const send = (ws, obj) => {
     if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(obj));
   };
 
-  const broadcast = (obj, exceptId) => {
+  const broadcast = (roomName, obj, exceptId) => {
     const raw = JSON.stringify(obj);
-    for (const [id, p] of players) {
+    for (const [id, p] of roomOf(roomName)) {
       if (id !== exceptId && p.ws.readyState === p.ws.OPEN) p.ws.send(raw);
     }
   };
@@ -90,18 +101,33 @@ export function createLobby() {
     id,
     name: p.name,
     hue: p.hue,
+    device: p.device,
     p: p.p,
     ry: p.ry,
     mic: p.mic,
   });
 
+  /** who's here, split by how they got here */
+  const census = (roomName) => {
+    let desktop = 0;
+    let mobile = 0;
+    for (const [, p] of roomOf(roomName)) {
+      if (p.device === "mobile") mobile += 1;
+      else desktop += 1;
+    }
+    return { t: "census", total: desktop + mobile, desktop, mobile };
+  };
+
   wss.on("connection", (ws, identity) => {
+    const { roomName, device } = identity;
+    const players = roomOf(roomName);
     const id = randomUUID();
     const player = {
       ws,
       userId: identity.userId,
       name: identity.name,
       hue: identity.hue,
+      device,
       p: [0, 0, 0],
       ry: 0,
       mic: false,
@@ -117,7 +143,8 @@ export function createLobby() {
         .filter(([pid]) => pid !== id)
         .map(([pid, p]) => publicPeer(pid, p)),
     });
-    broadcast({ t: "join", peer: publicPeer(id, player) }, id);
+    broadcast(roomName, { t: "join", peer: publicPeer(id, player) }, id);
+    broadcast(roomName, census(roomName));
 
     ws.on("pong", () => {
       player.alive = true;
@@ -149,19 +176,19 @@ export function createLobby() {
           }
           player.p = p;
           player.ry = ry;
-          broadcast({ t: "pos", id, p, ry }, id);
+          broadcast(roomName, { t: "pos", id, p, ry }, id);
           break;
         }
         case "mic": {
           player.mic = msg.on === true;
-          broadcast({ t: "mic", id, on: player.mic }, id);
+          broadcast(roomName, { t: "mic", id, on: player.mic }, id);
           break;
         }
         case "hue": {
           const h = msg.h;
           if (typeof h !== "number" || h < 0 || h > 360) return;
           player.hue = Math.round(h);
-          broadcast({ t: "hue", id, h: player.hue }, id);
+          broadcast(roomName, { t: "hue", id, h: player.hue }, id);
           break;
         }
         case "rtc": {
@@ -177,21 +204,24 @@ export function createLobby() {
 
     ws.on("close", () => {
       players.delete(id);
-      broadcast({ t: "leave", id });
+      broadcast(roomName, { t: "leave", id });
+      broadcast(roomName, census(roomName));
     });
     ws.on("error", () => ws.terminate());
   });
 
   // reap dead connections; reset the per-second message budget
   const heartbeat = setInterval(() => {
-    for (const [, p] of players) {
-      p.msgCount = 0;
-      if (!p.alive) {
-        p.ws.terminate();
-        continue;
+    for (const [, players] of rooms) {
+      for (const [, p] of players) {
+        p.msgCount = 0;
+        if (!p.alive) {
+          p.ws.terminate();
+          continue;
+        }
+        p.alive = false;
+        p.ws.ping();
       }
-      p.alive = false;
-      p.ws.ping();
     }
   }, 15_000);
   wss.on("close", () => clearInterval(heartbeat));
@@ -208,13 +238,25 @@ export function createLobby() {
       socket.destroy();
       return;
     }
-    if (players.size >= MAX_PLAYERS) {
+    const url = new URL(req.url ?? "/", "http://localhost");
+    const roomName = url.searchParams.get("room") ?? "lobby";
+    if (!ROOM_NAMES.has(roomName)) {
+      socket.write("HTTP/1.1 404 Not Found\r\n\r\n");
+      socket.destroy();
+      return;
+    }
+    if (roomOf(roomName).size >= MAX_PLAYERS) {
       socket.write("HTTP/1.1 503 Service Unavailable\r\n\r\n");
       socket.destroy();
       return;
     }
+    const device = /Mobi|Android|iPhone|iPad|IEMobile/i.test(
+      req.headers["user-agent"] ?? "",
+    )
+      ? "mobile"
+      : "desktop";
     wss.handleUpgrade(req, socket, head, (ws) => {
-      wss.emit("connection", ws, identity);
+      wss.emit("connection", ws, { ...identity, roomName, device });
     });
   };
 

@@ -40,7 +40,8 @@ type ServerMessage =
   | { t: "pos"; id: string; p: [number, number, number]; ry: number }
   | { t: "mic"; id: string; on: boolean }
   | { t: "hue"; id: string; h: number }
-  | { t: "rtc"; from: string; data: unknown };
+  | { t: "rtc"; from: string; data: unknown }
+  | { t: "census"; total: number; desktop: number; mobile: number };
 
 type Me = { name: string };
 type Progress = { xp: number; points: number; avatarHue: number };
@@ -180,6 +181,9 @@ export default function Lobby() {
   const [muted, setMuted] = useState(false);
   const [listenOnly, setListenOnly] = useState(false);
   const [playerCount, setPlayerCount] = useState(1);
+  const [census, setCensus] = useState<{ desktop: number; mobile: number } | null>(
+    null,
+  );
   const [connection, setConnection] = useState<"connecting" | "open" | "lost">(
     "connecting",
   );
@@ -540,6 +544,9 @@ export default function Lobby() {
           case "rtc":
             voiceReady.then((v) => v?.handleSignal(msg.from, msg.data));
             break;
+          case "census":
+            setCensus({ desktop: msg.desktop, mobile: msg.mobile });
+            break;
         }
       };
 
@@ -841,6 +848,8 @@ export default function Lobby() {
               </p>
               <p className="mt-1 text-[11px] uppercase tracking-[0.2em] text-ink-dim">
                 {playerCount} jacked in
+                {census &&
+                  ` — ${census.desktop} desktop · ${census.mobile} mobile`}
                 {connection !== "open" && (
                   <span className="ml-2 animate-pulse text-pill-red">
                     {connection === "connecting" ? "linking…" : "re-linking…"}
