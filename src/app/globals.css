@@ -13,6 +13,7 @@ body {
   margin: 0;
   min-height: 100%;
   overflow-x: hidden;
+  overscroll-behavior: none;
 }
 
 body {
@@ -44,6 +45,12 @@ body {
     linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
   background-size: 56px 56px;
+}
+
+.immersive-lobby,
+.immersive-lobby canvas {
+  touch-action: none;
+  user-select: none;
 }
 
 .lobby-world::before,
