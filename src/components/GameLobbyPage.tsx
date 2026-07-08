@@ -259,10 +259,16 @@ export default function GameLobbyPage() {
   const localStreamRef = useRef<MediaStream | null>(null);
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const touchMoveRef = useRef({ x: 0, z: 0 });
+  const touchLookRef = useRef({ x: 0, y: 0 });
+  const cameraAnglesRef = useRef({ yaw: 0, pitch: -0.12 });
+  const orientationBaseRef = useRef<{ alpha: number; beta: number } | null>(null);
+  const motionLookEnabledRef = useRef(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [activeDoorId, setActiveDoorId] = useState(levelDoors[0].id);
   const [stick, setStick] = useState({ active: false, x: 0, y: 0 });
+  const [lookStick, setLookStick] = useState({ active: false, x: 0, y: 0 });
   const [panelOpen, setPanelOpen] = useState(false);
+  const [motionLookEnabled, setMotionLookEnabled] = useState(false);
   const [voiceState, setVoiceState] = useState<
     "idle" | "connecting" | "connected" | "error"
   >("idle");
@@ -273,6 +279,10 @@ export default function GameLobbyPage() {
     () => levelDoors.find((door) => door.id === activeDoorId) ?? levelDoors[0],
     [activeDoorId],
   );
+
+  useEffect(() => {
+    motionLookEnabledRef.current = motionLookEnabled;
+  }, [motionLookEnabled]);
 
   const updateTouchMovement = (clientX: number, clientY: number, target: Element) => {
     const bounds = target.getBoundingClientRect();
@@ -301,6 +311,45 @@ export default function GameLobbyPage() {
     setStick({ active: false, x: 0, y: 0 });
   };
 
+  const updateTouchLook = (clientX: number, clientY: number, target: Element) => {
+    const bounds = target.getBoundingClientRect();
+    const centerX = bounds.left + bounds.width / 2;
+    const centerY = bounds.top + bounds.height / 2;
+    const maxDistance = bounds.width * 0.36;
+    const deltaX = THREE.MathUtils.clamp(
+      (clientX - centerX) / maxDistance,
+      -1,
+      1,
+    );
+    const deltaY = THREE.MathUtils.clamp(
+      (clientY - centerY) / maxDistance,
+      -1,
+      1,
+    );
+    const vector = new THREE.Vector2(deltaX, deltaY);
+    if (vector.length() > 1) vector.normalize();
+
+    touchLookRef.current = { x: vector.x, y: vector.y };
+    setLookStick({ active: true, x: vector.x, y: vector.y });
+  };
+
+  const stopTouchLook = () => {
+    touchLookRef.current = { x: 0, y: 0 };
+    setLookStick({ active: false, x: 0, y: 0 });
+  };
+
+  const enableMotionLook = async () => {
+    const orientationEvent = DeviceOrientationEvent as typeof DeviceOrientationEvent & {
+      requestPermission?: () => Promise<PermissionState>;
+    };
+    if (typeof orientationEvent.requestPermission === "function") {
+      const permission = await orientationEvent.requestPermission();
+      if (permission !== "granted") return;
+    }
+    orientationBaseRef.current = null;
+    setMotionLookEnabled(true);
+  };
+
   useEffect(() => {
     if (!isPlaying || !canvasRef.current) return;
 
@@ -324,8 +373,8 @@ export default function GameLobbyPage() {
       0.1,
       100,
     );
-    camera.position.set(0, 5.8, 8);
-    camera.lookAt(0, 1, 0);
+    camera.position.set(0, 1.7, 5.2);
+    camera.rotation.order = "YXZ";
 
     const ambient = new THREE.HemisphereLight(0x9eead8, 0x080a0f, 1.25);
     scene.add(ambient);
@@ -395,31 +444,7 @@ export default function GameLobbyPage() {
       scene.add(spire);
     }
 
-    const player = new THREE.Group();
-    const body = new THREE.Mesh(
-      new THREE.CapsuleGeometry(0.5, 1.25, 8, 16),
-      new THREE.MeshStandardMaterial({
-        color: 0xeef8f4,
-        emissive: 0x102421,
-        emissiveIntensity: 0.22,
-        roughness: 0.26,
-        metalness: 0.18,
-      }),
-    );
-    body.position.y = 1.12;
-    player.add(body);
-    const visor = new THREE.Mesh(
-      new THREE.SphereGeometry(0.22, 16, 16),
-      new THREE.MeshStandardMaterial({
-        color: 0x89d8c2,
-        emissive: 0x89d8c2,
-        emissiveIntensity: 1.2,
-      }),
-    );
-    visor.position.set(0, 1.72, -0.38);
-    player.add(visor);
-    player.position.set(0, 0, 0);
-    scene.add(player);
+    const playerPosition = new THREE.Vector3(0, 1.7, 5.2);
 
     const doorGroups = levelDoors.map((door) => {
       const group = createDoor(door);
@@ -434,8 +459,32 @@ export default function GameLobbyPage() {
     const keys = new Set<string>();
     const onKeyDown = (event: KeyboardEvent) => keys.add(event.key.toLowerCase());
     const onKeyUp = (event: KeyboardEvent) => keys.delete(event.key.toLowerCase());
+    const onDeviceOrientation = (event: DeviceOrientationEvent) => {
+      if (
+        !motionLookEnabledRef.current ||
+        event.alpha === null ||
+        event.beta === null
+      ) {
+        return;
+      }
+      if (!orientationBaseRef.current) {
+        orientationBaseRef.current = { alpha: event.alpha, beta: event.beta };
+      }
+      const base = orientationBaseRef.current;
+      let alphaDelta = event.alpha - base.alpha;
+      if (alphaDelta > 180) alphaDelta -= 360;
+      if (alphaDelta < -180) alphaDelta += 360;
+      const betaDelta = event.beta - base.beta;
+      cameraAnglesRef.current.yaw = -alphaDelta * 0.018;
+      cameraAnglesRef.current.pitch = THREE.MathUtils.clamp(
+        -0.12 - betaDelta * 0.012,
+        -0.72,
+        0.42,
+      );
+    };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("deviceorientation", onDeviceOrientation);
 
     let animationFrame = 0;
     let lastTime = performance.now();
@@ -455,24 +504,39 @@ export default function GameLobbyPage() {
       lastTime = time;
       resize();
 
-      const move = new THREE.Vector3();
-      if (keys.has("w") || keys.has("arrowup")) move.z -= 1;
-      if (keys.has("s") || keys.has("arrowdown")) move.z += 1;
-      if (keys.has("a") || keys.has("arrowleft")) move.x -= 1;
-      if (keys.has("d") || keys.has("arrowright")) move.x += 1;
-      move.x += touchMoveRef.current.x;
-      move.z += touchMoveRef.current.z;
+      let strafe = 0;
+      let forward = 0;
+      if (keys.has("w") || keys.has("arrowup")) forward += 1;
+      if (keys.has("s") || keys.has("arrowdown")) forward -= 1;
+      if (keys.has("a") || keys.has("arrowleft")) strafe -= 1;
+      if (keys.has("d") || keys.has("arrowright")) strafe += 1;
+      strafe += touchMoveRef.current.x;
+      forward -= touchMoveRef.current.z;
+
+      const move = new THREE.Vector3(strafe, 0, -forward);
       if (move.lengthSq() > 0) {
-        move.normalize().multiplyScalar(5.4 * delta);
-        player.position.add(move);
-        player.position.x = THREE.MathUtils.clamp(player.position.x, -lobbyBounds, lobbyBounds);
-        player.position.z = THREE.MathUtils.clamp(player.position.z, -lobbyBounds, lobbyBounds);
-        player.rotation.y = Math.atan2(move.x, move.z);
+        move.normalize();
+        const yaw = cameraAnglesRef.current.yaw;
+        const sin = Math.sin(yaw);
+        const cos = Math.cos(yaw);
+        const worldX = move.x * cos - move.z * sin;
+        const worldZ = move.x * sin + move.z * cos;
+        playerPosition.x += worldX * 5.2 * delta;
+        playerPosition.z += worldZ * 5.2 * delta;
+        playerPosition.x = THREE.MathUtils.clamp(playerPosition.x, -lobbyBounds, lobbyBounds);
+        playerPosition.z = THREE.MathUtils.clamp(playerPosition.z, -lobbyBounds, lobbyBounds);
       }
+
+      cameraAnglesRef.current.yaw -= touchLookRef.current.x * 2.65 * delta;
+      cameraAnglesRef.current.pitch = THREE.MathUtils.clamp(
+        cameraAnglesRef.current.pitch - touchLookRef.current.y * 1.65 * delta,
+        -0.72,
+        0.42,
+      );
 
       let nearestDoor = levelDoors[0];
       let nearestDistance = Number.POSITIVE_INFINITY;
-      const playerFlat = new THREE.Vector2(player.position.x, player.position.z);
+      const playerFlat = new THREE.Vector2(playerPosition.x, playerPosition.z);
       for (const door of levelDoors) {
         const doorFlat = new THREE.Vector2(door.position[0], door.position[2]);
         const distance = playerFlat.distanceTo(doorFlat);
@@ -492,13 +556,9 @@ export default function GameLobbyPage() {
         group.scale.setScalar(1 + pulse);
       }
 
-      const isPortrait = canvas.clientHeight > canvas.clientWidth;
-      const cameraHeight = isPortrait ? 5.2 : 7.4;
-      const cameraDistance = isPortrait ? 7.3 : 9.5;
-      camera.position.x = THREE.MathUtils.lerp(camera.position.x, player.position.x, 0.08);
-      camera.position.y = THREE.MathUtils.lerp(camera.position.y, cameraHeight, 0.08);
-      camera.position.z = THREE.MathUtils.lerp(camera.position.z, player.position.z + cameraDistance, 0.08);
-      camera.lookAt(player.position.x, 1.3, player.position.z);
+      camera.position.copy(playerPosition);
+      camera.rotation.y = cameraAnglesRef.current.yaw;
+      camera.rotation.x = cameraAnglesRef.current.pitch;
       renderer.render(scene, camera);
       animationFrame = requestAnimationFrame(animate);
     };
@@ -509,6 +569,7 @@ export default function GameLobbyPage() {
       cancelAnimationFrame(animationFrame);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("deviceorientation", onDeviceOrientation);
       renderer.dispose();
       scene.traverse((object) => {
         if (object instanceof THREE.Mesh) {
@@ -745,6 +806,9 @@ export default function GameLobbyPage() {
             aria-label="3D multiplayer lobby"
           />
           <div ref={audioRef} className="hidden" />
+          <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 h-7 w-7 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/28 shadow-[0_0_18px_rgba(55,242,192,0.28)]">
+            <span className="absolute left-1/2 top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#37f2c0]" />
+          </div>
 
           <div className="pointer-events-none absolute inset-x-0 top-0 z-10 p-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:flex sm:flex-wrap sm:items-start sm:justify-between sm:gap-4 sm:p-4">
             <button
@@ -871,6 +935,7 @@ export default function GameLobbyPage() {
           <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex items-end justify-between gap-3 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
             <div
               className="hud-glass pointer-events-auto relative h-36 w-36 shrink-0 rounded-full shadow-xl shadow-black/30 sm:hidden"
+              data-control
               onPointerDown={(event) => {
                 event.currentTarget.setPointerCapture(event.pointerId);
                 updateTouchMovement(event.clientX, event.clientY, event.currentTarget);
@@ -881,7 +946,9 @@ export default function GameLobbyPage() {
                 }
               }}
               onPointerUp={(event) => {
-                event.currentTarget.releasePointerCapture(event.pointerId);
+                if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                  event.currentTarget.releasePointerCapture(event.pointerId);
+                }
                 stopTouchMovement();
               }}
               onPointerCancel={stopTouchMovement}
@@ -897,13 +964,58 @@ export default function GameLobbyPage() {
                 }}
               />
             </div>
+            <div className="flex flex-col items-end gap-3 sm:hidden">
+              <button
+                type="button"
+                onClick={enableMotionLook}
+                className={`hud-glass pointer-events-auto min-h-10 rounded-full px-3 text-[10px] font-black uppercase tracking-[0.1em] ${
+                  motionLookEnabled ? "text-[#37f2c0]" : "text-white/72"
+                }`}
+              >
+                Motion
+              </button>
+              <div
+                className="hud-glass pointer-events-auto relative h-36 w-36 shrink-0 rounded-full shadow-xl shadow-black/30"
+                data-control
+                onPointerDown={(event) => {
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                  updateTouchLook(event.clientX, event.clientY, event.currentTarget);
+                }}
+                onPointerMove={(event) => {
+                  if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                    updateTouchLook(event.clientX, event.clientY, event.currentTarget);
+                  }
+                }}
+                onPointerUp={(event) => {
+                  if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                    event.currentTarget.releasePointerCapture(event.pointerId);
+                  }
+                  stopTouchLook();
+                }}
+                onPointerCancel={stopTouchLook}
+                role="application"
+                aria-label="Look"
+              >
+                <div className="absolute left-1/2 top-1/2 h-12 w-12 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/12 bg-white/10" />
+                <div
+                  className="absolute left-1/2 top-1/2 h-16 w-16 rounded-full bg-[#ffcf66] shadow-[0_0_32px_rgba(255,207,102,0.42)]"
+                  style={{
+                    transform: `translate(calc(-50% + ${lookStick.x * 38}px), calc(-50% + ${lookStick.y * 38}px))`,
+                    opacity: lookStick.active ? 1 : 0.82,
+                  }}
+                />
+              </div>
+            </div>
             <div className="hud-glass hidden rounded-md px-4 py-3 text-xs font-bold uppercase tracking-[0.14em] text-white/70 shadow-xl shadow-black/30 sm:block">
-              Lobby online
+              First-person lobby
             </div>
             <button
               type="button"
               onClick={() => {
                 stopTouchMovement();
+                stopTouchLook();
+                setMotionLookEnabled(false);
+                orientationBaseRef.current = null;
                 disconnectVoice();
                 setIsPlaying(false);
               }}
