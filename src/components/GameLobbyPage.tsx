@@ -37,7 +37,7 @@ const levelDoors: LevelDoor[] = [
     description: "Free tutorial space for movement, controls, and basic interactions.",
     access: "free",
     position: [-8, 0, -7],
-    color: 0x89d8c2,
+    color: 0x37f2c0,
   },
   {
     id: "arcade-run",
@@ -47,7 +47,7 @@ const levelDoors: LevelDoor[] = [
     description: "Free challenge level with score chasing and short loops.",
     access: "free",
     position: [0, 0, -10],
-    color: 0xf5d06f,
+    color: 0xffc857,
   },
   {
     id: "sky-workshop",
@@ -57,7 +57,7 @@ const levelDoors: LevelDoor[] = [
     description: "Subscription area with build tools, experiments, and advanced puzzles.",
     access: "subscription",
     position: [8, 0, -7],
-    color: 0x7da7ff,
+    color: 0x5fa8ff,
   },
   {
     id: "neon-district",
@@ -68,7 +68,7 @@ const levelDoors: LevelDoor[] = [
     access: "age-gated",
     minimumAge: 18,
     position: [10, 0, 4],
-    color: 0xff6aa2,
+    color: 0xff4f8b,
   },
   {
     id: "deep-vault",
@@ -79,7 +79,7 @@ const levelDoors: LevelDoor[] = [
     access: "subscription-age",
     minimumAge: 18,
     position: [-10, 0, 4],
-    color: 0xb58cff,
+    color: 0xaa72ff,
   },
 ];
 
@@ -99,6 +99,60 @@ const accessDescriptions: Record<AccessRule, string> = {
 
 const lobbyBounds = 11.5;
 const doorTriggerDistance = 2.6;
+
+function makeRadialTexture(inner: string, outer: string) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1024;
+  canvas.height = 1024;
+  const context = canvas.getContext("2d");
+  if (!context) return new THREE.CanvasTexture(canvas);
+
+  const gradient = context.createRadialGradient(512, 420, 40, 512, 512, 620);
+  gradient.addColorStop(0, inner);
+  gradient.addColorStop(0.42, "#17242a");
+  gradient.addColorStop(1, outer);
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, canvas.width, canvas.height);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+function makeFloorTexture() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1024;
+  canvas.height = 1024;
+  const context = canvas.getContext("2d");
+  if (!context) return new THREE.CanvasTexture(canvas);
+
+  context.fillStyle = "#151a1f";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.strokeStyle = "rgba(137, 216, 194, 0.18)";
+  context.lineWidth = 2;
+  for (let index = 0; index <= 1024; index += 64) {
+    context.beginPath();
+    context.moveTo(index, 0);
+    context.lineTo(index, 1024);
+    context.stroke();
+    context.beginPath();
+    context.moveTo(0, index);
+    context.lineTo(1024, index);
+    context.stroke();
+  }
+  context.strokeStyle = "rgba(245, 208, 111, 0.22)";
+  context.lineWidth = 5;
+  context.beginPath();
+  context.arc(512, 512, 330, 0, Math.PI * 2);
+  context.stroke();
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(2.5, 2.5);
+  return texture;
+}
 
 function makeLabelTexture(label: string) {
   const canvas = document.createElement("canvas");
@@ -131,21 +185,34 @@ function createDoor(door: LevelDoor) {
   const portalMaterial = new THREE.MeshStandardMaterial({
     color: door.color,
     emissive: door.color,
-    emissiveIntensity: 0.75,
-    roughness: 0.35,
-    metalness: 0.12,
+    emissiveIntensity: 1.35,
+    roughness: 0.18,
+    metalness: 0.2,
   });
   const frameMaterial = new THREE.MeshStandardMaterial({
-    color: 0x17191f,
-    roughness: 0.55,
-    metalness: 0.25,
+    color: 0x0b0f14,
+    roughness: 0.28,
+    metalness: 0.62,
   });
 
-  const portal = new THREE.Mesh(new THREE.BoxGeometry(2.6, 3.9, 0.22), portalMaterial);
+  const portal = new THREE.Mesh(new THREE.BoxGeometry(2.7, 4.1, 0.18), portalMaterial);
   portal.position.y = 2;
   group.add(portal);
 
-  const leftFrame = new THREE.Mesh(new THREE.BoxGeometry(0.25, 4.4, 0.45), frameMaterial);
+  const veil = new THREE.Mesh(
+    new THREE.PlaneGeometry(2.25, 3.45),
+    new THREE.MeshBasicMaterial({
+      color: door.color,
+      transparent: true,
+      opacity: 0.24,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    }),
+  );
+  veil.position.set(0, 2, 0.16);
+  group.add(veil);
+
+  const leftFrame = new THREE.Mesh(new THREE.BoxGeometry(0.32, 4.7, 0.62), frameMaterial);
   leftFrame.position.set(-1.45, 2.05, 0);
   group.add(leftFrame);
 
@@ -153,9 +220,23 @@ function createDoor(door: LevelDoor) {
   rightFrame.position.x = 1.45;
   group.add(rightFrame);
 
-  const topFrame = new THREE.Mesh(new THREE.BoxGeometry(3.15, 0.25, 0.45), frameMaterial);
-  topFrame.position.set(0, 4.2, 0);
+  const topFrame = new THREE.Mesh(new THREE.BoxGeometry(3.35, 0.34, 0.62), frameMaterial);
+  topFrame.position.set(0, 4.38, 0);
   group.add(topFrame);
+
+  const threshold = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.75, 1.75, 0.09, 48),
+    new THREE.MeshBasicMaterial({
+      color: door.color,
+      transparent: true,
+      opacity: 0.34,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    }),
+  );
+  threshold.rotation.x = Math.PI / 2;
+  threshold.position.set(0, 0.08, 0.12);
+  group.add(threshold);
 
   const label = new THREE.Mesh(
     new THREE.PlaneGeometry(2.9, 0.9),
@@ -234,8 +315,8 @@ export default function GameLobbyPage() {
     renderer.outputColorSpace = THREE.SRGBColorSpace;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x101318);
-    scene.fog = new THREE.Fog(0x101318, 15, 36);
+    scene.background = makeRadialTexture("#24373f", "#07090d");
+    scene.fog = new THREE.FogExp2(0x07090d, 0.035);
 
     const camera = new THREE.PerspectiveCamera(
       68,
@@ -246,30 +327,35 @@ export default function GameLobbyPage() {
     camera.position.set(0, 5.8, 8);
     camera.lookAt(0, 1, 0);
 
-    const ambient = new THREE.AmbientLight(0xffffff, 0.48);
+    const ambient = new THREE.HemisphereLight(0x9eead8, 0x080a0f, 1.25);
     scene.add(ambient);
 
-    const keyLight = new THREE.DirectionalLight(0xffffff, 2.2);
-    keyLight.position.set(5, 9, 7);
+    const keyLight = new THREE.DirectionalLight(0xffffff, 2.8);
+    keyLight.position.set(4, 10, 5);
     scene.add(keyLight);
 
+    const centerLight = new THREE.PointLight(0x37f2c0, 8, 12);
+    centerLight.position.set(0, 2.6, 0);
+    scene.add(centerLight);
+
     const floor = new THREE.Mesh(
-      new THREE.CircleGeometry(13.2, 80),
+      new THREE.CircleGeometry(14.5, 128),
       new THREE.MeshStandardMaterial({
-        color: 0x202a2d,
-        roughness: 0.82,
-        metalness: 0.08,
+        map: makeFloorTexture(),
+        color: 0x8fa7a1,
+        roughness: 0.62,
+        metalness: 0.16,
       }),
     );
     floor.rotation.x = -Math.PI / 2;
     scene.add(floor);
 
     const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(6.6, 0.08, 10, 96),
-      new THREE.MeshStandardMaterial({
+      new THREE.TorusGeometry(6.8, 0.08, 10, 128),
+      new THREE.MeshBasicMaterial({
         color: 0xf5d06f,
-        emissive: 0xf5d06f,
-        emissiveIntensity: 0.22,
+        transparent: true,
+        opacity: 0.72,
       }),
     );
     ring.rotation.x = -Math.PI / 2;
@@ -277,22 +363,47 @@ export default function GameLobbyPage() {
     scene.add(ring);
 
     const spawn = new THREE.Mesh(
-      new THREE.CylinderGeometry(1.45, 1.45, 0.18, 48),
+      new THREE.CylinderGeometry(1.55, 1.55, 0.18, 64),
       new THREE.MeshStandardMaterial({
         color: 0x89d8c2,
         emissive: 0x89d8c2,
-        emissiveIntensity: 0.25,
+        emissiveIntensity: 0.65,
+        roughness: 0.2,
+        metalness: 0.5,
       }),
     );
     spawn.position.y = 0.09;
     scene.add(spawn);
 
+    const spireMaterial = new THREE.MeshStandardMaterial({
+      color: 0x0c1118,
+      emissive: 0x18252c,
+      emissiveIntensity: 0.35,
+      roughness: 0.3,
+      metalness: 0.55,
+    });
+    for (let index = 0; index < 16; index += 1) {
+      const angle = (index / 16) * Math.PI * 2;
+      const radius = index % 2 === 0 ? 13.2 : 12.2;
+      const height = 2.5 + (index % 5) * 0.55;
+      const spire = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.16, 0.42, height, 6),
+        spireMaterial,
+      );
+      spire.position.set(Math.cos(angle) * radius, height / 2, Math.sin(angle) * radius);
+      spire.rotation.y = -angle;
+      scene.add(spire);
+    }
+
     const player = new THREE.Group();
     const body = new THREE.Mesh(
       new THREE.CapsuleGeometry(0.5, 1.25, 8, 16),
       new THREE.MeshStandardMaterial({
-        color: 0xffffff,
-        roughness: 0.38,
+        color: 0xeef8f4,
+        emissive: 0x102421,
+        emissiveIntensity: 0.22,
+        roughness: 0.26,
+        metalness: 0.18,
       }),
     );
     body.position.y = 1.12;
@@ -302,7 +413,7 @@ export default function GameLobbyPage() {
       new THREE.MeshStandardMaterial({
         color: 0x89d8c2,
         emissive: 0x89d8c2,
-        emissiveIntensity: 0.6,
+        emissiveIntensity: 1.2,
       }),
     );
     visor.position.set(0, 1.72, -0.38);
@@ -313,7 +424,7 @@ export default function GameLobbyPage() {
     const doorGroups = levelDoors.map((door) => {
       const group = createDoor(door);
       scene.add(group);
-      const light = new THREE.PointLight(door.color, 8, 8);
+      const light = new THREE.PointLight(door.color, 13, 9);
       light.position.set(...door.position);
       light.position.y = 2.2;
       scene.add(light);
@@ -639,9 +750,9 @@ export default function GameLobbyPage() {
             <button
               type="button"
               onClick={() => setPanelOpen((open) => !open)}
-              className="pointer-events-auto flex max-w-[72vw] items-center gap-2 rounded-full border border-white/12 bg-[#101318]/76 px-3 py-2 text-left shadow-xl shadow-black/30 backdrop-blur sm:hidden"
+              className="hud-glass pointer-events-auto flex max-w-[72vw] items-center gap-2 rounded-full px-3 py-2 text-left shadow-xl shadow-black/30 sm:hidden"
             >
-              <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#89d8c2]" />
+              <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#37f2c0] shadow-[0_0_14px_rgba(55,242,192,0.9)]" />
               <span className="min-w-0">
                 <span className="block truncate text-sm font-black">
                   {activeDoor.name}
@@ -652,7 +763,7 @@ export default function GameLobbyPage() {
               </span>
             </button>
 
-            <div className="pointer-events-auto hidden rounded-md border border-white/12 bg-[#101318]/84 p-4 shadow-xl shadow-black/30 backdrop-blur sm:block sm:max-w-md">
+            <div className="hud-glass pointer-events-auto hidden rounded-md p-4 shadow-xl shadow-black/30 sm:block sm:max-w-md">
               <p className="text-xs font-black uppercase tracking-[0.2em] text-[#89d8c2]">
                 3D Lobby
               </p>
@@ -663,7 +774,7 @@ export default function GameLobbyPage() {
                 {activeDoor.description}
               </p>
               <div className="mt-4 grid grid-cols-2 gap-2">
-                <div className="rounded-md border border-white/10 bg-white/[0.045] p-3">
+                <div className="rounded-md border border-white/10 bg-white/[0.055] p-3">
                   <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/45">
                     Access
                   </p>
@@ -671,7 +782,7 @@ export default function GameLobbyPage() {
                     {accessLabels[activeDoor.access]}
                   </p>
                 </div>
-                <div className="rounded-md border border-white/10 bg-white/[0.045] p-3">
+                <div className="rounded-md border border-white/10 bg-white/[0.055] p-3">
                   <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/45">
                     Rule
                   </p>
@@ -684,7 +795,7 @@ export default function GameLobbyPage() {
               </div>
             </div>
 
-            <div className="pointer-events-auto fixed right-3 top-[max(0.75rem,env(safe-area-inset-top))] w-[5.75rem] rounded-full border border-white/12 bg-[#101318]/76 p-1.5 shadow-xl shadow-black/30 backdrop-blur sm:static sm:w-full sm:max-w-sm sm:rounded-md sm:p-4">
+            <div className="hud-glass pointer-events-auto fixed right-3 top-[max(0.75rem,env(safe-area-inset-top))] w-[5.75rem] rounded-full p-1.5 shadow-xl shadow-black/30 sm:static sm:w-full sm:max-w-sm sm:rounded-md sm:p-4">
               <div className="flex items-center justify-between gap-3">
                 <div className="hidden sm:block">
                   <p className="text-xs font-black uppercase tracking-[0.2em] text-[#f5d06f]">
@@ -710,7 +821,7 @@ export default function GameLobbyPage() {
                   type="button"
                   onClick={connectVoice}
                   disabled={voiceState === "connecting" || voiceState === "connected"}
-                  className="grid h-10 flex-1 place-items-center rounded-full bg-[#89d8c2] px-2 text-[10px] font-black uppercase tracking-[0.08em] text-[#08110f] transition hover:bg-[#a3f1dd] disabled:cursor-not-allowed disabled:opacity-45 sm:min-h-11 sm:rounded-md sm:px-4 sm:text-xs sm:tracking-[0.14em]"
+                  className="grid h-10 flex-1 place-items-center rounded-full bg-[#37f2c0] px-2 text-[10px] font-black uppercase tracking-[0.08em] text-[#04110d] shadow-[0_0_18px_rgba(55,242,192,0.26)] transition hover:bg-[#7affdc] disabled:cursor-not-allowed disabled:opacity-45 sm:min-h-11 sm:rounded-md sm:px-4 sm:text-xs sm:tracking-[0.14em]"
                 >
                   {voiceState === "connecting" ? "..." : "Mic"}
                 </button>
@@ -731,7 +842,7 @@ export default function GameLobbyPage() {
           </div>
 
           {panelOpen && (
-            <div className="pointer-events-auto absolute inset-x-3 bottom-40 z-20 rounded-md border border-white/12 bg-[#101318]/90 p-3 shadow-2xl shadow-black/40 backdrop-blur sm:hidden">
+            <div className="hud-glass pointer-events-auto absolute inset-x-3 bottom-44 z-20 rounded-md p-3 shadow-2xl shadow-black/40 sm:hidden">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-[#89d8c2]">
@@ -742,7 +853,7 @@ export default function GameLobbyPage() {
                 <button
                   type="button"
                   onClick={() => setPanelOpen(false)}
-                  className="rounded-md border border-white/12 px-3 py-2 text-xs font-black uppercase tracking-[0.1em] text-white/70"
+                  className="rounded-md border border-white/12 bg-white/[0.04] px-3 py-2 text-xs font-black uppercase tracking-[0.1em] text-white/70"
                 >
                   Close
                 </button>
@@ -759,7 +870,7 @@ export default function GameLobbyPage() {
 
           <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex items-end justify-between gap-3 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
             <div
-              className="pointer-events-auto relative h-36 w-36 shrink-0 rounded-full border border-white/14 bg-[#101318]/48 shadow-xl shadow-black/30 backdrop-blur sm:hidden"
+              className="hud-glass pointer-events-auto relative h-36 w-36 shrink-0 rounded-full shadow-xl shadow-black/30 sm:hidden"
               onPointerDown={(event) => {
                 event.currentTarget.setPointerCapture(event.pointerId);
                 updateTouchMovement(event.clientX, event.clientY, event.currentTarget);
@@ -779,14 +890,14 @@ export default function GameLobbyPage() {
             >
               <div className="absolute left-1/2 top-1/2 h-12 w-12 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/12 bg-white/10" />
               <div
-                className="absolute left-1/2 top-1/2 h-16 w-16 rounded-full bg-[#89d8c2] shadow-[0_0_28px_rgba(137,216,194,0.34)]"
+                className="absolute left-1/2 top-1/2 h-16 w-16 rounded-full bg-[#37f2c0] shadow-[0_0_32px_rgba(55,242,192,0.5)]"
                 style={{
                   transform: `translate(calc(-50% + ${stick.x * 38}px), calc(-50% + ${stick.y * 38}px))`,
                   opacity: stick.active ? 1 : 0.82,
                 }}
               />
             </div>
-            <div className="hidden rounded-md border border-white/12 bg-[#101318]/82 px-4 py-3 text-xs font-bold uppercase tracking-[0.14em] text-white/70 shadow-xl shadow-black/30 backdrop-blur sm:block">
+            <div className="hud-glass hidden rounded-md px-4 py-3 text-xs font-bold uppercase tracking-[0.14em] text-white/70 shadow-xl shadow-black/30 sm:block">
               Lobby online
             </div>
             <button
@@ -796,7 +907,7 @@ export default function GameLobbyPage() {
                 disconnectVoice();
                 setIsPlaying(false);
               }}
-              className="pointer-events-auto min-h-11 rounded-md border border-white/16 bg-[#101318]/82 px-4 text-xs font-black uppercase tracking-[0.14em] text-white/72 shadow-xl shadow-black/30 backdrop-blur transition hover:border-white/34 hover:text-white"
+              className="hud-glass pointer-events-auto min-h-11 rounded-md px-4 text-xs font-black uppercase tracking-[0.14em] text-white/78 shadow-xl shadow-black/30 transition hover:text-white"
             >
               Exit lobby
             </button>
