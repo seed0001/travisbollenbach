@@ -10,7 +10,7 @@ import {
   type FormEvent,
 } from "react";
 import * as THREE from "three";
-import { monoliths } from "@/lib/content";
+import { storefronts, type Storefront } from "@/lib/content";
 import {
   LobbyClient,
   type ChatMessage,
@@ -21,7 +21,7 @@ import {
 const EYE_HEIGHT = 2.2;
 const MOVE_SPEED = 12;
 const BOUNDS = { x: 70, zMin: -140, zMax: 20 };
-const REVEAL_RADIUS = 10;
+const REVEAL_RADIUS = 13;
 const RAIN_COUNT = 2200;
 
 const ORB_COLORS = [
@@ -51,19 +51,81 @@ function subscribeToPointerType(callback: () => void) {
   return () => query.removeEventListener("change", callback);
 }
 
-function makeLabelTexture(text: string) {
+// The lit sign band over each storefront: unit number + name in its accent.
+function makeSignTexture(store: Storefront) {
   const canvas = document.createElement("canvas");
   canvas.width = 1024;
-  canvas.height = 128;
+  canvas.height = 160;
   const ctx = canvas.getContext("2d");
   if (ctx) {
-    ctx.font = "700 58px Arial";
-    ctx.textAlign = "center";
+    ctx.fillStyle = "#0b1020";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = store.accent;
+    ctx.fillRect(0, 0, canvas.width, 5);
+    ctx.fillRect(0, canvas.height - 5, canvas.width, 5);
+
     ctx.textBaseline = "middle";
-    ctx.shadowColor = "#8fb3ff";
-    ctx.shadowBlur = 18;
+    ctx.shadowColor = store.accent;
+    ctx.shadowBlur = 22;
+    ctx.textAlign = "left";
+    ctx.font = "800 96px Arial";
+    ctx.fillStyle = store.accent;
+    ctx.fillText(store.number, 44, canvas.height / 2 + 4);
+
+    ctx.font = "700 74px Arial";
     ctx.fillStyle = "#dbe5ff";
-    ctx.fillText(text.toUpperCase(), canvas.width / 2, canvas.height / 2);
+    ctx.fillText(store.name.toUpperCase(), 210, canvas.height / 2 + 2);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+// The customizable back-wall panel — a tenant's art today is a placeholder;
+// this is the surface renters will drop their own images onto.
+function makeArtTexture(store: Storefront) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 800;
+  canvas.height = 600;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    ctx.fillStyle = "#0c1119";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = store.accent;
+    ctx.lineWidth = 10;
+    ctx.strokeRect(20, 20, canvas.width - 40, canvas.height - 40);
+
+    ctx.textAlign = "center";
+    ctx.shadowColor = store.accent;
+    ctx.shadowBlur = 24;
+
+    if (store.status === "vacant") {
+      ctx.fillStyle = store.accent;
+      ctx.font = "800 120px Arial";
+      ctx.fillText("FOR LEASE", canvas.width / 2, 250);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = "#8b93a7";
+      ctx.font = "600 40px Arial";
+      ctx.fillText(`SPACE ${store.number}`, canvas.width / 2, 340);
+      ctx.font = "400 34px Arial";
+      ctx.fillText("Your images. Your products.", canvas.width / 2, 420);
+      ctx.fillText("Your brand, on this wall.", canvas.width / 2, 470);
+    } else {
+      ctx.fillStyle = "#dbe5ff";
+      ctx.font = "800 92px Arial";
+      ctx.fillText(store.name.toUpperCase(), canvas.width / 2, 270);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = store.accent;
+      ctx.font = "600 44px Arial";
+      ctx.fillText(store.tagline, canvas.width / 2, 350);
+      ctx.fillStyle = "#8b93a7";
+      ctx.font = "400 32px Arial";
+      ctx.fillText(
+        store.status === "live" ? "Open — step inside" : "Now leasing this space",
+        canvas.width / 2,
+        430,
+      );
+    }
   }
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
@@ -173,7 +235,7 @@ function createAmbience(startMuted: boolean): Ambience | null {
     lfoDepth.connect(shimmerFilter.frequency);
     lfo.start();
 
-    // Proximity chord — swells as you approach a monolith
+    // Proximity chord — swells as you approach a storefront
     const proxGain = ctx.createGain();
     proxGain.gain.value = 0;
     proxGain.connect(master);
@@ -243,7 +305,7 @@ export default function ConstructGame() {
   const [entered, setEntered] = useState(false);
   const [mode, setMode] = useState<ControlMode>("touch");
   const [muted, setMuted] = useState(false);
-  const [nearMonolith, setNearMonolith] = useState<number>(-1);
+  const [nearStore, setNearStore] = useState<number>(-1);
   const [name, setName] = useState("");
   const [color, setColor] = useState(ORB_COLORS[0]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -282,10 +344,10 @@ export default function ConstructGame() {
     chatScrollRef.current?.scrollTo({ top: 999999 });
   }, [messages]);
 
-  // Press E near a monolith that has an action (e.g. Character Creation) to
-  // open it — the FPS "press E to interact" convention, alongside the button.
+  // Press E inside a storefront that has an action (e.g. the Workshop) to open
+  // it — the FPS "press E to interact" convention, alongside the button.
   useEffect(() => {
-    const target = nearMonolith >= 0 ? monoliths[nearMonolith] : null;
+    const target = nearStore >= 0 ? storefronts[nearStore] : null;
     if (!target?.action) return;
     const href = target.action.href;
     const onKey = (event: KeyboardEvent) => {
@@ -298,7 +360,7 @@ export default function ConstructGame() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [nearMonolith, router]);
+  }, [nearStore, router]);
 
   const startAudio = () => {
     if (!ambienceRef.current) {
@@ -423,53 +485,159 @@ export default function ConstructGame() {
     scene.add(floor);
     disposables.push(floorGeometry, floorMaterial);
 
-    // --- Monoliths -----------------------------------------------------------
-    const monolithGeometry = new THREE.BoxGeometry(5, 11, 1.4);
-    const monolithMaterial = new THREE.MeshBasicMaterial({ color: 0x111826 });
-    const edgeGeometry = new THREE.EdgesGeometry(monolithGeometry);
-    const edgeMaterial = new THREE.LineBasicMaterial({ color: 0x8fb3ff });
+    // --- City block: rentable storefronts along a street ---------------------
+    const STREET_HALF = 9; // half the street width between the two rows
+    const STORE_W = 16; // unit frontage (runs along the street / z axis)
+    const STORE_D = 13; // unit depth (into the building / x axis)
+    const STORE_H = 7; // wall height
+    const ROW_START_Z = -14; // first unit's center
+    const ROW_STEP = STORE_W + 4; // frontage + gap between units
+
+    // A darker roadway down the middle, with a dashed center line.
+    const roadGeometry = new THREE.PlaneGeometry(STREET_HALF * 2, 150);
+    const roadMaterial = new THREE.MeshBasicMaterial({ color: 0x0b0e15 });
+    const road = new THREE.Mesh(roadGeometry, roadMaterial);
+    road.rotation.x = -Math.PI / 2;
+    road.position.set(0, 0.01, -55);
+    scene.add(road);
+    disposables.push(roadGeometry, roadMaterial);
+
+    const dashGeometry = new THREE.PlaneGeometry(0.35, 2.4);
+    const dashMaterial = new THREE.MeshBasicMaterial({
+      color: 0x2a3450,
+      transparent: true,
+      opacity: 0.8,
+    });
+    disposables.push(dashGeometry, dashMaterial);
+    for (let z = 5; z > -115; z -= 6) {
+      const dash = new THREE.Mesh(dashGeometry, dashMaterial);
+      dash.rotation.x = -Math.PI / 2;
+      dash.position.set(0, 0.02, z);
+      scene.add(dash);
+    }
+
+    // Shared geometry across all ten units (built with the opening facing +x).
+    const backWallGeo = new THREE.BoxGeometry(0.3, STORE_H, STORE_W);
+    const sideWallGeo = new THREE.BoxGeometry(STORE_D, STORE_H, 0.3);
+    const ceilGeo = new THREE.BoxGeometry(STORE_D, 0.3, STORE_W);
+    const unitFloorGeo = new THREE.BoxGeometry(STORE_D, 0.12, STORE_W);
+    const postGeo = new THREE.BoxGeometry(0.5, STORE_H, 0.5);
+    const awningGeo = new THREE.BoxGeometry(0.6, 1.5, STORE_W);
+    const signGeo = new THREE.PlaneGeometry(STORE_W - 1.4, 1.3);
+    const artGeo = new THREE.PlaneGeometry(STORE_W - 4, STORE_H - 3);
+    const sillGeo = new THREE.BoxGeometry(0.5, 0.08, STORE_W);
+    const backMat = new THREE.MeshBasicMaterial({ color: 0x161d2b });
+    const sideMat = new THREE.MeshBasicMaterial({ color: 0x121826 });
+    const ceilMat = new THREE.MeshBasicMaterial({ color: 0x0d121b });
+    const unitFloorMat = new THREE.MeshBasicMaterial({ color: 0x0e131d });
+    const edgeMat = new THREE.LineBasicMaterial({
+      color: 0x2c3852,
+      transparent: true,
+      opacity: 0.7,
+    });
+    const backEdges = new THREE.EdgesGeometry(backWallGeo);
+    const sideEdges = new THREE.EdgesGeometry(sideWallGeo);
     disposables.push(
-      monolithGeometry,
-      monolithMaterial,
-      edgeGeometry,
-      edgeMaterial,
+      backWallGeo,
+      sideWallGeo,
+      ceilGeo,
+      unitFloorGeo,
+      postGeo,
+      awningGeo,
+      signGeo,
+      artGeo,
+      sillGeo,
+      backMat,
+      sideMat,
+      ceilMat,
+      unitFloorMat,
+      edgeMat,
+      backEdges,
+      sideEdges,
     );
 
-    const monolithPositions: THREE.Vector3[] = [];
-    monoliths.forEach((monolith) => {
-      const [x, z] = monolith.position;
+    const storePositions: THREE.Vector3[] = [];
+    storefronts.forEach((store, i) => {
+      const onLeft = i < 5;
+      const rowIndex = onLeft ? i : i - 5;
+      const z = ROW_START_Z - rowIndex * ROW_STEP;
+      const groupX = onLeft
+        ? -(STREET_HALF + STORE_D / 2)
+        : STREET_HALF + STORE_D / 2;
+
       const group = new THREE.Group();
-      group.position.set(x, 5.5, z);
+      group.position.set(groupX, 0, z);
+      if (!onLeft) group.rotation.y = Math.PI; // opening faces the street
 
-      group.add(new THREE.Mesh(monolithGeometry, monolithMaterial));
-      group.add(new THREE.LineSegments(edgeGeometry, edgeMaterial));
+      const accent = new THREE.Color(store.accent);
+      const accentMat = new THREE.MeshBasicMaterial({ color: accent });
+      disposables.push(accentMat);
 
-      const labelTexture = makeLabelTexture(monolith.title);
-      const labelMaterial = new THREE.SpriteMaterial({
-        map: labelTexture,
+      // Shell
+      const back = new THREE.Mesh(backWallGeo, backMat);
+      back.position.set(-STORE_D / 2, STORE_H / 2, 0);
+      group.add(back);
+      const backLine = new THREE.LineSegments(backEdges, edgeMat);
+      backLine.position.copy(back.position);
+      group.add(backLine);
+
+      for (const sz of [-STORE_W / 2, STORE_W / 2]) {
+        const side = new THREE.Mesh(sideWallGeo, sideMat);
+        side.position.set(0, STORE_H / 2, sz);
+        group.add(side);
+        const sideLine = new THREE.LineSegments(sideEdges, edgeMat);
+        sideLine.position.copy(side.position);
+        group.add(sideLine);
+      }
+
+      const ceil = new THREE.Mesh(ceilGeo, ceilMat);
+      ceil.position.set(0, STORE_H, 0);
+      group.add(ceil);
+
+      const unitFloor = new THREE.Mesh(unitFloorGeo, unitFloorMat);
+      unitFloor.position.set(0, 0.06, 0);
+      group.add(unitFloor);
+
+      // Storefront frame: posts, awning band, threshold sill (accent)
+      for (const pz of [-STORE_W / 2, STORE_W / 2]) {
+        const post = new THREE.Mesh(postGeo, accentMat);
+        post.position.set(STORE_D / 2, STORE_H / 2, pz);
+        group.add(post);
+      }
+      const awning = new THREE.Mesh(awningGeo, accentMat);
+      awning.position.set(STORE_D / 2, STORE_H - 0.75, 0);
+      group.add(awning);
+
+      const sill = new THREE.Mesh(sillGeo, accentMat);
+      sill.position.set(STORE_D / 2, 0.05, 0);
+      group.add(sill);
+
+      // Lit sign on the awning, facing the street
+      const signTex = makeSignTexture(store);
+      const signMat = new THREE.MeshBasicMaterial({
+        map: signTex,
         transparent: true,
       });
-      const label = new THREE.Sprite(labelMaterial);
-      label.scale.set(14, 1.75, 1);
-      label.position.y = 7.2;
-      group.add(label);
-      disposables.push(labelTexture, labelMaterial);
+      const sign = new THREE.Mesh(signGeo, signMat);
+      sign.position.set(STORE_D / 2 + 0.34, STORE_H - 0.75, 0);
+      sign.rotation.y = Math.PI / 2;
+      group.add(sign);
+      disposables.push(signTex, signMat);
 
-      const ringGeometry = new THREE.RingGeometry(2.6, 3, 48);
-      const ringMaterial = new THREE.MeshBasicMaterial({
-        color: 0xf0c36a,
-        transparent: true,
-        opacity: 0.4,
-        side: THREE.DoubleSide,
-      });
-      const ring = new THREE.Mesh(ringGeometry, ringMaterial);
-      ring.rotation.x = -Math.PI / 2;
-      ring.position.y = -5.45;
-      group.add(ring);
-      disposables.push(ringGeometry, ringMaterial);
+      // Customizable back-wall art panel, facing the customer inside
+      const artTex = makeArtTexture(store);
+      const artMat = new THREE.MeshBasicMaterial({ map: artTex });
+      const art = new THREE.Mesh(artGeo, artMat);
+      art.position.set(-STORE_D / 2 + 0.18, STORE_H / 2 - 0.15, 0);
+      art.rotation.y = Math.PI / 2;
+      group.add(art);
+      disposables.push(artTex, artMat);
 
       scene.add(group);
-      monolithPositions.push(new THREE.Vector3(x, 0, z));
+
+      // Proximity anchor at the doorway, out on the street side
+      const doorX = onLeft ? -STREET_HALF : STREET_HALF;
+      storePositions.push(new THREE.Vector3(doorX, 0, z));
     });
 
     // --- Falling code rain (3D points) ----------------------------------------
@@ -583,7 +751,7 @@ export default function ConstructGame() {
 
     // --- Controls state ---------------------------------------------------------
     const keys = new Set<string>();
-    let yaw = 0; // spawn facing down the -z corridor of monoliths
+    let yaw = 0; // spawn facing down the -z street of storefronts
     let pitch = 0;
     let gyroYawOffset = 0; // swipe-to-turn on top of device orientation
     const yawOffsetQ = new THREE.Quaternion();
@@ -847,10 +1015,10 @@ export default function ConstructGame() {
       // proximity check
       let nearest = -1;
       let nearestDistance = REVEAL_RADIUS;
-      for (let i = 0; i < monolithPositions.length; i += 1) {
+      for (let i = 0; i < storePositions.length; i += 1) {
         const distance = Math.hypot(
-          monolithPositions[i].x - camera.position.x,
-          monolithPositions[i].z - camera.position.z,
+          storePositions[i].x - camera.position.x,
+          storePositions[i].z - camera.position.z,
         );
         if (distance < nearestDistance) {
           nearestDistance = distance;
@@ -859,7 +1027,7 @@ export default function ConstructGame() {
       }
       if (nearest !== currentNear) {
         currentNear = nearest;
-        setNearMonolith(nearest);
+        setNearStore(nearest);
       }
       ambienceRef.current?.setProximity(
         nearest === -1 ? 0 : 1 - nearestDistance / REVEAL_RADIUS,
@@ -952,7 +1120,13 @@ export default function ConstructGame() {
     };
   }, [entered]);
 
-  const near = nearMonolith >= 0 ? monoliths[nearMonolith] : null;
+  const near = nearStore >= 0 ? storefronts[nearStore] : null;
+  const nearStatusLabel =
+    near?.status === "vacant"
+      ? "available to rent"
+      : near?.status === "live"
+        ? "open now"
+        : "now open";
   const showTouchOverlay = isTouch && !entered;
   const showDesktopOverlay = !isTouch && !entered;
 
@@ -1114,15 +1288,23 @@ export default function ConstructGame() {
           </div>
         )}
 
-        {/* monolith inscription */}
+        {/* storefront placard */}
         {near && (
           <div className="absolute inset-x-0 bottom-14 flex justify-center px-4">
-            <div className="max-w-xl rounded-lg border border-white/14 bg-[#0b1020]/88 p-5 text-center backdrop-blur-sm">
-              <p className="text-sm font-bold uppercase tracking-[0.22em] text-[#dbe5ff]">
-                {near.title}
+            <div className="max-w-md rounded-lg border border-white/14 bg-[#0b1020]/88 p-5 text-center backdrop-blur-sm">
+              <p
+                className="text-[11px] font-bold uppercase tracking-[0.28em]"
+                style={{ color: near.accent }}
+              >
+                unit {near.number} · {nearStatusLabel}
               </p>
-              <p className="mt-2 text-sm leading-relaxed text-ink-soft">
-                {near.inscription}
+              <p className="mt-1.5 text-lg font-black tracking-tight text-[#dbe5ff]">
+                {near.name}
+              </p>
+              <p className="mt-1 text-sm leading-relaxed text-ink-soft">
+                {near.status === "vacant"
+                  ? "This space is for lease — put your images, products, and brand on these walls."
+                  : near.tagline}
               </p>
               {near.action && (
                 <Link
@@ -1147,8 +1329,9 @@ export default function ConstructGame() {
             the construct
           </p>
           <p className="max-w-sm text-sm leading-relaxed text-ink-soft">
-            A shared space. Five questions stand in the dark, and anyone else
-            inside appears as a glowing orb — talk, or type in the group chat.
+            A virtual city block. Walk the street, step into the storefronts,
+            and claim a space of your own. Anyone else inside appears as a
+            glowing orb — talk, or type in the group chat.
           </p>
           {identityControls}
           <button
@@ -1174,8 +1357,9 @@ export default function ConstructGame() {
             the construct
           </p>
           <p className="max-w-sm text-sm leading-relaxed text-ink-soft">
-            A shared space. Anyone else inside appears as a glowing orb — talk,
-            or type in the group chat.
+            A virtual city block of storefronts. Walk in, look around, and claim
+            a space. Anyone else inside appears as a glowing orb — talk, or type
+            in the group chat.
           </p>
           {identityControls}
           <button

@@ -210,47 +210,93 @@ export const rabbitHole = {
 };
 
 // ---------------------------------------------------------------------------
-// The Construct — 3D world monoliths
+// The Construct — a virtual city block of rentable storefronts
 // ---------------------------------------------------------------------------
 
-export type Monolith = {
-  title: string;
-  inscription: string;
-  position: [number, number]; // x, z on the grid
+export type Storefront = {
+  number: string; // "01".."10"
+  name: string;
+  tagline: string;
+  accent: string; // hex, drives the sign, awning, and window glow
+  status: "live" | "occupied" | "vacant";
+  // A live unit can send visitors somewhere (e.g. the workshop app).
   action?: { label: string; href: string };
 };
 
-export const monoliths: Monolith[] = [
+// Ten units on one block: one live experience, a few demo tenants to show the
+// concept, and vacant spaces available to rent. Order fills the street: the
+// first five sit on the left side, the next five on the right.
+export const storefronts: Storefront[] = [
   {
-    title: "Character Creation",
-    inscription:
-      "Who do you become when you can be anyone? Every avatar is a confession.",
-    position: [-24, -30],
+    number: "01",
+    name: "Character Workshop",
+    tagline: "Design a persona. Talk to it.",
+    accent: "#8fb3ff",
+    status: "live",
     action: { label: "Open the Workshop", href: "/rabbit-hole/workshop" },
   },
   {
-    title: "AI Consciousness",
-    inscription:
-      "Does the machine dream — or are we dreaming the machine? Nobody is sure who is generating whom.",
-    position: [24, -30],
+    number: "02",
+    name: "Neon Threads",
+    tagline: "Wearables & apparel",
+    accent: "#f78fb3",
+    status: "occupied",
   },
   {
-    title: "Worlds & Simulation",
-    inscription:
-      "If a world is convincing enough, does it matter that it's rendered? Look down. Check the frame rate.",
-    position: [-24, -70],
+    number: "03",
+    name: "The Gallery",
+    tagline: "Prints & digital art",
+    accent: "#a78bfa",
+    status: "occupied",
   },
   {
-    title: "Story as Code",
-    inscription:
-      "A story with state and memory isn't a story anymore. It's a program you execute with your choices.",
-    position: [24, -70],
+    number: "04",
+    name: "Byte Bazaar",
+    tagline: "Software & downloads",
+    accent: "#7dffa8",
+    status: "occupied",
   },
   {
-    title: "The Exit",
-    inscription:
-      "There is no exit. But the blue pill sells one — the storefront is always open.",
-    position: [0, -110],
+    number: "05",
+    name: "For Lease",
+    tagline: "Your storefront here",
+    accent: "#ffd166",
+    status: "vacant",
+  },
+  {
+    number: "06",
+    name: "For Lease",
+    tagline: "Your storefront here",
+    accent: "#38bdf8",
+    status: "vacant",
+  },
+  {
+    number: "07",
+    name: "For Lease",
+    tagline: "Your storefront here",
+    accent: "#6ee7b7",
+    status: "vacant",
+  },
+  {
+    number: "08",
+    name: "For Lease",
+    tagline: "Your storefront here",
+    accent: "#fca5a5",
+    status: "vacant",
+  },
+  {
+    number: "09",
+    name: "For Lease",
+    tagline: "Your storefront here",
+    accent: "#c4b5fd",
+    status: "vacant",
+  },
+  {
+    number: "10",
+    name: "For Lease",
+    tagline: "Your storefront here",
+    accent: "#fcd34d",
+    status: "vacant",
   },
 ];
 
