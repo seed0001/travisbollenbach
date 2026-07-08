@@ -1,14 +1,5 @@
 "use client";
 
-import {
-  Room,
-  RoomEvent,
-  Track,
-  createLocalAudioTrack,
-  type LocalAudioTrack,
-  type RemoteParticipant,
-  type RemoteTrack,
-} from "livekit-client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 
@@ -25,6 +16,17 @@ type LevelDoor = {
   position: THREE.Vector3Tuple;
   color: number;
 };
+
+type SignalMessage =
+  | { type: "joined"; peerId: string; peers: string[] }
+  | { type: "peer-joined"; peerId: string }
+  | { type: "peer-left"; peerId: string }
+  | {
+      type: "offer" | "answer" | "ice";
+      from: string;
+      payload: RTCSessionDescriptionInit | RTCIceCandidateInit;
+    }
+  | { type: "error"; error: string };
 
 const levelDoors: LevelDoor[] = [
   {
@@ -169,11 +171,12 @@ function createDoor(door: LevelDoor) {
   return group;
 }
 
-export default function ComingSoonPage() {
+export default function GameLobbyPage() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const audioRef = useRef<HTMLDivElement | null>(null);
-  const roomRef = useRef<Room | null>(null);
-  const localAudioRef = useRef<LocalAudioTrack | null>(null);
+  const signalingRef = useRef<WebSocket | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const [isPlaying, setIsPlaying] = useState(false);
   const [activeDoorId, setActiveDoorId] = useState(levelDoors[0].id);
   const [voiceState, setVoiceState] = useState<
@@ -372,82 +375,196 @@ export default function ComingSoonPage() {
     };
   }, [isPlaying]);
 
-  const connectVoice = async () => {
-    if (voiceState === "connecting" || voiceState === "connected") return;
-    setVoiceState("connecting");
-    setVoiceMessage("Connecting voice...");
-    try {
-      const identity =
-        globalThis.crypto?.randomUUID?.() ?? `player-${Date.now().toString(36)}`;
-      const response = await fetch("/api/voice/token", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ room: "main-lobby", identity }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || typeof data.token !== "string" || typeof data.url !== "string") {
-        throw new Error(
-          typeof data.error === "string"
-            ? data.error
-            : "Voice service is not configured.",
-        );
-      }
-
-      const room = new Room({ adaptiveStream: true, dynacast: true });
-      roomRef.current = room;
-
-      const attachRemoteAudio = (
-        track: RemoteTrack,
-        _publication: unknown,
-        participant: RemoteParticipant,
-      ) => {
-        if (track.kind !== Track.Kind.Audio || !audioRef.current) return;
-        const element = track.attach();
-        element.dataset.participant = participant.identity;
-        audioRef.current.appendChild(element);
-        setRemoteSpeakers((current) =>
-          current.includes(participant.identity)
-            ? current
-            : [...current, participant.identity],
-        );
-      };
-
-      room.on(RoomEvent.TrackSubscribed, attachRemoteAudio);
-      room.on(RoomEvent.ParticipantDisconnected, (participant) => {
-        setRemoteSpeakers((current) =>
-          current.filter((identity) => identity !== participant.identity),
-        );
-      });
-
-      await room.connect(data.url, data.token);
-      const localAudio = await createLocalAudioTrack({
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      });
-      localAudioRef.current = localAudio;
-      await room.localParticipant.publishTrack(localAudio);
-      setVoiceState("connected");
-      setVoiceMessage("Voice is live in the lobby.");
-    } catch (error) {
-      setVoiceState("error");
-      setVoiceMessage(error instanceof Error ? error.message : "Voice failed.");
-      roomRef.current?.disconnect();
-      roomRef.current = null;
-      localAudioRef.current?.stop();
-      localAudioRef.current = null;
-    }
-  };
-
   const disconnectVoice = () => {
-    localAudioRef.current?.stop();
-    localAudioRef.current = null;
-    roomRef.current?.disconnect();
-    roomRef.current = null;
+    for (const connection of peerConnectionsRef.current.values()) {
+      connection.close();
+    }
+    peerConnectionsRef.current.clear();
+    localStreamRef.current?.getTracks().forEach((track) => track.stop());
+    localStreamRef.current = null;
+    signalingRef.current?.close();
+    signalingRef.current = null;
     if (audioRef.current) audioRef.current.replaceChildren();
     setRemoteSpeakers([]);
     setVoiceState("idle");
     setVoiceMessage("");
+  };
+
+  const sendSignal = (
+    type: "offer" | "answer" | "ice",
+    to: string,
+    payload: RTCSessionDescriptionInit | RTCIceCandidateInit,
+  ) => {
+    signalingRef.current?.send(JSON.stringify({ type, to, payload }));
+  };
+
+  const removePeer = (peerId: string) => {
+    peerConnectionsRef.current.get(peerId)?.close();
+    peerConnectionsRef.current.delete(peerId);
+    audioRef.current
+      ?.querySelectorAll(`[data-peer-id="${CSS.escape(peerId)}"]`)
+      .forEach((element) => element.remove());
+    setRemoteSpeakers((current) =>
+      current.filter((identity) => identity !== peerId),
+    );
+  };
+
+  const createPeerConnection = (peerId: string, stream: MediaStream) => {
+    const existing = peerConnectionsRef.current.get(peerId);
+    if (existing) return existing;
+
+    const configuredStun = process.env.NEXT_PUBLIC_STUN_URL;
+    const connection = new RTCPeerConnection({
+      iceServers: configuredStun
+        ? [{ urls: configuredStun }]
+        : [{ urls: "stun:stun.l.google.com:19302" }],
+    });
+    peerConnectionsRef.current.set(peerId, connection);
+
+    stream.getAudioTracks().forEach((track) => {
+      connection.addTrack(track, stream);
+    });
+
+    connection.onicecandidate = (event) => {
+      if (event.candidate) {
+        sendSignal("ice", peerId, event.candidate.toJSON());
+      }
+    };
+
+    connection.ontrack = (event) => {
+      if (!audioRef.current || !event.streams[0]) return;
+      const existingAudio = audioRef.current.querySelector(
+        `[data-peer-id="${CSS.escape(peerId)}"]`,
+      );
+      if (existingAudio) return;
+
+      const audio = document.createElement("audio");
+      audio.autoplay = true;
+      audio.setAttribute("playsinline", "true");
+      audio.dataset.peerId = peerId;
+      audio.srcObject = event.streams[0];
+      audioRef.current.appendChild(audio);
+      setRemoteSpeakers((current) =>
+        current.includes(peerId) ? current : [...current, peerId],
+      );
+    };
+
+    connection.onconnectionstatechange = () => {
+      if (
+        connection.connectionState === "closed" ||
+        connection.connectionState === "failed" ||
+        connection.connectionState === "disconnected"
+      ) {
+        removePeer(peerId);
+      }
+    };
+
+    return connection;
+  };
+
+  const connectVoice = async () => {
+    if (voiceState === "connecting" || voiceState === "connected") return;
+    setVoiceState("connecting");
+    setVoiceMessage("Requesting microphone...");
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+        video: false,
+      });
+      localStreamRef.current = stream;
+
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const socket = new WebSocket(`${protocol}//${window.location.host}/voice-signaling`);
+      signalingRef.current = socket;
+      const peerId =
+        globalThis.crypto?.randomUUID?.() ?? `player-${Date.now().toString(36)}`;
+
+      socket.onopen = () => {
+        socket.send(
+          JSON.stringify({
+            type: "join",
+            roomId: "main-lobby",
+            peerId,
+          }),
+        );
+      };
+
+      socket.onmessage = async (event) => {
+        const message = JSON.parse(event.data) as SignalMessage;
+
+        if (message.type === "error") {
+          throw new Error(message.error);
+        }
+
+        if (message.type === "joined") {
+          setVoiceState("connected");
+          setVoiceMessage("Voice is live in the lobby.");
+          for (const existingPeer of message.peers) {
+            const connection = createPeerConnection(existingPeer, stream);
+            const offer = await connection.createOffer();
+            await connection.setLocalDescription(offer);
+            sendSignal("offer", existingPeer, offer);
+          }
+          return;
+        }
+
+        if (message.type === "peer-left") {
+          removePeer(message.peerId);
+          return;
+        }
+
+        if (message.type === "peer-joined") {
+          setVoiceMessage("Voice is live in the lobby.");
+          return;
+        }
+
+        const connection = createPeerConnection(message.from, stream);
+        if (message.type === "offer") {
+          await connection.setRemoteDescription(
+            new RTCSessionDescription(message.payload as RTCSessionDescriptionInit),
+          );
+          const answer = await connection.createAnswer();
+          await connection.setLocalDescription(answer);
+          sendSignal("answer", message.from, answer);
+          return;
+        }
+
+        if (message.type === "answer") {
+          await connection.setRemoteDescription(
+            new RTCSessionDescription(message.payload as RTCSessionDescriptionInit),
+          );
+          return;
+        }
+
+        if (message.type === "ice") {
+          await connection.addIceCandidate(
+            new RTCIceCandidate(message.payload as RTCIceCandidateInit),
+          );
+        }
+      };
+
+      socket.onerror = () => {
+        setVoiceState("error");
+        setVoiceMessage("Voice signaling failed.");
+      };
+
+      socket.onclose = () => {
+        setVoiceState((current) => {
+          if (current !== "connected") return current;
+          setVoiceMessage("Voice disconnected.");
+          return "idle";
+        });
+      };
+    } catch (error) {
+      disconnectVoice();
+      setVoiceState("error");
+      setVoiceMessage(error instanceof Error ? error.message : "Voice failed.");
+    }
   };
 
   useEffect(() => disconnectVoice, []);

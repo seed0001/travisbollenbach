@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import ComingSoonPage from "@/components/ComingSoonPage";
+import GameLobbyPage from "@/components/GameLobbyPage";
 
 export const metadata: Metadata = {
   title: "Travis Bollenbach - Game Lobby",
@@ -8,5 +8,5 @@ export const metadata: Metadata = {
 };
 
 export default function Home() {
-  return <ComingSoonPage />;
+  return <GameLobbyPage />;
 }
