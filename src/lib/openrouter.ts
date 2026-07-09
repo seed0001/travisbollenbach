@@ -48,9 +48,15 @@ export function openRouterConfigured(): boolean {
 
 export async function chatCompletion(
   messages: ChatMessage[],
-  opts: { model?: string; temperature?: number; maxTokens?: number } = {},
+  opts: {
+    model?: string;
+    temperature?: number;
+    maxTokens?: number;
+    // A per-call key (e.g. a store owner's BYO key). Falls back to the env key.
+    apiKey?: string;
+  } = {},
 ): Promise<ChatResult> {
-  const key = readKey();
+  const key = opts.apiKey?.trim() || readKey();
   if (!key) {
     return {
       ok: false,
