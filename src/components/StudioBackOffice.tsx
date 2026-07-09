@@ -681,6 +681,26 @@ function AssistantEditor({
         ? "key saved ✓ — leave blank to keep, type to replace"
         : "not set";
 
+  const [models, setModels] = useState<{ id: string; name: string }[]>([]);
+  const [modelsBusy, setModelsBusy] = useState(false);
+  const [modelsErr, setModelsErr] = useState("");
+  const hasKey = studio.hasOpenRouterKey || studio.openRouterKey.trim().length > 0;
+
+  const loadModels = async () => {
+    setModelsBusy(true);
+    setModelsErr("");
+    try {
+      const res = await fetch("/api/studio/models");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Couldn't load models.");
+      setModels(data.models ?? []);
+    } catch (e) {
+      setModelsErr(e instanceof Error ? e.message : "Couldn't load models.");
+    } finally {
+      setModelsBusy(false);
+    }
+  };
+
   return (
     <div className="rounded-2xl border border-line bg-black/30 p-4 space-y-4">
       <div className="flex items-start justify-between gap-3">
@@ -725,15 +745,6 @@ function AssistantEditor({
           brain · openrouter
         </p>
         <input
-          value={studio.openRouterModel}
-          onChange={(e) =>
-            onChange({ ...studio, openRouterModel: e.target.value })
-          }
-          placeholder="Model, e.g. openai/gpt-4o-mini"
-          maxLength={100}
-          className={inputClass}
-        />
-        <input
           type="password"
           value={studio.openRouterKey}
           onChange={(e) =>
@@ -748,6 +759,49 @@ function AssistantEditor({
           {keyField(studio.hasOpenRouterKey, studio.openRouterKey)} · get one at
           openrouter.ai
         </p>
+
+        {/* Model: type one, or (once a key is in) browse the full catalog. */}
+        <input
+          value={studio.openRouterModel}
+          onChange={(e) =>
+            onChange({ ...studio, openRouterModel: e.target.value })
+          }
+          placeholder="Model, e.g. openai/gpt-4o-mini"
+          maxLength={100}
+          className={inputClass}
+        />
+        {hasKey &&
+          (models.length === 0 ? (
+            <button
+              type="button"
+              onClick={loadModels}
+              disabled={modelsBusy}
+              className="rounded-md border border-line px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-ink-soft transition-colors hover:border-matrix hover:text-matrix disabled:opacity-50"
+            >
+              {modelsBusy ? "loading models…" : "browse models"}
+            </button>
+          ) : (
+            <select
+              value={
+                models.some((m) => m.id === studio.openRouterModel)
+                  ? studio.openRouterModel
+                  : ""
+              }
+              onChange={(e) =>
+                e.target.value &&
+                onChange({ ...studio, openRouterModel: e.target.value })
+              }
+              className={inputClass}
+            >
+              <option value="">— pick from {models.length} models —</option>
+              {models.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name} ({m.id})
+                </option>
+              ))}
+            </select>
+          ))}
+        {modelsErr && <p className="text-[11px] text-pill-red">{modelsErr}</p>}
       </div>
 
       <div className="space-y-2 border-t border-line/60 pt-4">
