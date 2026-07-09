@@ -13,7 +13,6 @@ import {
 } from "@/lib/content";
 import WalkWorld, { type Interactable, type WorldHandle } from "./WalkWorld";
 
-const ACCENT = "#38bdf8";
 const PORTRAIT = "/travis-and-dog.jpg";
 
 // The readable payload behind a panel — the same data drives its in-world
@@ -32,10 +31,17 @@ type Board =
       kind: "card" | "stats";
       side: -1 | 0 | 1;
       z: number;
+      accent: string; // drives this station's pad, beam, frame, and glow
       reader: Reader;
       mailto?: string;
     }
-  | { kind: "photo"; side: -1 | 0 | 1; z: number; alt: string };
+  | {
+      kind: "photo";
+      side: -1 | 0 | 1;
+      z: number;
+      accent: string;
+      alt: string;
+    };
 
 // --- Boards: laid out in stations down the boulevard ------------------------
 const heroReader: Reader = {
@@ -78,21 +84,22 @@ const contactReader: Reader = {
 };
 
 const BOARDS: Board[] = [
-  { kind: "card", side: -1, z: -8, reader: heroReader },
-  { kind: "stats", side: 1, z: -8, reader: statsReader },
-  { kind: "card", side: -1, z: -22, reader: productReaders[0] },
-  { kind: "card", side: 1, z: -22, reader: productReaders[1] },
-  { kind: "card", side: -1, z: -36, reader: productReaders[2] },
-  { kind: "card", side: 1, z: -36, reader: productReaders[3] },
-  { kind: "card", side: -1, z: -50, reader: serviceReaders[0] },
-  { kind: "card", side: 1, z: -50, reader: serviceReaders[1] },
-  { kind: "card", side: -1, z: -64, reader: serviceReaders[2] },
-  { kind: "card", side: 1, z: -64, reader: aboutReader },
-  { kind: "photo", side: -1, z: -76, alt: about.photoAlt },
+  { kind: "card", side: -1, z: -8, accent: "#38bdf8", reader: heroReader },
+  { kind: "stats", side: 1, z: -8, accent: "#7dffa8", reader: statsReader },
+  { kind: "card", side: -1, z: -22, accent: "#a78bfa", reader: productReaders[0] },
+  { kind: "card", side: 1, z: -22, accent: "#f78fb3", reader: productReaders[1] },
+  { kind: "card", side: -1, z: -36, accent: "#fcd34d", reader: productReaders[2] },
+  { kind: "card", side: 1, z: -36, accent: "#6ee7b7", reader: productReaders[3] },
+  { kind: "card", side: -1, z: -50, accent: "#5eead4", reader: serviceReaders[0] },
+  { kind: "card", side: 1, z: -50, accent: "#c4b5fd", reader: serviceReaders[1] },
+  { kind: "card", side: -1, z: -64, accent: "#fca5a5", reader: serviceReaders[2] },
+  { kind: "card", side: 1, z: -64, accent: "#66e0ff", reader: aboutReader },
+  { kind: "photo", side: -1, z: -76, accent: "#ffd166", alt: about.photoAlt },
   {
     kind: "card",
     side: 1,
     z: -76,
+    accent: "#f0abfc",
     reader: {
       eyebrow: "quality assurance",
       title: "He approves every release.",
@@ -103,6 +110,7 @@ const BOARDS: Board[] = [
     kind: "card",
     side: 0,
     z: -86,
+    accent: "#f43f5e",
     reader: contactReader,
     mailto: `mailto:${site.email}`,
   },
@@ -295,6 +303,42 @@ function makePhotoPlaceholder() {
   return new THREE.CanvasTexture(canvas);
 }
 
+// Soft radial glow laid flat on the floor under a pad.
+function makeGlowTexture() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+    gradient.addColorStop(0, "rgba(255,255,255,0.9)");
+    gradient.addColorStop(0.4, "rgba(255,255,255,0.3)");
+    gradient.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 128, 128);
+  }
+  return new THREE.CanvasTexture(canvas);
+}
+
+// A vertical light-shaft gradient: brightest near the pad, fading up the beam.
+function makeBeamTexture() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 16;
+  canvas.height = 256;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    // canvas y=0 is the top of the beam, y=256 the base near the pad
+    const gradient = ctx.createLinearGradient(0, 0, 0, 256);
+    gradient.addColorStop(0, "rgba(255,255,255,0)");
+    gradient.addColorStop(0.55, "rgba(255,255,255,0.28)");
+    gradient.addColorStop(0.92, "rgba(255,255,255,0.75)");
+    gradient.addColorStop(1, "rgba(255,255,255,0.1)");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 16, 256);
+  }
+  return new THREE.CanvasTexture(canvas);
+}
+
 type Overlay = { type: "reader"; reader: Reader } | { type: "photo" } | null;
 
 export default function PortfolioWalk() {
@@ -310,7 +354,6 @@ export default function PortfolioWalk() {
 
   const build = useCallback((scene: THREE.Scene): WorldHandle => {
     const disposables: { dispose(): void }[] = [];
-    const accent = new THREE.Color(ACCENT);
 
     // --- Ground: grid + floor + a road with a dashed centerline -----------
     const grid = new THREE.GridHelper(300, 150, 0x2a4b63, 0x1a2536);
@@ -349,62 +392,116 @@ export default function PortfolioWalk() {
       scene.add(dash);
     }
 
-    // --- Panels -----------------------------------------------------------
+    // --- Stations: each board floats above a lit pad, inside a light beam --
     const BOARD_X = 8.5;
-    const BOARD_Y = 3.7;
+    const PANEL_Y = 4.4; // hover height of the panel's center
+    const FOCUS_RADIUS = 7.5; // within this, a panel stops spinning and faces you
+
     const cardGeo = new THREE.PlaneGeometry(9, 6);
     const frameGeo = new THREE.PlaneGeometry(9.5, 6.5);
-    const postGeo = new THREE.BoxGeometry(0.35, BOARD_Y - 0.7, 0.35);
-    const baseGeo = new THREE.CylinderGeometry(0.9, 1.1, 0.3, 24);
-    const frameMat = new THREE.MeshBasicMaterial({ color: accent });
-    const postMat = new THREE.MeshBasicMaterial({ color: 0x1a2740 });
-    const baseMat = new THREE.MeshBasicMaterial({ color: 0x16324a });
-    disposables.push(
-      cardGeo,
-      frameGeo,
-      postGeo,
-      baseGeo,
-      frameMat,
-      postMat,
-      baseMat,
-    );
+    const padGeo = new THREE.CylinderGeometry(2.6, 2.85, 0.34, 44);
+    const beamGeo = new THREE.CylinderGeometry(1.5, 2.35, 9.4, 36, 1, true);
+    const glowGeo = new THREE.PlaneGeometry(9, 9);
+    const glowTex = makeGlowTexture();
+    const beamTex = makeBeamTexture();
+    disposables.push(cardGeo, frameGeo, padGeo, beamGeo, glowGeo, glowTex, beamTex);
 
     const textureLoader = new THREE.TextureLoader();
     const interactables: Interactable[] = [];
 
-    for (const board of BOARDS) {
+    // A panel's rotation lerps toward facing you when you're near, and free-
+    // spins otherwise. wrapAngle keeps the eased turn taking the short way.
+    const wrapAngle = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
+    type Live = {
+      pivot: THREE.Group;
+      x: number;
+      z: number;
+      phase: number;
+      spin: number; // idle spin speed (rad/s)
+      rot: number; // current rotation.y
+      beamMat: THREE.MeshBasicMaterial;
+      padMat: THREE.MeshBasicMaterial;
+      glowMat: THREE.MeshBasicMaterial;
+    };
+    const live: Live[] = [];
+
+    BOARDS.forEach((board, index) => {
+      const accent = new THREE.Color(board.accent);
       const x = board.side * BOARD_X;
-      const rotationY =
-        board.side === 0 ? 0 : board.side < 0 ? Math.PI / 2 : -Math.PI / 2;
 
-      const group = new THREE.Group();
-      group.position.set(x, 0, board.z);
-      group.rotation.y = rotationY;
+      const station = new THREE.Group();
+      station.position.set(x, 0, board.z);
 
-      // Stand: base + post under the board.
-      const base = new THREE.Mesh(baseGeo, baseMat);
-      base.position.set(0, 0.15, 0);
-      group.add(base);
-      const post = new THREE.Mesh(postGeo, postMat);
-      post.position.set(0, (BOARD_Y - 0.7) / 2, 0);
-      group.add(post);
+      // Glowing pedestal pad.
+      const padMat = new THREE.MeshBasicMaterial({
+        color: accent,
+        transparent: true,
+        opacity: 0.5,
+      });
+      const pad = new THREE.Mesh(padGeo, padMat);
+      pad.position.y = 0.17;
+      station.add(pad);
+      disposables.push(padMat);
 
-      // Accent frame behind the content.
+      // Radial glow pooled on the floor under the pad.
+      const glowMat = new THREE.MeshBasicMaterial({
+        map: glowTex,
+        color: accent,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      const glow = new THREE.Mesh(glowGeo, glowMat);
+      glow.rotation.x = -Math.PI / 2;
+      glow.position.y = 0.06;
+      station.add(glow);
+      disposables.push(glowMat);
+
+      // The light beam: a translucent shaft rising from the pad, holding the
+      // panel aloft.
+      const beamMat = new THREE.MeshBasicMaterial({
+        map: beamTex,
+        color: accent,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        opacity: 0.34,
+      });
+      const beam = new THREE.Mesh(beamGeo, beamMat);
+      beam.position.y = 5.0; // base sits on the pad, top clears the panel
+      station.add(beam);
+      disposables.push(beamMat);
+
+      // The panel itself — spins and floats on this pivot.
+      const pivot = new THREE.Group();
+      pivot.position.y = PANEL_Y;
+
+      const frameMat = new THREE.MeshBasicMaterial({
+        color: accent,
+        side: THREE.DoubleSide,
+      });
       const frame = new THREE.Mesh(frameGeo, frameMat);
-      frame.position.set(0, BOARD_Y, 0);
-      group.add(frame);
+      pivot.add(frame);
+      disposables.push(frameMat);
 
-      // Content plane.
       let texture: THREE.Texture;
-      if (board.kind === "stats") texture = makeStatsTexture(ACCENT);
-      else if (board.kind === "card") texture = makeCardTexture(board.reader, ACCENT);
+      if (board.kind === "stats") texture = makeStatsTexture(board.accent);
+      else if (board.kind === "card")
+        texture = makeCardTexture(board.reader, board.accent);
       else texture = makePhotoPlaceholder();
       disposables.push(texture);
 
+      // Two back-to-back faces so the card reads correctly from either side
+      // as it turns.
       const contentMat = new THREE.MeshBasicMaterial({ map: texture });
-      const content = new THREE.Mesh(cardGeo, contentMat);
-      content.position.set(0, BOARD_Y, 0.06);
-      group.add(content);
+      const front = new THREE.Mesh(cardGeo, contentMat);
+      front.position.z = 0.06;
+      pivot.add(front);
+      const back = new THREE.Mesh(cardGeo, contentMat);
+      back.position.z = -0.06;
+      back.rotation.y = Math.PI;
+      pivot.add(back);
       disposables.push(contentMat);
 
       // The photo panel swaps in the real portrait once it loads.
@@ -417,7 +514,20 @@ export default function PortfolioWalk() {
         });
       }
 
-      scene.add(group);
+      station.add(pivot);
+      scene.add(station);
+
+      live.push({
+        pivot,
+        x,
+        z: board.z,
+        phase: index * 1.3,
+        spin: 0.28 + (index % 3) * 0.07,
+        rot: index * 0.7,
+        beamMat,
+        padMat,
+        glowMat,
+      });
 
       // Walk-up interaction. The trigger sits out on the road in front of the
       // panel (not at the panel itself), so you activate it by stepping toward
@@ -427,7 +537,7 @@ export default function PortfolioWalk() {
         x: board.side * 5,
         z: board.z,
         radius: board.side === 0 ? 9 : 4.6,
-        accent: ACCENT,
+        accent: board.accent,
         eyebrow:
           board.kind === "photo"
             ? "the human behind the tools"
@@ -453,9 +563,70 @@ export default function PortfolioWalk() {
               : () => setOverlay({ type: "reader", reader: board.reader }),
       };
       interactables.push(interactable);
-    }
+    });
 
-    return { interactables, disposables };
+    // --- Drifting motes rising through the beams for atmosphere -----------
+    const MOTES = 600;
+    const moteGeo = new THREE.BufferGeometry();
+    const motePos = new Float32Array(MOTES * 3);
+    const moteSpeed = new Float32Array(MOTES);
+    for (let i = 0; i < MOTES; i += 1) {
+      motePos[i * 3] = (Math.random() - 0.5) * 80;
+      motePos[i * 3 + 1] = Math.random() * 40;
+      motePos[i * 3 + 2] = 20 - Math.random() * 120;
+      moteSpeed[i] = 0.6 + Math.random() * 2.4;
+    }
+    moteGeo.setAttribute("position", new THREE.BufferAttribute(motePos, 3));
+    const moteMat = new THREE.PointsMaterial({
+      color: 0x9fc2ff,
+      size: 0.16,
+      transparent: true,
+      opacity: 0.55,
+      sizeAttenuation: true,
+    });
+    const motes = new THREE.Points(moteGeo, moteMat);
+    scene.add(motes);
+    disposables.push(moteGeo, moteMat);
+
+    return {
+      interactables,
+      update(elapsed, delta, camera) {
+        for (const b of live) {
+          const dx = camera.position.x - b.x;
+          const dz = camera.position.z - b.z;
+          const focused = Math.hypot(dx, dz) < FOCUS_RADIUS;
+
+          if (focused) {
+            // Ease around to face the visitor and hold.
+            const target = Math.atan2(dx, dz);
+            const diff = wrapAngle(target - b.rot);
+            b.rot = wrapAngle(b.rot + diff * Math.min(1, delta * 3.2));
+          } else {
+            // Idle: keep turning slowly on the beam.
+            b.rot = wrapAngle(b.rot + delta * b.spin);
+          }
+          b.pivot.rotation.y = b.rot;
+          b.pivot.position.y = PANEL_Y + Math.sin(elapsed * 1.1 + b.phase) * 0.22;
+
+          // Brighten the pad, glow, and beam when a visitor is present.
+          const lift = focused ? 1 : 0;
+          b.beamMat.opacity =
+            0.3 + lift * 0.16 + Math.sin(elapsed * 1.6 + b.phase) * 0.05;
+          b.padMat.opacity =
+            0.46 + lift * 0.22 + Math.sin(elapsed * 2 + b.phase) * 0.05;
+          b.glowMat.opacity =
+            0.55 + lift * 0.3 + Math.sin(elapsed * 1.5 + b.phase) * 0.1;
+        }
+
+        const positions = moteGeo.attributes.position.array as Float32Array;
+        for (let i = 0; i < MOTES; i += 1) {
+          positions[i * 3 + 1] += moteSpeed[i] * 0.016; // drift upward, tractor-beam style
+          if (positions[i * 3 + 1] > 40) positions[i * 3 + 1] = 0;
+        }
+        moteGeo.attributes.position.needsUpdate = true;
+      },
+      disposables,
+    };
   }, []);
 
   return (
