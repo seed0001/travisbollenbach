@@ -135,7 +135,10 @@ type WallKind = "empty" | "image" | "website" | "youtube";
 type WallSlot = { id: string; kind: WallKind; src: string; title: string };
 type PublicStudio = {
   unit: string;
+  claimed: boolean;
   studioName: string;
+  proprietor: string;
+  tagline: string;
   walls: WallSlot[];
   vrmSrc: string;
   avatarScale: number;
@@ -564,9 +567,14 @@ export default function ConstructGame() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? "Save failed.");
       const saved = data.studio as PublicStudio;
-      const entry = {
+      const entry: PublicStudio = {
         unit: saved.unit,
+        // Editing walls is owner-only, so this unit is claimed; the PATCH
+        // payload doesn't carry `claimed`, so keep the current flag.
+        claimed: current?.claimed ?? true,
         studioName: saved.studioName,
+        proprietor: saved.proprietor ?? current?.proprietor ?? "",
+        tagline: saved.tagline ?? current?.tagline ?? "",
         walls: saved.walls,
         vrmSrc: saved.vrmSrc ?? current?.vrmSrc ?? "",
         avatarScale: saved.avatarScale ?? current?.avatarScale ?? 1,
@@ -1946,13 +1954,29 @@ export default function ConstructGame() {
   }, [entered]);
 
   const near = nearStore >= 0 ? storefronts[nearStore] : null;
-  const nearStatusLabel =
-    near?.status === "vacant"
-      ? "available to rent"
+  const nearStudio = near ? studioMap.get(near.number) : undefined;
+  const nearMine = near ? ownedUnits.has(near.number) : false;
+  // A unit only reads "for lease" while it's a vacant slot no owner has taken.
+  // Once claimed, the owner's signage (name, proprietor, spiel) takes over.
+  const nearForLease = !!near && near.status === "vacant" && !nearStudio?.claimed;
+  const nearName =
+    (nearStudio?.studioName && nearStudio.studioName.trim()) ||
+    near?.name ||
+    "";
+  const nearProprietor = nearStudio?.proprietor?.trim() ?? "";
+  const nearStatusLabel = nearForLease
+    ? "available to rent"
+    : nearStudio?.claimed
+      ? "now open"
       : near?.status === "live"
         ? "open now"
         : "now open";
-  const nearMine = near ? ownedUnits.has(near.number) : false;
+  const nearBlurb = nearForLease
+    ? "This space is for lease — put your images, products, and brand on these walls."
+    : nearStudio?.tagline?.trim() ||
+      (near?.status === "vacant"
+        ? "Now open — step inside and look around."
+        : (near?.tagline ?? ""));
 
   // Resolve the wall under the crosshair for the interaction prompt.
   const focusWall = (() => {
@@ -2144,12 +2168,15 @@ export default function ConstructGame() {
                 unit {near.number} · {nearStatusLabel}
               </p>
               <p className="mt-1.5 text-lg font-black tracking-tight text-[#dbe5ff]">
-                {near.name}
+                {nearName}
               </p>
+              {nearProprietor && (
+                <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-ink-dim">
+                  Run by {nearProprietor}
+                </p>
+              )}
               <p className="mt-1 text-sm leading-relaxed text-ink-soft">
-                {near.status === "vacant"
-                  ? "This space is for lease — put your images, products, and brand on these walls."
-                  : near.tagline}
+                {nearBlurb}
               </p>
               {near.action && (
                 <Link

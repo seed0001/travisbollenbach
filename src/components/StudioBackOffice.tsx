@@ -9,6 +9,8 @@ type MerchLink = { label: string; url: string };
 export type EditableStudio = {
   unit: string;
   studioName: string;
+  proprietor: string;
+  tagline: string;
   walls: WallSlot[];
   links: MerchLink[];
   vrmSrc: string;
@@ -113,6 +115,8 @@ function StudioCard({
         body: JSON.stringify({
           unit: studio.unit,
           studioName: studio.studioName,
+          proprietor: studio.proprietor,
+          tagline: studio.tagline,
           walls: studio.walls,
           links: studio.links,
           vrmSrc: studio.vrmSrc,
@@ -144,8 +148,35 @@ function StudioCard({
           value={studio.studioName}
           onChange={(e) => onChange({ ...studio, studioName: e.target.value })}
           maxLength={60}
+          placeholder="Store name"
           className="flex-1 rounded-lg border border-line bg-black/50 px-3 py-2 text-lg font-bold text-ink outline-none focus:border-matrix"
         />
+      </div>
+
+      {/* Listing / signage — what a visitor reads when they walk up */}
+      <div className="mt-6 space-y-3">
+        <p className="text-xs uppercase tracking-[0.3em] text-ink-dim">
+          listing
+        </p>
+        <input
+          value={studio.proprietor}
+          onChange={(e) => onChange({ ...studio, proprietor: e.target.value })}
+          placeholder="Proprietor — who runs it (shown as “Run by …”)"
+          maxLength={60}
+          className={inputClass}
+        />
+        <textarea
+          value={studio.tagline}
+          onChange={(e) => onChange({ ...studio, tagline: e.target.value })}
+          placeholder="Your spiel — what visitors read when they walk up to your unit"
+          maxLength={180}
+          rows={3}
+          className={`${inputClass} resize-none`}
+        />
+        <p className="text-[11px] leading-relaxed text-ink-dim">
+          This is your storefront&apos;s signage in the city — the store name
+          above, who runs it, and the pitch people see when they approach.
+        </p>
       </div>
 
       {/* Walls */}
