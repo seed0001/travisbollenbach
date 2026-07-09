@@ -29,6 +29,11 @@ export type Studio = {
   ownerUserId: string | null;
   ownerEmail: string | null;
   studioName: string;
+  // Public-facing signage the owner controls. `proprietor` is a display name
+  // ("Run by …" — never their email), `tagline` is the spiel a visitor reads
+  // when they walk up to the unit. Both empty until the owner sets them.
+  proprietor: string;
+  tagline: string;
   walls: WallSlot[];
   links: MerchLink[];
   // An uploaded VRM avatar that walks around inside the unit ("" = none).
@@ -49,7 +54,12 @@ export type Studio = {
 // What a visitor's client sees — no owner identity leaks out.
 export type PublicStudio = {
   unit: string;
+  // Whether an owner has been assigned this unit. Drives the storefront's
+  // "taken vs for lease" signage in the Construct.
+  claimed: boolean;
   studioName: string;
+  proprietor: string;
+  tagline: string;
   walls: WallSlot[];
   vrmSrc: string;
   avatarScale: number;
@@ -82,6 +92,7 @@ const MAX_NAME = 60;
 const MAX_LINKS = 12;
 const MAX_LABEL = 60;
 const MAX_TAGLINE = 100;
+const MAX_SPIEL = 180; // the storefront walk-up spiel
 
 type StudioStore = Record<string, Studio>;
 
@@ -119,6 +130,8 @@ function defaultStudio(unit: string): Studio {
     ownerUserId: null,
     ownerEmail: null,
     studioName: front ? front.name : `Unit ${unit}`,
+    proprietor: "",
+    tagline: "",
     walls: WALL_IDS.map((id) => ({ id, kind: "empty", src: "", title: "" })),
     links: [],
     vrmSrc: "",
@@ -245,7 +258,10 @@ export async function getPublicStudios(): Promise<PublicStudio[]> {
   const all = await listStudios();
   return all.map((s) => ({
     unit: s.unit,
+    claimed: s.ownerUserId != null,
     studioName: s.studioName,
+    proprietor: s.proprietor ?? "",
+    tagline: s.tagline ?? "",
     walls: s.walls,
     vrmSrc: s.vrmSrc ?? "",
     avatarScale: s.avatarScale ?? 1,
@@ -294,6 +310,18 @@ export async function assignUnit(
     const studio = store[unit] ?? defaultStudio(unit);
     studio.ownerUserId = ownerUserId;
     studio.ownerEmail = ownerEmail;
+    // Drop the "For Lease" placeholder the moment the unit is taken, so its
+    // sign and placard stop advertising a vacancy. The owner renames it in the
+    // back office; until then it reads as a neutral "Unit NN".
+    const front = storefronts.find((f) => f.number === unit);
+    if (
+      !studio.studioName.trim() ||
+      (front?.status === "vacant" && studio.studioName === front.name)
+    ) {
+      studio.studioName = `Unit ${unit}`;
+    }
+    studio.proprietor = studio.proprietor ?? "";
+    studio.tagline = studio.tagline ?? "";
     store[unit] = studio;
     await writeStore(store);
     return studio;
@@ -317,6 +345,8 @@ export async function updateStudio(
   unit: string,
   patch: {
     studioName?: unknown;
+    proprietor?: unknown;
+    tagline?: unknown;
     walls?: unknown;
     links?: unknown;
     vrmSrc?: unknown;
@@ -337,6 +367,12 @@ export async function updateStudio(
     }
     if (typeof patch.studioName === "string" && patch.studioName.trim()) {
       studio.studioName = patch.studioName.trim().slice(0, MAX_NAME);
+    }
+    if (typeof patch.proprietor === "string") {
+      studio.proprietor = patch.proprietor.trim().slice(0, MAX_NAME);
+    }
+    if (typeof patch.tagline === "string") {
+      studio.tagline = patch.tagline.trim().slice(0, MAX_SPIEL);
     }
     if (Array.isArray(patch.walls)) {
       studio.walls = WALL_IDS.map((id) =>
@@ -369,6 +405,8 @@ export async function updateStudio(
     if (patch.gameUrl !== undefined) {
       studio.gameUrl = cleanGameUrl(patch.gameUrl);
     }
+    studio.proprietor = studio.proprietor ?? "";
+    studio.tagline = studio.tagline ?? "";
     studio.vrmSrc = studio.vrmSrc ?? "";
     studio.avatarScale = studio.avatarScale ?? 1;
     studio.avatarYaw = studio.avatarYaw ?? 0;

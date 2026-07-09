@@ -31,6 +31,8 @@ export async function PATCH(request: NextRequest) {
     unit,
     {
       studioName: (body as { studioName?: unknown }).studioName,
+      proprietor: (body as { proprietor?: unknown }).proprietor,
+      tagline: (body as { tagline?: unknown }).tagline,
       walls: (body as { walls?: unknown }).walls,
       links: (body as { links?: unknown }).links,
       vrmSrc: (body as { vrmSrc?: unknown }).vrmSrc,

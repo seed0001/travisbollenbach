@@ -64,6 +64,8 @@ export default async function StudioPage() {
   const studios: EditableStudio[] = owned.map((s) => ({
     unit: s.unit,
     studioName: s.studioName,
+    proprietor: s.proprietor ?? "",
+    tagline: s.tagline ?? "",
     walls: s.walls,
     links: s.links,
     vrmSrc: s.vrmSrc ?? "",
