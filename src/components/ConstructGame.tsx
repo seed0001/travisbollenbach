@@ -503,6 +503,10 @@ export default function ConstructGame() {
     kind: WallKind;
     src: string;
     title: string;
+    // Set when an owner is viewing their own wall, so we can offer an Edit
+    // shortcut from the viewer.
+    unit?: string;
+    wallId?: string;
   } | null>(null);
   const [editor, setEditor] = useState<(WallSlot & { unit: string }) | null>(
     null,
@@ -772,10 +776,20 @@ export default function ConstructGame() {
         const wall = studio?.walls.find((w) => w.id === focusedWall.wallId);
         if (wall) {
           if (document.pointerLockElement) document.exitPointerLock();
-          if (ownedRef.current.has(focusedWall.unit)) {
-            setEditor({ ...wall, unit: focusedWall.unit });
-          } else if (wall.kind !== "empty") {
-            setViewer({ kind: wall.kind, src: wall.src, title: wall.title });
+          const mine = ownedRef.current.has(focusedWall.unit);
+          if (wall.kind === "empty") {
+            // Nothing to play; owners get the editor, visitors get nothing.
+            if (mine) setEditor({ ...wall, unit: focusedWall.unit });
+          } else {
+            // Owners can watch/play their own content too (with an Edit
+            // shortcut in the viewer); visitors just play it.
+            setViewer({
+              kind: wall.kind,
+              src: wall.src,
+              title: wall.title,
+              unit: mine ? focusedWall.unit : undefined,
+              wallId: mine ? focusedWall.wallId : undefined,
+            });
           }
           return;
         }
@@ -2147,14 +2161,15 @@ export default function ConstructGame() {
         setNearStore(nearest);
       }
 
-      // Which unit is the visitor standing *inside*? (its interior footprint —
-      // gates the AI host chat, so it only opens once you step in.)
+      // Which unit is the visitor standing *inside*? (its interior footprint,
+      // widened ~2 m toward the street so stepping up to the entrance counts —
+      // this gates the AI host chat.)
       let insideNow = -1;
       for (let i = 0; i < storefronts.length; i += 1) {
         const anchor = avatarAnchors.get(storefronts[i].number);
         if (!anchor) continue;
         if (
-          Math.abs(camera.position.x - anchor.x) <= STORE_D / 2 &&
+          Math.abs(camera.position.x - anchor.x) <= STORE_D / 2 + 2 &&
           Math.abs(camera.position.z - anchor.z) <= STORE_W / 2
         ) {
           insideNow = i;
@@ -2768,6 +2783,20 @@ export default function ConstructGame() {
           >
             close ✕
           </button>
+          {viewer.unit && ownedUnits.has(viewer.unit) && (
+            <button
+              type="button"
+              onClick={() => {
+                const st = studioMap.get(viewer.unit as string);
+                const w = st?.walls.find((x) => x.id === viewer.wallId);
+                if (w) setEditor({ ...w, unit: viewer.unit as string });
+                setViewer(null);
+              }}
+              className="absolute left-4 top-4 rounded-md border border-[#7dffa8]/60 px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-[#7dffa8] transition-colors hover:bg-[#7dffa8] hover:text-[#0b1020]"
+            >
+              edit this wall
+            </button>
+          )}
           {viewer.title && (
             <p className="text-sm font-bold uppercase tracking-[0.2em] text-[#dbe5ff]">
               {viewer.title}
