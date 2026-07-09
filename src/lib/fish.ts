@@ -7,7 +7,9 @@
 // carrying the text, an optional `reference_id` (the voice), and the format.
 
 const FISH_URL = "https://api.fish.audio/v1/tts";
-const DEFAULT_MODEL = "speech-1.6";
+// Fish Audio's S2.1 Pro, offered free to developers — passed via the `model`
+// header. https://fish.audio/blog/s2-1-pro-free-api/
+const DEFAULT_MODEL = "s2.1-pro-free";
 export const FISH_TEXT_LIMIT = 1500;
 
 export type FishFailure =
