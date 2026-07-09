@@ -593,7 +593,8 @@ export default function ConstructGame() {
     const hasAudio =
       !!studio &&
       ((studio.audioMode === "url" && !!studio.audioUrl) ||
-        (studio.audioMode === "speech" && !!studio.audioText.trim()));
+        (studio.audioMode === "speech" && !!studio.audioText.trim()) ||
+        (studio.audioMode === "fish" && !!studio.audioText.trim()));
     if (!soundOn || !near || !hasAudio) {
       stopStallAudio(r);
       return;
