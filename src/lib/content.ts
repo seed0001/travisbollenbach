@@ -34,6 +34,37 @@ export const choice = {
 };
 
 // ---------------------------------------------------------------------------
+// The Gateway — the 3D entry hub (walk up to a portal and step through)
+// ---------------------------------------------------------------------------
+
+export const hub = {
+  kicker: "travisbollenbach.com",
+  title: "Choose.",
+  intro:
+    "You're standing at the threshold. Two pills. Walk up to one and take it — the blue pill opens the professional portfolio, the red pill drops you straight into the Construct.",
+  hint: {
+    desktop: "wasd / arrows: walk — mouse: look — E at a pill: take it",
+    touch: "left thumb: walk — right thumb / motion: look — tap a pill: take it",
+  },
+  pills: {
+    blue: {
+      label: "Blue Pill",
+      subtitle: "A clean portfolio: software, services, and projects.",
+      prompt: "Take the blue pill",
+      href: "/storefront",
+      accent: "#38bdf8",
+    },
+    red: {
+      label: "Red Pill",
+      subtitle: "The immersive 3D world — straight into the Construct.",
+      prompt: "Take the red pill",
+      href: "/rabbit-hole/game",
+      accent: "#f43f5e",
+    },
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Blue pill — the Storefront
 // ---------------------------------------------------------------------------
 
@@ -147,6 +178,32 @@ export const stats = [
   { value: "3", label: "Disciplines, one focus" },
   { value: "∞", label: "Curiosity" },
 ];
+
+// The 3D portfolio walk — a boulevard of readable panels you stroll past.
+export const portfolioWalk = {
+  kicker: "professional portfolio",
+  title: "Walk the work.",
+  intro:
+    "A boulevard of panels. Stroll down the road and read them on either side — the projects, the services, and the person behind them. Walk up to any panel and press E to read it up close.",
+  hint: {
+    desktop: "wasd / arrows: walk — mouse: look — E at a panel: read it",
+    touch: "left thumb: walk — right thumb / motion: look — tap a panel: read it",
+  },
+  hero: {
+    eyebrow: "professional portfolio",
+    title: "Software, systems &\nlaunch-ready work.",
+    body: "Tools, applications, and software for businesses that need things to actually work. Clear scope, polished interface, practical execution. Keep walking — the work is on both sides of the road.",
+  },
+  statsHeading: "By the numbers",
+  productsHeading: "Tools & applications",
+  servicesHeading: "Work with me",
+  contact: {
+    eyebrow: "the end of the road",
+    title: "Need something built?",
+    body: "Tell me what your business needs and let's make it real.",
+    cta: "Email me",
+  },
+};
 
 // ---------------------------------------------------------------------------
 // Red pill — the Rabbit Hole
