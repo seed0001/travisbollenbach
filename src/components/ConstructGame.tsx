@@ -491,9 +491,6 @@ export default function ConstructGame() {
   const [entered, setEntered] = useState(false);
   const [mode, setMode] = useState<ControlMode>("touch");
   const [nearStore, setNearStore] = useState<number>(-1);
-  // The unit whose interior the visitor is standing in (-1 = out on the
-  // street). Gates the AI host chat — you have to step inside to talk.
-  const [insideStore, setInsideStore] = useState<number>(-1);
   const [nearArena, setNearArena] = useState(false);
   const [focusedWall, setFocusedWall] = useState<{
     unit: string;
@@ -645,18 +642,17 @@ export default function ConstructGame() {
     setChatUnit(unit);
   };
 
-  // Walking out of the shop closes its host chat (position is external state
-  // we're syncing UI to, so the setState here is intentional).
+  // Walking away from the shop closes its host chat (position is external
+  // state we're syncing UI to, so the setState here is intentional).
   useEffect(() => {
     if (!chatUnit) return;
-    const insideNumber =
-      insideStore >= 0 ? storefronts[insideStore].number : null;
+    const nearNumber = nearStore >= 0 ? storefronts[nearStore].number : null;
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (insideNumber !== chatUnit) closeChat();
+    if (nearNumber !== chatUnit) closeChat();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [insideStore, chatUnit]);
+  }, [nearStore, chatUnit]);
 
-  // Press T to talk to the host you're standing in front of; Esc closes it.
+  // Press T to talk to the host of the shop you're standing at; Esc closes it.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const el = event.target as HTMLElement | null;
@@ -667,7 +663,7 @@ export default function ConstructGame() {
         }
         return;
       }
-      const unit = insideStore >= 0 ? storefronts[insideStore].number : null;
+      const unit = nearStore >= 0 ? storefronts[nearStore].number : null;
       const hostHere = !!unit && !!studiosRef.current.get(unit)?.aiEnabled;
       if (event.code === "KeyT" && hostHere && !chatUnit && unit) {
         openChat(unit);
@@ -678,7 +674,7 @@ export default function ConstructGame() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatUnit, insideStore]);
+  }, [chatUnit, nearStore]);
 
   const sendAiMessage = async () => {
     const unit = chatUnit;
@@ -2031,7 +2027,6 @@ export default function ConstructGame() {
     const right = new THREE.Vector3();
     const velocity = new THREE.Vector3();
     let currentNear = -1;
-    let currentInside = -1;
     let currentNearArena = false;
     let animationFrame = 0;
     let lastBroadcast = 0;
@@ -2162,26 +2157,6 @@ export default function ConstructGame() {
         setNearStore(nearest);
       }
 
-      // Which unit is the visitor standing *inside*? (its interior footprint,
-      // widened ~2 m toward the street so stepping up to the entrance counts —
-      // this gates the AI host chat.)
-      let insideNow = -1;
-      for (let i = 0; i < storefronts.length; i += 1) {
-        const anchor = avatarAnchors.get(storefronts[i].number);
-        if (!anchor) continue;
-        if (
-          Math.abs(camera.position.x - anchor.x) <= STORE_D / 2 + 2 &&
-          Math.abs(camera.position.z - anchor.z) <= STORE_W / 2
-        ) {
-          insideNow = i;
-          break;
-        }
-      }
-      if (insideNow !== currentInside) {
-        currentInside = insideNow;
-        setInsideStore(insideNow);
-      }
-
       // Arena entrance proximity (its own forecourt zone at the street's end)
       const nearArenaNow =
         Math.hypot(
@@ -2302,11 +2277,10 @@ export default function ConstructGame() {
   const near = nearStore >= 0 ? storefronts[nearStore] : null;
   const nearStudio = near ? studioMap.get(near.number) : undefined;
   const nearMine = near ? ownedUnits.has(near.number) : false;
-  // The store the visitor is standing inside, and its AI host (if any).
-  const insideNumber =
-    insideStore >= 0 ? storefronts[insideStore].number : null;
-  const insideStudio = insideNumber ? studioMap.get(insideNumber) : undefined;
-  const canTalk = !!insideStudio?.aiEnabled;
+  // The AI host of whatever store you're standing at. Triggered on walk-up
+  // proximity (the same reliable trigger as the placard) so it always shows.
+  const talkUnit = near && nearStudio?.aiEnabled ? near.number : null;
+  const canTalk = !!talkUnit;
   const chatStudio = chatUnit ? studioMap.get(chatUnit) : undefined;
   const chatHostName =
     chatStudio?.aiName || chatStudio?.studioName || "the host";
@@ -2474,22 +2448,6 @@ export default function ConstructGame() {
           </div>
         )}
 
-        {/* step-inside prompt to talk to the store's AI host */}
-        {entered && canTalk && !chatUnit && insideNumber && (
-          <div className="absolute inset-x-0 bottom-24 flex justify-center px-4">
-            <button
-              type="button"
-              onClick={() => openChat(insideNumber)}
-              className="pointer-events-auto rounded-md border border-[#8fb3ff]/60 bg-[#0b1020]/88 px-5 py-2.5 text-xs font-bold uppercase tracking-[0.16em] text-[#dbe5ff] backdrop-blur-sm transition-colors hover:bg-[#dbe5ff] hover:text-[#0b1020]"
-            >
-              Talk to {insideStudio?.aiName || insideStudio?.studioName}
-              <span className="ml-2 hidden text-[10px] text-ink-dim sm:inline">
-                or press T
-              </span>
-            </button>
-          </div>
-        )}
-
         {/* AI host chat panel */}
         {chatUnit && (
           <div className="pointer-events-auto absolute bottom-14 right-4 z-30 flex w-[min(360px,86vw)] flex-col rounded-lg border border-white/14 bg-[#0b1020]/92 backdrop-blur-sm">
@@ -2639,6 +2597,18 @@ export default function ConstructGame() {
               <p className="mt-1 text-sm leading-relaxed text-ink-soft">
                 {nearBlurb}
               </p>
+              {canTalk && talkUnit && !chatUnit && (
+                <button
+                  type="button"
+                  onClick={() => openChat(talkUnit)}
+                  className="pointer-events-auto mt-4 inline-block rounded-md border border-[#8fb3ff]/60 bg-[#121826]/72 px-5 py-2.5 text-xs font-bold uppercase tracking-[0.16em] text-[#dbe5ff] transition-colors hover:bg-[#dbe5ff] hover:text-[#0b1020]"
+                >
+                  Talk to {nearStudio?.aiName || nearStudio?.studioName}
+                  <span className="ml-2 hidden text-[10px] text-ink-dim sm:inline">
+                    or press T
+                  </span>
+                </button>
+              )}
               {near.action && (
                 <Link
                   href={near.action.href}
