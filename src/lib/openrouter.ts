@@ -4,6 +4,7 @@
 // feature via the `model` option without touching callers.
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models";
 
 // A safe, widely-available default. Override per-environment with
 // OPENROUTER_MODEL, or per-call once the dashboard can pass one in.
@@ -142,4 +143,45 @@ function diagnose(
     reason: "upstream",
     message: "The AI backend returned an error. Try again shortly.",
   };
+}
+
+// --- Model catalog ----------------------------------------------------------
+// OpenRouter's model list is a public endpoint (no key needed), so store owners
+// can browse it to pick a model. Cache it briefly to avoid hammering.
+
+export type OpenRouterModel = { id: string; name: string };
+export type ModelsResult =
+  | { ok: true; models: OpenRouterModel[] }
+  | { ok: false; message: string };
+
+const MODELS_TTL_MS = 10 * 60 * 1000;
+let modelsCache: { at: number; models: OpenRouterModel[] } | null = null;
+
+export async function listOpenRouterModels(): Promise<ModelsResult> {
+  if (modelsCache && Date.now() - modelsCache.at < MODELS_TTL_MS) {
+    return { ok: true, models: modelsCache.models };
+  }
+  let response: Response;
+  try {
+    response = await fetch(OPENROUTER_MODELS_URL, {
+      headers: { Accept: "application/json" },
+    });
+  } catch {
+    return { ok: false, message: "Could not reach OpenRouter." };
+  }
+  if (!response.ok) {
+    return { ok: false, message: "OpenRouter's model list is unavailable." };
+  }
+  const data = (await response.json().catch(() => null)) as {
+    data?: { id?: unknown; name?: unknown }[];
+  } | null;
+  const models = (data?.data ?? [])
+    .filter((m) => typeof m?.id === "string")
+    .map((m) => ({
+      id: m.id as string,
+      name: typeof m.name === "string" && m.name ? m.name : (m.id as string),
+    }))
+    .sort((a, b) => a.id.localeCompare(b.id));
+  modelsCache = { at: Date.now(), models };
+  return { ok: true, models };
 }
