@@ -362,10 +362,44 @@ export default function WalkWorld({
     let animationFrame = 0;
     let currentNearId: string | null = null;
 
+    const spawnX = spawn?.x ?? 0;
+    const spawnZ = spawn?.z ?? 12;
+    const spawnYaw = spawn?.yaw ?? 0;
+    let introT = 0;
+    let introReset = false;
+
     const animate = () => {
       animationFrame = window.requestAnimationFrame(animate);
       const delta = Math.min(clock.getDelta(), 0.05);
       const elapsed = clock.elapsedTime;
+
+      // Cinematic establishing shot: while the visitor hasn't stepped in yet,
+      // fly the camera from a high wide angle down into the spawn pose with a
+      // slow drift, so the landing reads as a living scene, not a splash card.
+      if (!enteredRef.current) {
+        introT += delta;
+        const t = Math.min(1, introT / 6.5);
+        const ease = 1 - Math.pow(1 - t, 3);
+        yaw = spawnYaw + Math.sin(elapsed * 0.22) * 0.14 * (1 - ease * 0.4);
+        pitch = -0.17 * (1 - ease) - 0.015;
+        camera.position.x = spawnX + Math.sin(elapsed * 0.3) * 2.3 * (1 - ease * 0.5);
+        camera.position.y =
+          THREE.MathUtils.lerp(eyeHeight + 5.2, eyeHeight, ease) +
+          Math.sin(elapsed * 0.7) * 0.12;
+        camera.position.z = THREE.MathUtils.lerp(spawnZ + 11, spawnZ, ease);
+        camera.rotation.set(0, 0, 0);
+        camera.rotateY(yaw);
+        camera.rotateX(pitch);
+        handle.update?.(elapsed, delta, camera);
+        renderer.render(scene, camera);
+        return;
+      }
+      // First frame after stepping in: settle to a clean spawn pose.
+      if (!introReset) {
+        introReset = true;
+        camera.position.set(spawnX, eyeHeight, spawnZ);
+        pitch = 0;
+      }
 
       if (modeRef.current === "gyro" && gyro.has) {
         setQuaternionFromOrientation(
@@ -487,7 +521,7 @@ export default function WalkWorld({
         {/* top bar */}
         <div className="absolute inset-x-0 top-0 flex flex-wrap items-center justify-between gap-2 p-4">
           <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#dbe5ff]">
-            {overlay.kicker}
+            {entered ? overlay.kicker : ""}
           </p>
           <div className="flex items-center gap-2">
             {topRight}
@@ -554,60 +588,90 @@ export default function WalkWorld({
         )}
       </div>
 
-      {/* enter overlay (desktop) */}
+      {/* enter overlay (desktop) — the live scene plays behind a vignette;
+          click anywhere to step in */}
       {showDesktopOverlay && (
-        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-6 overflow-y-auto bg-black/80 px-6 py-10 text-center">
-          <p className="text-xs font-bold uppercase tracking-[0.28em] text-[#8fb3ff]">
-            {overlay.kicker}
-          </p>
-          <p className="max-w-md text-3xl font-black tracking-tight text-[#dbe5ff]">
-            {overlay.title}
-          </p>
-          <p className="max-w-md text-sm leading-relaxed text-ink-soft">
-            {overlay.intro}
-          </p>
-          <button
-            type="button"
-            onClick={enterDesktop}
-            className="w-full max-w-xs rounded-md border border-[#8fb3ff]/60 bg-[#121826]/72 px-6 py-4 text-sm font-bold uppercase tracking-[0.16em] text-[#dbe5ff] transition-colors hover:bg-[#dbe5ff] hover:text-[#0b1020]"
-          >
-            {overlay.enter}
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={enterDesktop}
+          aria-label={overlay.enter}
+          className="scanlines group absolute inset-0 z-20 flex cursor-pointer flex-col items-center justify-between px-6 py-16 text-center md:py-20"
+        >
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              background:
+                "linear-gradient(180deg, rgba(6,8,12,0.9) 3%, rgba(6,8,12,0.12) 30%, rgba(6,8,12,0.12) 60%, rgba(6,8,12,0.94) 97%)",
+            }}
+          />
+          <div className="pointer-events-none relative flex flex-col items-center gap-4">
+            <p className="glow-green flicker text-[11px] font-black uppercase tracking-[0.5em] text-[#8fb3ff]">
+              {overlay.kicker}
+            </p>
+            <h1
+              className="glitch-title terminal-text text-6xl font-black uppercase leading-[0.9] tracking-tight text-white md:text-8xl"
+              data-text={overlay.title}
+            >
+              {overlay.title}
+            </h1>
+          </div>
+          <div className="pointer-events-none relative flex flex-col items-center gap-6">
+            <p className="max-w-md text-sm leading-relaxed text-ink-soft">
+              {overlay.intro}
+            </p>
+            <span className="choose-pulse rounded-md border border-[#8fb3ff]/60 bg-[#0b1020]/45 px-9 py-4 text-sm font-black uppercase tracking-[0.3em] text-[#dbe5ff] backdrop-blur-sm transition-colors group-hover:bg-[#dbe5ff] group-hover:text-[#0b1020]">
+              {overlay.enter}
+            </span>
+          </div>
+        </button>
       )}
 
-      {/* enter overlay (mobile) — pick a control style */}
+      {/* enter overlay (mobile) — the live scene plays behind; pick a control style */}
       {showTouchOverlay && (
-        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-5 overflow-y-auto bg-black/85 px-6 py-10 text-center">
-          <p className="text-xs font-bold uppercase tracking-[0.28em] text-[#8fb3ff]">
-            {overlay.kicker}
-          </p>
-          <p className="max-w-md text-2xl font-black tracking-tight text-[#dbe5ff]">
-            {overlay.title}
-          </p>
-          <p className="max-w-sm text-sm leading-relaxed text-ink-soft">
-            {overlay.intro}
-          </p>
-          <button
-            type="button"
-            onClick={() => enterTouch(true)}
-            className="w-full max-w-xs rounded-md border border-[#8fb3ff]/60 bg-[#121826]/72 px-6 py-4 text-sm font-bold uppercase tracking-[0.16em] text-[#dbe5ff] transition-colors active:bg-[#dbe5ff] active:text-[#0b1020]"
-          >
-            enter with motion controls
-            <span className="mt-1 block text-[10px] font-normal normal-case tracking-normal text-ink-soft">
-              move your phone to look around, AR style
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => enterTouch(false)}
-            className="w-full max-w-xs rounded-md border border-white/18 px-6 py-4 text-sm font-bold uppercase tracking-[0.16em] text-ink-soft transition-colors active:bg-[#dbe5ff] active:text-[#0b1020]"
-          >
-            enter with touch controls
-            <span className="mt-1 block text-[10px] font-normal normal-case tracking-normal text-ink-dim">
-              drag to look, thumb to walk
-            </span>
-          </button>
+        <div className="scanlines absolute inset-0 z-20 flex flex-col items-center justify-between overflow-y-auto px-6 py-14 text-center">
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              background:
+                "linear-gradient(180deg, rgba(6,8,12,0.92) 4%, rgba(6,8,12,0.12) 32%, rgba(6,8,12,0.14) 56%, rgba(6,8,12,0.95) 96%)",
+            }}
+          />
+          <div className="pointer-events-none relative flex flex-col items-center gap-3">
+            <p className="glow-green flicker text-[11px] font-black uppercase tracking-[0.45em] text-[#8fb3ff]">
+              {overlay.kicker}
+            </p>
+            <h1
+              className="glitch-title terminal-text text-5xl font-black uppercase leading-[0.9] tracking-tight text-white"
+              data-text={overlay.title}
+            >
+              {overlay.title}
+            </h1>
+          </div>
+          <div className="relative flex w-full max-w-xs flex-col gap-3">
+            <p className="pointer-events-none mb-1 text-sm leading-relaxed text-ink-soft">
+              {overlay.intro}
+            </p>
+            <button
+              type="button"
+              onClick={() => enterTouch(true)}
+              className="choose-pulse w-full rounded-md border border-[#8fb3ff]/60 bg-[#0b1020]/50 px-6 py-4 text-sm font-black uppercase tracking-[0.2em] text-[#dbe5ff] backdrop-blur-sm transition-colors active:bg-[#dbe5ff] active:text-[#0b1020]"
+            >
+              enter with motion controls
+              <span className="mt-1 block text-[10px] font-normal normal-case tracking-normal text-ink-soft">
+                move your phone to look around, AR style
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => enterTouch(false)}
+              className="w-full rounded-md border border-white/18 bg-[#0b1020]/40 px-6 py-4 text-sm font-black uppercase tracking-[0.2em] text-ink-soft backdrop-blur-sm transition-colors active:bg-[#dbe5ff] active:text-[#0b1020]"
+            >
+              enter with touch controls
+              <span className="mt-1 block text-[10px] font-normal normal-case tracking-normal text-ink-dim">
+                drag to look, thumb to walk
+              </span>
+            </button>
+          </div>
         </div>
       )}
     </div>
