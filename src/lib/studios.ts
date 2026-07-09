@@ -51,14 +51,27 @@ export type Studio = {
   gameUrl: string;
   // Proximity audio that plays when a visitor walks up to the unit. We never
   // host the audio: "speech" reads `audioText` aloud in the visitor's own
-  // browser (zero storage/bandwidth), "url" streams an owner-hosted file from
-  // `audioUrl`. "none" is silent.
+  // browser (zero storage/bandwidth), "fish" speaks `audioText` in the owner's
+  // Fish Audio voice, "url" streams an owner-hosted file from `audioUrl`.
+  // "none" is silent.
   audioMode: AudioMode;
-  audioText: string; // narration script for "speech" mode
+  audioText: string; // narration script for "speech" / "fish" mode
   audioUrl: string; // externally hosted audio for "url" mode
+
+  // Per-owner AI host. The owner brings their own keys (BYO): an OpenRouter key
+  // + model powers the chat, a Fish Audio key + voice speaks the replies (and
+  // the "fish" greeting). The store's avatar is its face. Keys live only on the
+  // server and are never sent to visitors.
+  aiEnabled: boolean;
+  aiName: string; // the host's display name (defaults to the studio name)
+  aiPersona: string; // how the host should behave — its system prompt
+  openRouterModel: string; // e.g. "openai/gpt-4o-mini"
+  openRouterKey: string; // SECRET
+  fishVoiceId: string; // Fish Audio reference/voice id ("" = default voice)
+  fishApiKey: string; // SECRET
 };
 
-export type AudioMode = "none" | "speech" | "url";
+export type AudioMode = "none" | "speech" | "fish" | "url";
 
 // What a visitor's client sees — no owner identity leaks out.
 export type PublicStudio = {
@@ -76,6 +89,18 @@ export type PublicStudio = {
   audioMode: AudioMode;
   audioText: string;
   audioUrl: string;
+  // Whether this unit has a usable AI host (enabled + an OpenRouter key set).
+  aiEnabled: boolean;
+  aiName: string;
+  // Whether replies can be voiced (a Fish key is set). No keys ever leak here.
+  hasVoice: boolean;
+};
+
+// The owner's own view of their studio — full config minus the raw secrets,
+// which are replaced by "is it set?" booleans so keys never reach the browser.
+export type OwnerStudio = Omit<Studio, "openRouterKey" | "fishApiKey"> & {
+  hasOpenRouterKey: boolean;
+  hasFishKey: boolean;
 };
 
 // One pod in the Arena lobby, derived from a unit. The accent comes from the
@@ -106,6 +131,10 @@ const MAX_LABEL = 60;
 const MAX_TAGLINE = 100;
 const MAX_SPIEL = 180; // the storefront walk-up spiel
 const MAX_AUDIO_TEXT = 320; // the spoken-narration ad script
+const MAX_PERSONA = 4000; // the AI host's system-prompt statement
+const MAX_MODEL = 100; // an OpenRouter model slug
+const MAX_VOICE = 120; // a Fish Audio voice/reference id
+const MAX_KEY = 300; // a BYO API key
 
 type StudioStore = Record<string, Studio>;
 
@@ -156,11 +185,51 @@ function defaultStudio(unit: string): Studio {
     audioMode: "none",
     audioText: "",
     audioUrl: "",
+    aiEnabled: false,
+    aiName: "",
+    aiPersona: "",
+    openRouterModel: "",
+    openRouterKey: "",
+    fishVoiceId: "",
+    fishApiKey: "",
   };
 }
 
 function cleanAudioMode(value: unknown): AudioMode {
-  return value === "speech" || value === "url" ? value : "none";
+  return value === "speech" || value === "fish" || value === "url"
+    ? value
+    : "none";
+}
+
+// Keys arrive from a form and often carry stray whitespace or wrapping quotes.
+function cleanKey(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value.trim().replace(/^["']|["']$/g, "").trim().slice(0, MAX_KEY);
+}
+
+// Backfill AI/audio fields that predate them so older records read cleanly.
+function withAiDefaults(s: Studio): Studio {
+  s.audioMode = cleanAudioMode(s.audioMode);
+  s.audioText = s.audioText ?? "";
+  s.audioUrl = s.audioUrl ?? "";
+  s.aiEnabled = !!s.aiEnabled;
+  s.aiName = s.aiName ?? "";
+  s.aiPersona = s.aiPersona ?? "";
+  s.openRouterModel = s.openRouterModel ?? "";
+  s.openRouterKey = s.openRouterKey ?? "";
+  s.fishVoiceId = s.fishVoiceId ?? "";
+  s.fishApiKey = s.fishApiKey ?? "";
+  return s;
+}
+
+// The owner's own view — everything except the raw secrets.
+export function toOwnerStudio(s: Studio): OwnerStudio {
+  const { openRouterKey, fishApiKey, ...rest } = withAiDefaults(s);
+  return {
+    ...rest,
+    hasOpenRouterKey: !!openRouterKey.trim(),
+    hasFishKey: !!fishApiKey.trim(),
+  };
 }
 
 // Owners can grow the avatar but not turn it into a skyscraper — cap the
@@ -289,7 +358,20 @@ export async function getPublicStudios(): Promise<PublicStudio[]> {
     audioMode: cleanAudioMode(s.audioMode),
     audioText: s.audioText ?? "",
     audioUrl: s.audioUrl ?? "",
+    // A host is usable to visitors only when enabled AND an OpenRouter key is
+    // set. Keys themselves never appear here — only "can I talk / is it voiced".
+    aiEnabled: !!s.aiEnabled && !!(s.openRouterKey ?? "").trim(),
+    aiName: (s.aiName ?? "").trim() || s.studioName || `Unit ${s.unit}`,
+    hasVoice: !!(s.fishApiKey ?? "").trim(),
   }));
+}
+
+// A single unit's full record, secrets included — server-only (chat + TTS
+// routes need the owner's keys). Never hand the result to a client.
+export async function getStudio(unit: string): Promise<Studio | null> {
+  if (!validUnit(unit)) return null;
+  const store = await readStore();
+  return withAiDefaults(store[unit] ?? defaultStudio(unit));
 }
 
 // The Arena lobby: every unit is a pod, in street order. A unit whose owner
@@ -345,9 +427,7 @@ export async function assignUnit(
     }
     studio.proprietor = studio.proprietor ?? "";
     studio.tagline = studio.tagline ?? "";
-    studio.audioMode = cleanAudioMode(studio.audioMode);
-    studio.audioText = studio.audioText ?? "";
-    studio.audioUrl = studio.audioUrl ?? "";
+    withAiDefaults(studio);
     store[unit] = studio;
     await writeStore(store);
     return studio;
@@ -384,6 +464,13 @@ export async function updateStudio(
     audioMode?: unknown;
     audioText?: unknown;
     audioUrl?: unknown;
+    aiEnabled?: unknown;
+    aiName?: unknown;
+    aiPersona?: unknown;
+    openRouterModel?: unknown;
+    openRouterKey?: unknown;
+    fishVoiceId?: unknown;
+    fishApiKey?: unknown;
   },
   by: { userId: string; isAdmin: boolean },
 ): Promise<Studio | { error: string }> {
@@ -444,6 +531,31 @@ export async function updateStudio(
       // Owner-hosted audio must be an absolute http(s) URL, same as game URLs.
       studio.audioUrl = cleanGameUrl(patch.audioUrl);
     }
+    // --- AI host config ---
+    if (patch.aiEnabled !== undefined) {
+      studio.aiEnabled = patch.aiEnabled === true || patch.aiEnabled === "true";
+    }
+    if (typeof patch.aiName === "string") {
+      studio.aiName = patch.aiName.trim().slice(0, MAX_NAME);
+    }
+    if (typeof patch.aiPersona === "string") {
+      studio.aiPersona = patch.aiPersona.trim().slice(0, MAX_PERSONA);
+    }
+    if (typeof patch.openRouterModel === "string") {
+      studio.openRouterModel = patch.openRouterModel.trim().slice(0, MAX_MODEL);
+    }
+    if (typeof patch.fishVoiceId === "string") {
+      studio.fishVoiceId = patch.fishVoiceId.trim().slice(0, MAX_VOICE);
+    }
+    // Secrets: set only when a non-empty value is supplied, so a blank field in
+    // the form means "keep the existing key" rather than wiping it.
+    if (typeof patch.openRouterKey === "string" && patch.openRouterKey.trim()) {
+      studio.openRouterKey = cleanKey(patch.openRouterKey);
+    }
+    if (typeof patch.fishApiKey === "string" && patch.fishApiKey.trim()) {
+      studio.fishApiKey = cleanKey(patch.fishApiKey);
+    }
+    withAiDefaults(studio);
     studio.proprietor = studio.proprietor ?? "";
     studio.tagline = studio.tagline ?? "";
     studio.vrmSrc = studio.vrmSrc ?? "";

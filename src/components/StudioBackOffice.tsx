@@ -19,9 +19,21 @@ export type EditableStudio = {
   gameName: string;
   gameTagline: string;
   gameUrl: string;
-  audioMode: "none" | "speech" | "url";
+  audioMode: "none" | "speech" | "fish" | "url";
   audioText: string;
   audioUrl: string;
+  // AI host
+  aiEnabled: boolean;
+  aiName: string;
+  aiPersona: string;
+  openRouterModel: string;
+  fishVoiceId: string;
+  hasOpenRouterKey: boolean;
+  hasFishKey: boolean;
+  // Transient key inputs — blank means "keep the saved key". Never populated
+  // from the server; only sent on save when the owner types a new one.
+  openRouterKey: string;
+  fishApiKey: string;
 };
 
 const AVATAR_SCALE_MIN = 0.5;
@@ -131,11 +143,22 @@ function StudioCard({
           audioMode: studio.audioMode,
           audioText: studio.audioText,
           audioUrl: studio.audioUrl,
+          aiEnabled: studio.aiEnabled,
+          aiName: studio.aiName,
+          aiPersona: studio.aiPersona,
+          openRouterModel: studio.openRouterModel,
+          fishVoiceId: studio.fishVoiceId,
+          // Only sent when the owner typed a new key; blank keeps the old one.
+          openRouterKey: studio.openRouterKey,
+          fishApiKey: studio.fishApiKey,
         }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? "Save failed.");
-      if (data.studio) onChange(data.studio);
+      // The server never echoes keys back; clear the transient inputs.
+      if (data.studio) {
+        onChange({ ...data.studio, openRouterKey: "", fishApiKey: "" });
+      }
       setStatus("saved");
       window.setTimeout(() => setStatus("idle"), 2000);
     } catch (err) {
@@ -266,6 +289,14 @@ function StudioCard({
           sound
         </p>
         <AudioEditor studio={studio} onChange={onChange} />
+      </div>
+
+      {/* AI host */}
+      <div className="mt-8 space-y-3">
+        <p className="text-xs uppercase tracking-[0.3em] text-ink-dim">
+          ai host
+        </p>
+        <AssistantEditor studio={studio} onChange={onChange} />
       </div>
 
       {/* Arena game portal */}
@@ -551,6 +582,7 @@ function AudioEditor({
   const MODES: { value: EditableStudio["audioMode"]; label: string }[] = [
     { value: "none", label: "Off" },
     { value: "speech", label: "Narration" },
+    { value: "fish", label: "Fish voice" },
     { value: "url", label: "Audio file" },
   ];
 
@@ -579,7 +611,7 @@ function AudioEditor({
         ))}
       </div>
 
-      {studio.audioMode === "speech" && (
+      {(studio.audioMode === "speech" || studio.audioMode === "fish") && (
         <div className="mt-3 space-y-2">
           <textarea
             value={studio.audioText}
@@ -589,18 +621,26 @@ function AudioEditor({
             rows={3}
             className={`${inputClass} resize-none`}
           />
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={preview}
-              className="rounded-md border border-line px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-ink-soft transition-colors hover:border-matrix hover:text-matrix"
-            >
-              ▶ preview
-            </button>
-            <p className="text-[11px] text-ink-dim">
-              Spoken by the visitor&apos;s browser — nothing is uploaded.
+          {studio.audioMode === "speech" ? (
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={preview}
+                className="rounded-md border border-line px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-ink-soft transition-colors hover:border-matrix hover:text-matrix"
+              >
+                ▶ preview
+              </button>
+              <p className="text-[11px] text-ink-dim">
+                Spoken by the visitor&apos;s browser — nothing is uploaded.
+              </p>
+            </div>
+          ) : (
+            <p className="text-[11px] leading-relaxed text-ink-dim">
+              Spoken in your Fish Audio voice — set your Fish key and voice under
+              &ldquo;AI host&rdquo; below.
+              {!studio.hasFishKey && " No Fish key is set yet."}
             </p>
-          </div>
+          )}
         </div>
       )}
 
@@ -619,6 +659,122 @@ function AudioEditor({
           </p>
         </div>
       )}
+    </div>
+  );
+}
+
+// Wire up a per-store AI host: the owner brings their own OpenRouter key (+
+// model) for the chat and their own Fish Audio key (+ voice) for the voice.
+// Keys are write-only here — the server never sends them back, so a blank field
+// means "keep the saved key". The store's avatar is the host's face in the city.
+function AssistantEditor({
+  studio,
+  onChange,
+}: {
+  studio: EditableStudio;
+  onChange: (next: EditableStudio) => void;
+}) {
+  const keyField = (set: boolean, dirty: string) =>
+    dirty
+      ? "new key entered — save to apply"
+      : set
+        ? "key saved ✓ — leave blank to keep, type to replace"
+        : "not set";
+
+  return (
+    <div className="rounded-2xl border border-line bg-black/30 p-4 space-y-4">
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-sm text-ink-soft">
+          Give this unit a talking host. Visitors who step inside can chat with
+          it — powered by your OpenRouter model and voiced by your Fish Audio
+          voice. Your uploaded avatar is its face.
+        </p>
+        <button
+          type="button"
+          onClick={() => onChange({ ...studio, aiEnabled: !studio.aiEnabled })}
+          className={`shrink-0 rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] transition-colors ${
+            studio.aiEnabled
+              ? "border-matrix bg-matrix/15 text-matrix"
+              : "border-line text-ink-dim hover:text-ink-soft"
+          }`}
+        >
+          {studio.aiEnabled ? "enabled" : "disabled"}
+        </button>
+      </div>
+
+      <div className="space-y-2">
+        <input
+          value={studio.aiName}
+          onChange={(e) => onChange({ ...studio, aiName: e.target.value })}
+          placeholder="Host name (defaults to your store name)"
+          maxLength={60}
+          className={inputClass}
+        />
+        <textarea
+          value={studio.aiPersona}
+          onChange={(e) => onChange({ ...studio, aiPersona: e.target.value })}
+          placeholder="How should the host behave? e.g. You are the friendly owner of a late-night ramen bar. Greet visitors, talk up the specials, keep it short and warm."
+          maxLength={4000}
+          rows={4}
+          className={`${inputClass} resize-none`}
+        />
+      </div>
+
+      <div className="space-y-2 border-t border-line/60 pt-4">
+        <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-ink-soft">
+          brain · openrouter
+        </p>
+        <input
+          value={studio.openRouterModel}
+          onChange={(e) =>
+            onChange({ ...studio, openRouterModel: e.target.value })
+          }
+          placeholder="Model, e.g. openai/gpt-4o-mini"
+          maxLength={100}
+          className={inputClass}
+        />
+        <input
+          type="password"
+          value={studio.openRouterKey}
+          onChange={(e) =>
+            onChange({ ...studio, openRouterKey: e.target.value })
+          }
+          placeholder="OpenRouter API key"
+          maxLength={300}
+          autoComplete="off"
+          className={inputClass}
+        />
+        <p className="text-[11px] text-ink-dim">
+          {keyField(studio.hasOpenRouterKey, studio.openRouterKey)} · get one at
+          openrouter.ai
+        </p>
+      </div>
+
+      <div className="space-y-2 border-t border-line/60 pt-4">
+        <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-ink-soft">
+          voice · fish audio
+        </p>
+        <input
+          value={studio.fishVoiceId}
+          onChange={(e) => onChange({ ...studio, fishVoiceId: e.target.value })}
+          placeholder="Fish voice / reference id (blank = default voice)"
+          maxLength={120}
+          className={inputClass}
+        />
+        <input
+          type="password"
+          value={studio.fishApiKey}
+          onChange={(e) => onChange({ ...studio, fishApiKey: e.target.value })}
+          placeholder="Fish Audio API key"
+          maxLength={300}
+          autoComplete="off"
+          className={inputClass}
+        />
+        <p className="text-[11px] text-ink-dim">
+          {keyField(studio.hasFishKey, studio.fishApiKey)} · get one at
+          fish.audio. Also powers the &ldquo;Fish voice&rdquo; greeting.
+        </p>
+      </div>
     </div>
   );
 }

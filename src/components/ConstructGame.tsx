@@ -133,7 +133,7 @@ function makeBillboardTexture(
 
 type WallKind = "empty" | "image" | "website" | "youtube";
 type WallSlot = { id: string; kind: WallKind; src: string; title: string };
-type AudioMode = "none" | "speech" | "url";
+type AudioMode = "none" | "speech" | "fish" | "url";
 type PublicStudio = {
   unit: string;
   claimed: boolean;
@@ -147,6 +147,9 @@ type PublicStudio = {
   audioMode: AudioMode;
   audioText: string;
   audioUrl: string;
+  aiEnabled: boolean;
+  aiName: string;
+  hasVoice: boolean;
 };
 
 function parseYouTubeId(input: string): string | null {
@@ -386,6 +389,72 @@ function startStallAudio(r: AudioRefs, studio: PublicStudio) {
   } else if (studio.audioMode === "speech" && studio.audioText.trim()) {
     speakStall(r, studio.audioText.trim(), studio.unit);
     r.setNowPlaying(studio.studioName);
+  } else if (studio.audioMode === "fish" && studio.audioText.trim()) {
+    // The greeting is spoken by the owner's Fish voice, synthesized server-side
+    // (their key stays server-only). Falls back to the browser voice on error.
+    r.setNowPlaying(studio.studioName);
+    playFishGreeting(r, studio.unit, studio.audioText.trim());
+  }
+}
+
+async function playFishGreeting(r: AudioRefs, unit: string, text: string) {
+  try {
+    const res = await fetch("/api/studio/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ unit, text }),
+    });
+    if (r.unit.current !== unit) return; // visitor already walked off
+    if (!res.ok) {
+      speakStall(r, text, unit); // no voice / error → browser fallback
+      return;
+    }
+    const blob = await res.blob();
+    if (r.unit.current !== unit) return;
+    let el = r.el.current;
+    if (!el) {
+      el = new Audio();
+      el.preload = "none";
+      r.el.current = el;
+    }
+    el.src = URL.createObjectURL(blob);
+    el.loop = false;
+    el.volume = 0.75;
+    el.play().catch(() => {});
+  } catch {
+    if (r.unit.current === unit) speakStall(r, text, unit);
+  }
+}
+
+// Speak an AI host's reply in the store's Fish voice. Module-scope so mutating
+// the audio element stays out of the component's hooks graph.
+async function synthAssistantVoice(
+  elRef: { current: HTMLAudioElement | null },
+  setSpeaking: (v: boolean) => void,
+  unit: string,
+  text: string,
+) {
+  try {
+    const res = await fetch("/api/studio/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ unit, text }),
+    });
+    if (!res.ok) return;
+    const blob = await res.blob();
+    let el = elRef.current;
+    if (!el) {
+      el = new Audio();
+      el.preload = "none";
+      el.onended = () => setSpeaking(false);
+      elRef.current = el;
+    }
+    el.src = URL.createObjectURL(blob);
+    el.volume = 0.9;
+    setSpeaking(true);
+    await el.play().catch(() => setSpeaking(false));
+  } catch {
+    setSpeaking(false);
   }
 }
 
@@ -422,6 +491,9 @@ export default function ConstructGame() {
   const [entered, setEntered] = useState(false);
   const [mode, setMode] = useState<ControlMode>("touch");
   const [nearStore, setNearStore] = useState<number>(-1);
+  // The unit whose interior the visitor is standing in (-1 = out on the
+  // street). Gates the AI host chat — you have to step inside to talk.
+  const [insideStore, setInsideStore] = useState<number>(-1);
   const [nearArena, setNearArena] = useState(false);
   const [focusedWall, setFocusedWall] = useState<{
     unit: string;
@@ -454,6 +526,17 @@ export default function ConstructGame() {
   // Proximity audio: a storefront's ad plays when you walk up to it.
   const [soundOn, setSoundOn] = useState(true);
   const [audioNowPlaying, setAudioNowPlaying] = useState<string | null>(null);
+  // AI host chat (opens when you step inside a store that has one).
+  const [chatUnit, setChatUnit] = useState<string | null>(null);
+  const [aiMessages, setAiMessages] = useState<
+    { role: "user" | "assistant"; content: string }[]
+  >([]);
+  const [aiInput, setAiInput] = useState("");
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiSpeaking, setAiSpeaking] = useState(false);
+  const [aiError, setAiError] = useState("");
+  const assistantAudioRef = useRef<HTMLAudioElement | null>(null);
+  const aiScrollRef = useRef<HTMLDivElement>(null);
   const soundOnRef = useRef(true);
   const audioElRef = useRef<HTMLAudioElement | null>(null);
   const audioUnitRef = useRef<string | null>(null);
@@ -531,6 +614,102 @@ export default function ConstructGame() {
     chatScrollRef.current?.scrollTo({ top: 999999 });
   }, [messages]);
 
+  useEffect(() => {
+    aiScrollRef.current?.scrollTo({ top: 999999 });
+  }, [aiMessages, aiBusy]);
+
+  // --- AI host chat --------------------------------------------------------
+  const stopAssistantVoice = () => {
+    assistantAudioRef.current?.pause();
+    setAiSpeaking(false);
+  };
+
+  const closeChat = () => {
+    stopAssistantVoice();
+    setChatUnit(null);
+    setAiMessages([]);
+    setAiInput("");
+    setAiError("");
+  };
+
+  const openChat = (unit: string) => {
+    if (document.pointerLockElement) document.exitPointerLock();
+    setAiError("");
+    setAiMessages([]);
+    setAiInput("");
+    setChatUnit(unit);
+  };
+
+  // Walking out of the shop closes its host chat (position is external state
+  // we're syncing UI to, so the setState here is intentional).
+  useEffect(() => {
+    if (!chatUnit) return;
+    const insideNumber =
+      insideStore >= 0 ? storefronts[insideStore].number : null;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (insideNumber !== chatUnit) closeChat();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [insideStore, chatUnit]);
+
+  // Press T to talk to the host you're standing in front of; Esc closes it.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const el = event.target as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA")) {
+        if (event.code === "Escape" && chatUnit) {
+          (el as HTMLInputElement).blur();
+          closeChat();
+        }
+        return;
+      }
+      const unit = insideStore >= 0 ? storefronts[insideStore].number : null;
+      const hostHere = !!unit && !!studiosRef.current.get(unit)?.aiEnabled;
+      if (event.code === "KeyT" && hostHere && !chatUnit && unit) {
+        openChat(unit);
+      } else if (event.code === "Escape" && chatUnit) {
+        closeChat();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatUnit, insideStore]);
+
+  const sendAiMessage = async () => {
+    const unit = chatUnit;
+    const text = aiInput.trim();
+    if (!unit || !text || aiBusy) return;
+    const studio = studiosRef.current.get(unit);
+    const nextHistory = [
+      ...aiMessages,
+      { role: "user" as const, content: text },
+    ];
+    setAiMessages(nextHistory);
+    setAiInput("");
+    setAiBusy(true);
+    setAiError("");
+    stopAssistantVoice();
+    try {
+      const res = await fetch("/api/studio/assistant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ unit, messages: nextHistory }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "The host didn't respond.");
+      const reply = String(data.reply ?? "").trim();
+      if (!reply) throw new Error("The host had nothing to say.");
+      setAiMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+      if (studio?.hasVoice) {
+        void synthAssistantVoice(assistantAudioRef, setAiSpeaking, unit, reply);
+      }
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
   // Load the studios' wall content once inside, and note which units are ours.
   useEffect(() => {
     if (!entered) return;
@@ -566,8 +745,14 @@ export default function ConstructGame() {
   }, [entered]);
 
   useEffect(() => {
-    overlayOpenRef.current = !!(viewer || editor);
-  }, [viewer, editor]);
+    overlayOpenRef.current = !!(viewer || editor || chatUnit);
+  }, [viewer, editor, chatUnit]);
+
+  // Stop the host's voice if the Construct unmounts mid-reply.
+  useEffect(() => {
+    const el = assistantAudioRef;
+    return () => el.current?.pause();
+  }, []);
 
   // Press E to interact with the wall under the crosshair: owners edit it,
   // everyone else plays/visits its content. Falls back to a storefront action
@@ -700,6 +885,10 @@ export default function ConstructGame() {
         audioMode: saved.audioMode ?? current?.audioMode ?? "none",
         audioText: saved.audioText ?? current?.audioText ?? "",
         audioUrl: saved.audioUrl ?? current?.audioUrl ?? "",
+        // AI config isn't edited here (wall edit); carry the current values.
+        aiEnabled: current?.aiEnabled ?? false,
+        aiName: current?.aiName ?? "",
+        hasVoice: current?.hasVoice ?? false,
       };
       studiosRef.current.set(saved.unit, entry);
       setStudioMap((prev) => new Map(prev).set(saved.unit, entry));
@@ -1827,6 +2016,7 @@ export default function ConstructGame() {
     const right = new THREE.Vector3();
     const velocity = new THREE.Vector3();
     let currentNear = -1;
+    let currentInside = -1;
     let currentNearArena = false;
     let animationFrame = 0;
     let lastBroadcast = 0;
@@ -1957,6 +2147,25 @@ export default function ConstructGame() {
         setNearStore(nearest);
       }
 
+      // Which unit is the visitor standing *inside*? (its interior footprint —
+      // gates the AI host chat, so it only opens once you step in.)
+      let insideNow = -1;
+      for (let i = 0; i < storefronts.length; i += 1) {
+        const anchor = avatarAnchors.get(storefronts[i].number);
+        if (!anchor) continue;
+        if (
+          Math.abs(camera.position.x - anchor.x) <= STORE_D / 2 &&
+          Math.abs(camera.position.z - anchor.z) <= STORE_W / 2
+        ) {
+          insideNow = i;
+          break;
+        }
+      }
+      if (insideNow !== currentInside) {
+        currentInside = insideNow;
+        setInsideStore(insideNow);
+      }
+
       // Arena entrance proximity (its own forecourt zone at the street's end)
       const nearArenaNow =
         Math.hypot(
@@ -2077,6 +2286,14 @@ export default function ConstructGame() {
   const near = nearStore >= 0 ? storefronts[nearStore] : null;
   const nearStudio = near ? studioMap.get(near.number) : undefined;
   const nearMine = near ? ownedUnits.has(near.number) : false;
+  // The store the visitor is standing inside, and its AI host (if any).
+  const insideNumber =
+    insideStore >= 0 ? storefronts[insideStore].number : null;
+  const insideStudio = insideNumber ? studioMap.get(insideNumber) : undefined;
+  const canTalk = !!insideStudio?.aiEnabled;
+  const chatStudio = chatUnit ? studioMap.get(chatUnit) : undefined;
+  const chatHostName =
+    chatStudio?.aiName || chatStudio?.studioName || "the host";
   // A unit only reads "for lease" while it's a vacant slot no owner has taken.
   // Once claimed, the owner's signage (name, proprietor, spiel) takes over.
   const nearForLease = !!near && near.status === "vacant" && !nearStudio?.claimed;
@@ -2238,6 +2455,93 @@ export default function ConstructGame() {
             <p className="rounded-full border border-[#8fb3ff]/40 bg-[#0b1020]/80 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-[#8fb3ff] backdrop-blur-sm">
               ♪ now playing · {audioNowPlaying}
             </p>
+          </div>
+        )}
+
+        {/* step-inside prompt to talk to the store's AI host */}
+        {entered && canTalk && !chatUnit && insideNumber && (
+          <div className="absolute inset-x-0 bottom-24 flex justify-center px-4">
+            <button
+              type="button"
+              onClick={() => openChat(insideNumber)}
+              className="pointer-events-auto rounded-md border border-[#8fb3ff]/60 bg-[#0b1020]/88 px-5 py-2.5 text-xs font-bold uppercase tracking-[0.16em] text-[#dbe5ff] backdrop-blur-sm transition-colors hover:bg-[#dbe5ff] hover:text-[#0b1020]"
+            >
+              Talk to {insideStudio?.aiName || insideStudio?.studioName}
+              <span className="ml-2 hidden text-[10px] text-ink-dim sm:inline">
+                or press T
+              </span>
+            </button>
+          </div>
+        )}
+
+        {/* AI host chat panel */}
+        {chatUnit && (
+          <div className="pointer-events-auto absolute bottom-14 right-4 z-30 flex w-[min(360px,86vw)] flex-col rounded-lg border border-white/14 bg-[#0b1020]/92 backdrop-blur-sm">
+            <div className="flex items-center justify-between border-b border-white/10 px-3 py-2">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-[#8fb3ff]">
+                  {chatHostName}
+                </p>
+                <p className="text-[10px] uppercase tracking-[0.2em] text-ink-dim">
+                  {aiSpeaking
+                    ? "speaking…"
+                    : aiBusy
+                      ? "thinking…"
+                      : "shop host"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeChat}
+                className="text-ink-dim transition-colors hover:text-[#dbe5ff]"
+                aria-label="Close chat"
+              >
+                ✕
+              </button>
+            </div>
+            <div
+              ref={aiScrollRef}
+              className="flex max-h-56 flex-col gap-2 overflow-y-auto p-3"
+            >
+              {aiMessages.length === 0 && !aiBusy && (
+                <p className="text-[11px] text-ink-dim">
+                  Say hello to {chatHostName}.
+                </p>
+              )}
+              {aiMessages.map((m, i) => (
+                <p
+                  key={i}
+                  className={
+                    m.role === "user"
+                      ? "max-w-[85%] self-end rounded-lg bg-[#1a2740] px-3 py-1.5 text-xs leading-snug text-[#dbe5ff]"
+                      : "max-w-[85%] self-start rounded-lg bg-white/[0.06] px-3 py-1.5 text-xs leading-snug text-ink-soft"
+                  }
+                >
+                  {m.content}
+                </p>
+              ))}
+              {aiBusy && (
+                <p className="self-start text-[11px] italic text-ink-dim">…</p>
+              )}
+              {aiError && (
+                <p className="text-[11px] text-pill-red">{aiError}</p>
+              )}
+            </div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                sendAiMessage();
+              }}
+              className="border-t border-white/10 p-2"
+            >
+              <input
+                value={aiInput}
+                onChange={(e) => setAiInput(e.target.value)}
+                maxLength={2000}
+                placeholder={`Message ${chatHostName}…`}
+                className="w-full bg-transparent px-1 text-xs text-[#dbe5ff] outline-none placeholder:text-ink-dim"
+              />
+            </form>
           </div>
         )}
 
