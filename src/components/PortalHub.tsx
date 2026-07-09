@@ -280,7 +280,7 @@ export default function PortalHub() {
         kicker: hub.kicker,
         title: hub.title,
         intro: hub.intro,
-        enter: "step up to the choice",
+        enter: "Enter",
       }}
       hint={hub.hint}
       exitHref="/account"
