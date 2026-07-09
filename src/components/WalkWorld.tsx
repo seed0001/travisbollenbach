@@ -53,6 +53,7 @@ type Props = {
   fog?: { color: number; near: number; far: number };
   eyeHeight?: number;
   moveSpeed?: number;
+  toneMapping?: boolean; // filmic tone mapping for glossy lit materials (e.g. the pills)
   paused?: boolean; // freeze movement + release the cursor (e.g. a reader overlay is open)
   overlay: { kicker: string; title: string; intro: string; enter: string };
   hint: { desktop: string; touch: string };
@@ -95,6 +96,7 @@ export default function WalkWorld({
   fog,
   eyeHeight = 2.2,
   moveSpeed = 12,
+  toneMapping = false,
   paused = false,
   overlay,
   hint,
@@ -185,12 +187,14 @@ export default function WalkWorld({
     scene.background = new THREE.Color(background);
     if (fog) scene.fog = new THREE.Fog(fog.color, fog.near, fog.far);
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 1.35);
+    // Low ambient + a strong key keeps glossy (MeshPhysical) materials reading
+    // with real specular contrast. Unlit (MeshBasic) scenes ignore all of this.
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.55);
     scene.add(ambientLight);
-    const keyLight = new THREE.DirectionalLight(0xdbe5ff, 1.5);
-    keyLight.position.set(6, 14, 8);
+    const keyLight = new THREE.DirectionalLight(0xffffff, 2.6);
+    keyLight.position.set(3, 7, 9);
     scene.add(keyLight);
-    const hemiLight = new THREE.HemisphereLight(0xbcd0ff, 0x0b1020, 0.75);
+    const hemiLight = new THREE.HemisphereLight(0xbcd0ff, 0x0b1020, 0.4);
     scene.add(hemiLight);
 
     const camera = new THREE.PerspectiveCamera(
@@ -207,6 +211,10 @@ export default function WalkWorld({
     });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
     renderer.setSize(window.innerWidth, window.innerHeight);
+    if (toneMapping) {
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.1;
+    }
     host.appendChild(renderer.domElement);
 
     // --- Build the world ----------------------------------------------------

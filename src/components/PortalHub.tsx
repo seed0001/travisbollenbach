@@ -112,37 +112,28 @@ export default function PortalHub() {
       const PILL_Z = -15;
       const PILL_Y = 3.2; // hover height of the pill's center
 
-      // Shared pill geometry — a horizontal capsule with a seam band, on a pad.
-      const capsuleGeo = new THREE.CapsuleGeometry(1.05, 2.5, 12, 24);
-      const seamGeo = new THREE.TorusGeometry(1.06, 0.09, 12, 32);
-      const capGeo = new THREE.CapsuleGeometry(1.06, 2.5, 12, 24); // white half overlay
+      // A glossy solid capsule, lit like a studio product shot (matches Pill3D).
+      const capsuleGeo = new THREE.CapsuleGeometry(1.05, 2.5, 16, 32);
       const padGeo = new THREE.CylinderGeometry(3.4, 3.6, 0.4, 40);
       const glowTex = makeGlowTexture();
       const signGeo = new THREE.PlaneGeometry(7.4, 2.08);
-      disposables.push(capsuleGeo, seamGeo, capGeo, padGeo, glowTex, signGeo);
-
-      // A shared clip plane trick isn't needed: give the pill a light "cap"
-      // half by drawing a second, slightly larger white capsule clipped to one
-      // side via a half-length box is overkill — instead we tint one end with a
-      // lighter material band. Keep it simple and readable: accent body + a
-      // bright seam so it reads unmistakably as a pill.
-      const whiteMat = new THREE.MeshBasicMaterial({ color: 0xf4f1ea });
-      disposables.push(whiteMat);
+      disposables.push(capsuleGeo, padGeo, glowTex, signGeo);
 
       const spinners: THREE.Group[] = [];
+      const pillGroups: THREE.Group[] = [];
       const glowMats: { material: THREE.SpriteMaterial; phase: number }[] = [];
       const interactables: WorldHandle["interactables"] = [];
 
       for (const spec of specs) {
         const accent = new THREE.Color(spec.accent);
         const px = spec.side * PILL_X;
+        const isBlue = spec.side < 0;
+        const bodyColor = isBlue ? 0x0284c7 : 0xe11d48;
+        const rimColor = isBlue ? 0x4dc3ff : 0xff4d6d;
 
         const anchor = new THREE.Group();
         anchor.position.set(px, 0, PILL_Z);
         anchor.rotation.y = spec.side * -0.2; // angle toward center
-
-        const accentMat = new THREE.MeshBasicMaterial({ color: accent });
-        disposables.push(accentMat);
 
         // Glowing pedestal pad.
         const padMat = new THREE.MeshBasicMaterial({
@@ -155,25 +146,37 @@ export default function PortalHub() {
         anchor.add(pad);
         disposables.push(padMat);
 
-        // The floating, slowly spinning pill.
+        // The pill: a glossy clear-coated capsule, held at a slight angle,
+        // idling in a slow spin and float.
+        const bodyMat = new THREE.MeshPhysicalMaterial({
+          color: new THREE.Color(bodyColor),
+          roughness: 0.2,
+          metalness: 0.05,
+          clearcoat: 1,
+          clearcoatRoughness: 0.12,
+        });
+        disposables.push(bodyMat);
+
+        const pillGroup = new THREE.Group();
+        pillGroup.position.set(0, PILL_Y, 0);
+        pillGroup.rotation.z = -0.28; // held at a slight angle, like an open palm
+
         const spinner = new THREE.Group();
-        spinner.position.set(0, PILL_Y, 0);
-        spinner.rotation.z = Math.PI / 2; // lay the capsule horizontal
-
-        const body = new THREE.Mesh(capsuleGeo, accentMat);
+        const body = new THREE.Mesh(capsuleGeo, bodyMat);
+        body.rotation.z = Math.PI / 2; // capsule lies horizontal
         spinner.add(body);
-        // Light half — a white capsule pushed so only one cap reads bright.
-        const cap = new THREE.Mesh(capGeo, whiteMat);
-        cap.scale.y = 0.5;
-        cap.position.y = 0.95;
-        spinner.add(cap);
-        // Bright seam band around the middle.
-        const seam = new THREE.Mesh(seamGeo, whiteMat);
-        seam.rotation.x = Math.PI / 2;
-        spinner.add(seam);
-
-        anchor.add(spinner);
+        pillGroup.add(spinner);
+        anchor.add(pillGroup);
         spinners.push(spinner);
+        pillGroups.push(pillGroup);
+
+        // Accent rim light + a subtle matrix-green fill, straight from Pill3D.
+        const rim = new THREE.PointLight(rimColor, 22, 18);
+        rim.position.set(px - spec.side * 2.5, PILL_Y - 1, PILL_Z - 2.5);
+        scene.add(rim);
+        const fill = new THREE.PointLight(0x00ff66, 2.6, 10);
+        fill.position.set(px, PILL_Y - 2.4, PILL_Z + 2);
+        scene.add(fill);
 
         // Soft glow sprite behind the pill.
         const glowMat = new THREE.SpriteMaterial({
@@ -243,11 +246,11 @@ export default function PortalHub() {
 
       return {
         interactables,
-        update(elapsed) {
+        update(elapsed, delta) {
           for (let i = 0; i < spinners.length; i += 1) {
-            const s = spinners[i];
-            s.rotation.y += 0.006;
-            s.position.y = PILL_Y + Math.sin(elapsed * 1.3 + i * Math.PI) * 0.22;
+            spinners[i].rotation.y += delta * 0.55;
+            pillGroups[i].position.y =
+              PILL_Y + Math.sin(elapsed * 1.3 + i * Math.PI) * 0.18;
           }
           for (const g of glowMats) {
             g.material.opacity = 0.72 + Math.sin(elapsed * 1.6 + g.phase) * 0.18;
@@ -272,6 +275,7 @@ export default function PortalHub() {
       bounds={{ x: 60, zMin: -28, zMax: 22 }}
       background={0x090b10}
       fog={{ color: 0x090b10, near: 30, far: 130 }}
+      toneMapping
       overlay={{
         kicker: hub.kicker,
         title: hub.title,
