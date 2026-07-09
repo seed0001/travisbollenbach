@@ -41,6 +41,9 @@ export async function PATCH(request: NextRequest) {
       gameName: (body as { gameName?: unknown }).gameName,
       gameTagline: (body as { gameTagline?: unknown }).gameTagline,
       gameUrl: (body as { gameUrl?: unknown }).gameUrl,
+      audioMode: (body as { audioMode?: unknown }).audioMode,
+      audioText: (body as { audioText?: unknown }).audioText,
+      audioUrl: (body as { audioUrl?: unknown }).audioUrl,
     },
     { userId: user.id, isAdmin: user.role === "admin" },
   );

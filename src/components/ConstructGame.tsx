@@ -133,6 +133,7 @@ function makeBillboardTexture(
 
 type WallKind = "empty" | "image" | "website" | "youtube";
 type WallSlot = { id: string; kind: WallKind; src: string; title: string };
+type AudioMode = "none" | "speech" | "url";
 type PublicStudio = {
   unit: string;
   claimed: boolean;
@@ -143,6 +144,9 @@ type PublicStudio = {
   vrmSrc: string;
   avatarScale: number;
   avatarYaw: number;
+  audioMode: AudioMode;
+  audioText: string;
+  audioUrl: string;
 };
 
 function parseYouTubeId(input: string): string | null {
@@ -321,6 +325,70 @@ function setQuaternionFromOrientation(
   quaternion.multiply(qScreen.setFromAxisAngle(ZEE, -screenAngle));
 }
 
+// --- Proximity audio playback ------------------------------------------------
+// Kept at module scope (not inside the component) so mutating the <audio>
+// element and juggling the speech timer stays out of the hooks graph.
+type AudioRefs = {
+  el: { current: HTMLAudioElement | null };
+  unit: { current: string | null };
+  timer: { current: number | undefined };
+  soundOn: { current: boolean };
+  setNowPlaying: (name: string | null) => void;
+};
+
+function stopStallAudio(r: AudioRefs) {
+  r.unit.current = null;
+  if (r.timer.current) {
+    window.clearTimeout(r.timer.current);
+    r.timer.current = undefined;
+  }
+  r.el.current?.pause();
+  window.speechSynthesis?.cancel();
+  r.setNowPlaying(null);
+}
+
+// Spoken narration via the visitor's own browser, re-announced while they
+// linger, so a "come rent this studio" line repeats every so often.
+function speakStall(r: AudioRefs, text: string, unit: string) {
+  const synth = window.speechSynthesis;
+  if (!synth) return;
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.rate = 1;
+  utter.onend = () => {
+    if (r.unit.current === unit && r.soundOn.current) {
+      r.timer.current = window.setTimeout(() => {
+        if (r.unit.current === unit && r.soundOn.current) {
+          speakStall(r, text, unit);
+        }
+      }, 45000);
+    }
+  };
+  synth.cancel();
+  synth.speak(utter);
+}
+
+function startStallAudio(r: AudioRefs, studio: PublicStudio) {
+  stopStallAudio(r);
+  r.unit.current = studio.unit;
+  if (studio.audioMode === "url" && studio.audioUrl) {
+    let el = r.el.current;
+    if (!el) {
+      el = new Audio();
+      el.preload = "none";
+      r.el.current = el;
+    }
+    el.src = studio.audioUrl;
+    el.loop = true; // music keeps going while you're in the zone
+    el.volume = 0.6;
+    // Autoplay may be blocked until a gesture; entering the Construct is one.
+    el.play().catch(() => {});
+    r.setNowPlaying(studio.studioName);
+  } else if (studio.audioMode === "speech" && studio.audioText.trim()) {
+    speakStall(r, studio.audioText.trim(), studio.unit);
+    r.setNowPlaying(studio.studioName);
+  }
+}
+
 export default function ConstructGame() {
   const hostRef = useRef<HTMLDivElement>(null);
   const lockFnRef = useRef<(() => void) | null>(null);
@@ -383,6 +451,13 @@ export default function ConstructGame() {
   const [micOn, setMicOn] = useState(false);
   const [online, setOnline] = useState(1);
   const [lobbyStatus, setLobbyStatus] = useState<LobbyStatus>("connecting");
+  // Proximity audio: a storefront's ad plays when you walk up to it.
+  const [soundOn, setSoundOn] = useState(true);
+  const [audioNowPlaying, setAudioNowPlaying] = useState<string | null>(null);
+  const soundOnRef = useRef(true);
+  const audioElRef = useRef<HTMLAudioElement | null>(null);
+  const audioUnitRef = useRef<string | null>(null);
+  const speechTimerRef = useRef<number | undefined>(undefined);
   const isTouch = useSyncExternalStore(
     subscribeToPointerType,
     () => window.matchMedia("(pointer: coarse)").matches,
@@ -408,6 +483,49 @@ export default function ConstructGame() {
   useEffect(() => {
     colorRef.current = color;
   }, [color]);
+
+  useEffect(() => {
+    soundOnRef.current = soundOn;
+  }, [soundOn]);
+
+  // --- Proximity audio: a stall's ad/jingle plays as you walk up to it -------
+  // Playback lives in module-scope helpers (start/stopStallAudio) so element
+  // mutation stays out of the hooks graph; here we just react to which unit is
+  // nearby. All the pieces below are stable refs + a stable setter.
+  useEffect(() => {
+    if (!entered) return;
+    const r: AudioRefs = {
+      el: audioElRef,
+      unit: audioUnitRef,
+      timer: speechTimerRef,
+      soundOn: soundOnRef,
+      setNowPlaying: setAudioNowPlaying,
+    };
+    const near = nearStore >= 0 ? storefronts[nearStore] : null;
+    const studio = near ? studioMap.get(near.number) : undefined;
+    const hasAudio =
+      !!studio &&
+      ((studio.audioMode === "url" && !!studio.audioUrl) ||
+        (studio.audioMode === "speech" && !!studio.audioText.trim()));
+    if (!soundOn || !near || !hasAudio) {
+      stopStallAudio(r);
+      return;
+    }
+    if (audioUnitRef.current === near.number) return; // already sounding here
+    startStallAudio(r, studio);
+  }, [entered, nearStore, studioMap, soundOn]);
+
+  // Silence everything when the Construct unmounts.
+  useEffect(() => {
+    return () =>
+      stopStallAudio({
+        el: audioElRef,
+        unit: audioUnitRef,
+        timer: speechTimerRef,
+        soundOn: soundOnRef,
+        setNowPlaying: setAudioNowPlaying,
+      });
+  }, []);
 
   useEffect(() => {
     chatScrollRef.current?.scrollTo({ top: 999999 });
@@ -579,6 +697,9 @@ export default function ConstructGame() {
         vrmSrc: saved.vrmSrc ?? current?.vrmSrc ?? "",
         avatarScale: saved.avatarScale ?? current?.avatarScale ?? 1,
         avatarYaw: saved.avatarYaw ?? current?.avatarYaw ?? 0,
+        audioMode: saved.audioMode ?? current?.audioMode ?? "none",
+        audioText: saved.audioText ?? current?.audioText ?? "",
+        audioUrl: saved.audioUrl ?? current?.audioUrl ?? "",
       };
       studiosRef.current.set(saved.unit, entry);
       setStudioMap((prev) => new Map(prev).set(saved.unit, entry));
@@ -2089,6 +2210,17 @@ export default function ConstructGame() {
                 >
                   chat
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setSoundOn((on) => !on)}
+                  className={`pointer-events-auto rounded-md border px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] transition-colors ${
+                    soundOn
+                      ? "border-[#8fb3ff]/70 bg-[#8fb3ff]/15 text-[#8fb3ff]"
+                      : "border-white/18 bg-white/[0.055] text-[#dbe5ff] hover:bg-[#dbe5ff] hover:text-[#0b1020]"
+                  }`}
+                >
+                  {soundOn ? "sound on" : "sound off"}
+                </button>
               </>
             )}
             <Link
@@ -2099,6 +2231,15 @@ export default function ConstructGame() {
             </Link>
           </div>
         </div>
+
+        {/* now-playing cue when a stall's audio is active */}
+        {entered && soundOn && audioNowPlaying && (
+          <div className="absolute inset-x-0 top-16 flex justify-center px-4">
+            <p className="rounded-full border border-[#8fb3ff]/40 bg-[#0b1020]/80 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-[#8fb3ff] backdrop-blur-sm">
+              ♪ now playing · {audioNowPlaying}
+            </p>
+          </div>
+        )}
 
         {/* controls hint */}
         <p className="absolute inset-x-0 bottom-4 px-4 text-center text-[11px] uppercase tracking-[0.25em] text-ink-dim">
