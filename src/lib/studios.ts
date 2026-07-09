@@ -49,7 +49,16 @@ export type Studio = {
   gameName: string;
   gameTagline: string;
   gameUrl: string;
+  // Proximity audio that plays when a visitor walks up to the unit. We never
+  // host the audio: "speech" reads `audioText` aloud in the visitor's own
+  // browser (zero storage/bandwidth), "url" streams an owner-hosted file from
+  // `audioUrl`. "none" is silent.
+  audioMode: AudioMode;
+  audioText: string; // narration script for "speech" mode
+  audioUrl: string; // externally hosted audio for "url" mode
 };
+
+export type AudioMode = "none" | "speech" | "url";
 
 // What a visitor's client sees — no owner identity leaks out.
 export type PublicStudio = {
@@ -64,6 +73,9 @@ export type PublicStudio = {
   vrmSrc: string;
   avatarScale: number;
   avatarYaw: number;
+  audioMode: AudioMode;
+  audioText: string;
+  audioUrl: string;
 };
 
 // One pod in the Arena lobby, derived from a unit. The accent comes from the
@@ -93,6 +105,7 @@ const MAX_LINKS = 12;
 const MAX_LABEL = 60;
 const MAX_TAGLINE = 100;
 const MAX_SPIEL = 180; // the storefront walk-up spiel
+const MAX_AUDIO_TEXT = 320; // the spoken-narration ad script
 
 type StudioStore = Record<string, Studio>;
 
@@ -140,7 +153,14 @@ function defaultStudio(unit: string): Studio {
     gameName: "",
     gameTagline: "",
     gameUrl: "",
+    audioMode: "none",
+    audioText: "",
+    audioUrl: "",
   };
+}
+
+function cleanAudioMode(value: unknown): AudioMode {
+  return value === "speech" || value === "url" ? value : "none";
 }
 
 // Owners can grow the avatar but not turn it into a skyscraper — cap the
@@ -266,6 +286,9 @@ export async function getPublicStudios(): Promise<PublicStudio[]> {
     vrmSrc: s.vrmSrc ?? "",
     avatarScale: s.avatarScale ?? 1,
     avatarYaw: s.avatarYaw ?? 0,
+    audioMode: cleanAudioMode(s.audioMode),
+    audioText: s.audioText ?? "",
+    audioUrl: s.audioUrl ?? "",
   }));
 }
 
@@ -322,6 +345,9 @@ export async function assignUnit(
     }
     studio.proprietor = studio.proprietor ?? "";
     studio.tagline = studio.tagline ?? "";
+    studio.audioMode = cleanAudioMode(studio.audioMode);
+    studio.audioText = studio.audioText ?? "";
+    studio.audioUrl = studio.audioUrl ?? "";
     store[unit] = studio;
     await writeStore(store);
     return studio;
@@ -355,6 +381,9 @@ export async function updateStudio(
     gameName?: unknown;
     gameTagline?: unknown;
     gameUrl?: unknown;
+    audioMode?: unknown;
+    audioText?: unknown;
+    audioUrl?: unknown;
   },
   by: { userId: string; isAdmin: boolean },
 ): Promise<Studio | { error: string }> {
@@ -405,6 +434,16 @@ export async function updateStudio(
     if (patch.gameUrl !== undefined) {
       studio.gameUrl = cleanGameUrl(patch.gameUrl);
     }
+    if (patch.audioMode !== undefined) {
+      studio.audioMode = cleanAudioMode(patch.audioMode);
+    }
+    if (typeof patch.audioText === "string") {
+      studio.audioText = patch.audioText.trim().slice(0, MAX_AUDIO_TEXT);
+    }
+    if (patch.audioUrl !== undefined) {
+      // Owner-hosted audio must be an absolute http(s) URL, same as game URLs.
+      studio.audioUrl = cleanGameUrl(patch.audioUrl);
+    }
     studio.proprietor = studio.proprietor ?? "";
     studio.tagline = studio.tagline ?? "";
     studio.vrmSrc = studio.vrmSrc ?? "";
@@ -413,6 +452,9 @@ export async function updateStudio(
     studio.gameName = studio.gameName ?? "";
     studio.gameTagline = studio.gameTagline ?? "";
     studio.gameUrl = studio.gameUrl ?? "";
+    studio.audioMode = cleanAudioMode(studio.audioMode);
+    studio.audioText = studio.audioText ?? "";
+    studio.audioUrl = studio.audioUrl ?? "";
     store[unit] = studio;
     await writeStore(store);
     return studio;

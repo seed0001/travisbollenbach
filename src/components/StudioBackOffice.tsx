@@ -19,6 +19,9 @@ export type EditableStudio = {
   gameName: string;
   gameTagline: string;
   gameUrl: string;
+  audioMode: "none" | "speech" | "url";
+  audioText: string;
+  audioUrl: string;
 };
 
 const AVATAR_SCALE_MIN = 0.5;
@@ -125,6 +128,9 @@ function StudioCard({
           gameName: studio.gameName,
           gameTagline: studio.gameTagline,
           gameUrl: studio.gameUrl,
+          audioMode: studio.audioMode,
+          audioText: studio.audioText,
+          audioUrl: studio.audioUrl,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -252,6 +258,14 @@ function StudioCard({
           studio={studio}
           onChange={onChange}
         />
+      </div>
+
+      {/* Proximity audio */}
+      <div className="mt-8 space-y-3">
+        <p className="text-xs uppercase tracking-[0.3em] text-ink-dim">
+          sound
+        </p>
+        <AudioEditor studio={studio} onChange={onChange} />
       </div>
 
       {/* Arena game portal */}
@@ -512,6 +526,99 @@ function GameEditor({
         Paste it here and save — your pod lights up in the lobby and players
         who step into it are sent to your game. Clear the URL to take it down.
       </p>
+    </div>
+  );
+}
+
+// Give the unit a voice. Two modes, both storage-free: "narration" reads your
+// script aloud in the visitor's own browser (nothing is hosted), "audio file"
+// streams a track you host elsewhere. It plays when someone walks up to your
+// unit in the city, not on a loop for everyone.
+function AudioEditor({
+  studio,
+  onChange,
+}: {
+  studio: EditableStudio;
+  onChange: (next: EditableStudio) => void;
+}) {
+  const preview = () => {
+    const synth = window.speechSynthesis;
+    if (!synth || !studio.audioText.trim()) return;
+    synth.cancel();
+    synth.speak(new SpeechSynthesisUtterance(studio.audioText.trim()));
+  };
+
+  const MODES: { value: EditableStudio["audioMode"]; label: string }[] = [
+    { value: "none", label: "Off" },
+    { value: "speech", label: "Narration" },
+    { value: "url", label: "Audio file" },
+  ];
+
+  return (
+    <div className="rounded-2xl border border-line bg-black/30 p-4">
+      <p className="text-sm text-ink-soft">
+        Play a jingle or a spoken ad when visitors walk up to your unit — a
+        &ldquo;come see the grand opening&rdquo; announcement, a track, whatever
+        you like.
+      </p>
+
+      <div className="mt-3 flex gap-1.5">
+        {MODES.map((m) => (
+          <button
+            key={m.value}
+            type="button"
+            onClick={() => onChange({ ...studio, audioMode: m.value })}
+            className={`rounded-md border px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.12em] transition-colors ${
+              studio.audioMode === m.value
+                ? "border-matrix text-matrix"
+                : "border-line text-ink-dim hover:text-ink-soft"
+            }`}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+
+      {studio.audioMode === "speech" && (
+        <div className="mt-3 space-y-2">
+          <textarea
+            value={studio.audioText}
+            onChange={(e) => onChange({ ...studio, audioText: e.target.value })}
+            placeholder="Come see Solo Studio — grand opening this weekend! Fresh drops, live demos, and…"
+            maxLength={320}
+            rows={3}
+            className={`${inputClass} resize-none`}
+          />
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={preview}
+              className="rounded-md border border-line px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-ink-soft transition-colors hover:border-matrix hover:text-matrix"
+            >
+              ▶ preview
+            </button>
+            <p className="text-[11px] text-ink-dim">
+              Spoken by the visitor&apos;s browser — nothing is uploaded.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {studio.audioMode === "url" && (
+        <div className="mt-3 space-y-2">
+          <input
+            value={studio.audioUrl}
+            onChange={(e) => onChange({ ...studio, audioUrl: e.target.value })}
+            placeholder="https://your-host.com/jingle.mp3"
+            maxLength={600}
+            className={inputClass}
+          />
+          <p className="text-[11px] leading-relaxed text-ink-dim">
+            A direct link to an audio file (MP3, OGG, etc.) you host anywhere.
+            It streams from there — we never store the file.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

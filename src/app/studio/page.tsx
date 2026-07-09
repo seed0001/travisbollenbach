@@ -74,6 +74,9 @@ export default async function StudioPage() {
     gameName: s.gameName ?? "",
     gameTagline: s.gameTagline ?? "",
     gameUrl: s.gameUrl ?? "",
+    audioMode: s.audioMode ?? "none",
+    audioText: s.audioText ?? "",
+    audioUrl: s.audioUrl ?? "",
   }));
 
   if (studios.length === 0) {
