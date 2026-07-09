@@ -74,20 +74,6 @@ export default async function StudioPage() {
     gameName: s.gameName ?? "",
     gameTagline: s.gameTagline ?? "",
     gameUrl: s.gameUrl ?? "",
-    audioMode: s.audioMode ?? "none",
-    audioText: s.audioText ?? "",
-    audioUrl: s.audioUrl ?? "",
-    aiEnabled: !!s.aiEnabled,
-    aiName: s.aiName ?? "",
-    aiPersona: s.aiPersona ?? "",
-    openRouterModel: s.openRouterModel ?? "",
-    fishVoiceId: s.fishVoiceId ?? "",
-    // Never send the raw keys to the browser — only whether they're set.
-    hasOpenRouterKey: !!(s.openRouterKey ?? "").trim(),
-    hasFishKey: !!(s.fishApiKey ?? "").trim(),
-    // Transient write-only inputs, blank until the owner types a new key.
-    openRouterKey: "",
-    fishApiKey: "",
   }));
 
   if (studios.length === 0) {
