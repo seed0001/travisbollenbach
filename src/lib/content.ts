@@ -313,10 +313,13 @@ export type ArenaGame = {
   href?: string; // where a live game loads (optional until one is built)
 };
 
-// Everything about the Superdome and the lobby inside it lives here.
+// The Superdome shell — billboard, entrance placard, and lobby intro copy.
 // To re-letter the marquee out front, just edit `billboard` below.
-// To add a game to the lobby, add an entry to `games` (flip status to
-// "live" and set an href once the game itself exists).
+//
+// The pods inside the lobby are NO LONGER listed here: each of the ten city
+// units owns one pod, and its owner sets the game's name, tagline, and URL
+// from their back office. See getPublicArenaGames() in lib/studios.ts. The
+// `games` array below is unused and kept only as a shape reference.
 export const arena = {
   // The big billboard over the dome entrance — change these lines any time.
   billboard: {

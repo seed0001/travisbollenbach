@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import * as THREE from "three";
-import { arena, type ArenaGame } from "@/lib/content";
+import { arena } from "@/lib/content";
+import type { PublicArenaGame } from "@/lib/studios";
 
 // The lobby inside the Superdome: a domed hall ringed with game pods. Walk up
 // to a pod and step into the light to drop into that 3D world.
@@ -25,7 +25,7 @@ function subscribeToPointerType(callback: () => void) {
 }
 
 // Portrait sign that hangs over each pod: status pill, name, wrapped tagline.
-function makePodTexture(game: ArenaGame) {
+function makePodTexture(game: PublicArenaGame) {
   const canvas = document.createElement("canvas");
   canvas.width = 512;
   canvas.height = 640;
@@ -121,13 +121,13 @@ function setQuaternionFromOrientation(
   quaternion.multiply(qScreen.setFromAxisAngle(ZEE, -screenAngle));
 }
 
-export default function ArenaLobby() {
+export default function ArenaLobby({ games }: { games: PublicArenaGame[] }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const modeRef = useRef<ControlMode>("touch");
   const lockFnRef = useRef<(() => void) | null>(null);
   const overlayOpenRef = useRef(false);
+  const gamesRef = useRef(games);
 
-  const router = useRouter();
   const [entered, setEntered] = useState(false);
   const [locked, setLocked] = useState(false);
   const [mode, setMode] = useState<ControlMode>("touch");
@@ -143,6 +143,10 @@ export default function ArenaLobby() {
   useEffect(() => {
     activeGameRef.current = activeGame;
   }, [activeGame]);
+
+  useEffect(() => {
+    gamesRef.current = games;
+  }, [games]);
 
   // Freeze movement until the visitor has actually entered the lobby.
   useEffect(() => {
@@ -160,10 +164,12 @@ export default function ArenaLobby() {
   const launchActive = () => {
     const index = activeGameRef.current;
     if (index < 0) return;
-    const game = arena.games[index];
+    const game = gamesRef.current[index];
+    if (!game) return;
     if (game.status === "live" && game.href) {
       if (document.pointerLockElement) document.exitPointerLock();
-      router.push(game.href);
+      // The game lives on the owner's own host, so leave the site for it.
+      window.location.href = game.href;
     } else {
       setToast(`${game.name} — coming soon`);
     }
@@ -335,7 +341,6 @@ export default function ArenaLobby() {
     const signFrameGeo = new THREE.PlaneGeometry(6.5, 8);
     disposables.push(pedestalGeo, beamGeo, signGeo, signFrameGeo);
 
-    const games = arena.games;
     games.forEach((game, i) => {
       const angle = (i / games.length) * Math.PI * 2;
       const px = Math.sin(angle) * POD_RING;
@@ -664,9 +669,9 @@ export default function ArenaLobby() {
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, []);
+  }, [games]);
 
-  const active = activeGame >= 0 ? arena.games[activeGame] : null;
+  const active = activeGame >= 0 ? games[activeGame] : null;
   const showTouchOverlay = isTouch && !entered;
   const showDesktopOverlay = !isTouch && !entered;
 

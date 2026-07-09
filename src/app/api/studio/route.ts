@@ -36,6 +36,9 @@ export async function PATCH(request: NextRequest) {
       vrmSrc: (body as { vrmSrc?: unknown }).vrmSrc,
       avatarScale: (body as { avatarScale?: unknown }).avatarScale,
       avatarYaw: (body as { avatarYaw?: unknown }).avatarYaw,
+      gameName: (body as { gameName?: unknown }).gameName,
+      gameTagline: (body as { gameTagline?: unknown }).gameTagline,
+      gameUrl: (body as { gameUrl?: unknown }).gameUrl,
     },
     { userId: user.id, isAdmin: user.role === "admin" },
   );

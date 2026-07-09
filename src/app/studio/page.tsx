@@ -69,6 +69,9 @@ export default async function StudioPage() {
     vrmSrc: s.vrmSrc ?? "",
     avatarScale: s.avatarScale ?? 1,
     avatarYaw: s.avatarYaw ?? 0,
+    gameName: s.gameName ?? "",
+    gameTagline: s.gameTagline ?? "",
+    gameUrl: s.gameUrl ?? "",
   }));
 
   if (studios.length === 0) {

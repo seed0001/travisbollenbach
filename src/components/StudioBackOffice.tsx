@@ -14,6 +14,9 @@ export type EditableStudio = {
   vrmSrc: string;
   avatarScale: number;
   avatarYaw: number;
+  gameName: string;
+  gameTagline: string;
+  gameUrl: string;
 };
 
 const AVATAR_SCALE_MIN = 0.5;
@@ -115,6 +118,9 @@ function StudioCard({
           vrmSrc: studio.vrmSrc,
           avatarScale: studio.avatarScale,
           avatarYaw: studio.avatarYaw,
+          gameName: studio.gameName,
+          gameTagline: studio.gameTagline,
+          gameUrl: studio.gameUrl,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -215,6 +221,14 @@ function StudioCard({
           studio={studio}
           onChange={onChange}
         />
+      </div>
+
+      {/* Arena game portal */}
+      <div className="mt-8 space-y-3">
+        <p className="text-xs uppercase tracking-[0.3em] text-ink-dim">
+          arena game
+        </p>
+        <GameEditor studio={studio} onChange={onChange} />
       </div>
 
       <div className="mt-8 flex items-center gap-4">
@@ -402,6 +416,71 @@ function AvatarUploader({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Point the unit's Arena pod at a game. Renting a unit gets you a pod in the
+// Superdome; drop in the URL of your own app (e.g. a Railway deployment) and
+// the pod goes live — stepping into it sends players straight to your game.
+function GameEditor({
+  studio,
+  onChange,
+}: {
+  studio: EditableStudio;
+  onChange: (next: EditableStudio) => void;
+}) {
+  const url = studio.gameUrl.trim();
+  const live = /^https?:\/\//i.test(url);
+
+  return (
+    <div className="rounded-2xl border border-line bg-black/30 p-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-ink-soft">
+          Your pod in the Arena — the Superdome at the end of the street.
+        </p>
+        <span
+          className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em] ${
+            live
+              ? "border-matrix text-matrix"
+              : "border-line text-ink-dim"
+          }`}
+        >
+          {live ? "live" : "coming soon"}
+        </span>
+      </div>
+
+      <div className="mt-3 space-y-2">
+        <input
+          value={studio.gameName}
+          onChange={(e) => onChange({ ...studio, gameName: e.target.value })}
+          placeholder="Game name (defaults to your studio name)"
+          maxLength={60}
+          className={inputClass}
+        />
+        <input
+          value={studio.gameTagline}
+          onChange={(e) =>
+            onChange({ ...studio, gameTagline: e.target.value })
+          }
+          placeholder="Tagline shown on the pod sign (optional)"
+          maxLength={100}
+          className={inputClass}
+        />
+        <input
+          value={studio.gameUrl}
+          onChange={(e) => onChange({ ...studio, gameUrl: e.target.value })}
+          placeholder="https://your-game.up.railway.app"
+          maxLength={600}
+          className={inputClass}
+        />
+      </div>
+
+      <p className="mt-2 text-[11px] leading-relaxed text-ink-dim">
+        Host your game anywhere with a public URL (a Railway app works great).
+        Paste it here and save — your pod lights up in the lobby and players
+        who step into it are sent to your game. Clear the URL to take it down.
+      </p>
     </div>
   );
 }

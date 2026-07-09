@@ -38,6 +38,12 @@ export type Studio = {
   // height, and a facing offset in degrees (some models face the wrong way).
   avatarScale: number;
   avatarYaw: number;
+  // The game this unit hosts in the Arena. Renting a unit gets you a pod in
+  // the Superdome; point it at your own app (e.g. a Railway deployment) and
+  // the pod goes live. Empty gameUrl = the pod shows "coming soon".
+  gameName: string;
+  gameTagline: string;
+  gameUrl: string;
 };
 
 // What a visitor's client sees — no owner identity leaks out.
@@ -48,6 +54,18 @@ export type PublicStudio = {
   vrmSrc: string;
   avatarScale: number;
   avatarYaw: number;
+};
+
+// One pod in the Arena lobby, derived from a unit. The accent comes from the
+// storefront so a pod matches the look of its shop on the street. No owner
+// identity leaks out.
+export type PublicArenaGame = {
+  unit: string; // "01".."10"
+  name: string;
+  tagline: string;
+  accent: string; // hex, drives the pod's light and sign
+  status: "live" | "soon"; // "live" once the owner sets a game URL
+  href: string; // the owner's game URL when live, else ""
 };
 
 // The three poster slots every unit gets: back wall + the two side walls.
@@ -63,6 +81,7 @@ const MAX_TITLE = 80;
 const MAX_NAME = 60;
 const MAX_LINKS = 12;
 const MAX_LABEL = 60;
+const MAX_TAGLINE = 100;
 
 type StudioStore = Record<string, Studio>;
 
@@ -105,6 +124,9 @@ function defaultStudio(unit: string): Studio {
     vrmSrc: "",
     avatarScale: 1,
     avatarYaw: 0,
+    gameName: "",
+    gameTagline: "",
+    gameUrl: "",
   };
 }
 
@@ -157,6 +179,21 @@ export function youtubeId(input: string): string | null {
     // not a URL
   }
   return null;
+}
+
+// The owner's game lives on their own host (e.g. a Railway app), so unlike
+// wall content it must be an absolute http(s) URL — no same-origin shortcuts.
+function cleanGameUrl(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const s = value.trim().slice(0, MAX_URL);
+  if (!s) return "";
+  try {
+    const u = new URL(s);
+    if (u.protocol === "http:" || u.protocol === "https:") return u.toString();
+  } catch {
+    // not a URL
+  }
+  return "";
 }
 
 function cleanUrl(value: unknown, kind: WallKind): string {
@@ -216,6 +253,29 @@ export async function getPublicStudios(): Promise<PublicStudio[]> {
   }));
 }
 
+// The Arena lobby: every unit is a pod, in street order. A unit whose owner
+// has set a game URL is "live"; the rest read "coming soon". The pod's accent
+// and fallback name come from the storefront so a pod matches its shop.
+export async function getPublicArenaGames(): Promise<PublicArenaGame[]> {
+  const all = await listStudios();
+  return all.map((s) => {
+    const front = storefronts.find((f) => f.number === s.unit);
+    const href = cleanGameUrl(s.gameUrl);
+    const name =
+      (s.gameName ?? "").trim() || s.studioName || `Unit ${s.unit}`;
+    const tagline =
+      (s.gameTagline ?? "").trim() || "A world hosted from this unit's shop.";
+    return {
+      unit: s.unit,
+      name,
+      tagline,
+      accent: front?.accent ?? "#66e0ff",
+      status: href ? "live" : "soon",
+      href,
+    };
+  });
+}
+
 export async function getStudiosByOwner(userId: string): Promise<Studio[]> {
   const store = await readStore();
   return Object.values(store)
@@ -262,6 +322,9 @@ export async function updateStudio(
     vrmSrc?: unknown;
     avatarScale?: unknown;
     avatarYaw?: unknown;
+    gameName?: unknown;
+    gameTagline?: unknown;
+    gameUrl?: unknown;
   },
   by: { userId: string; isAdmin: boolean },
 ): Promise<Studio | { error: string }> {
@@ -297,9 +360,21 @@ export async function updateStudio(
     if (patch.avatarYaw !== undefined) {
       studio.avatarYaw = normalizeAvatarYaw(patch.avatarYaw);
     }
+    if (typeof patch.gameName === "string") {
+      studio.gameName = patch.gameName.trim().slice(0, MAX_NAME);
+    }
+    if (typeof patch.gameTagline === "string") {
+      studio.gameTagline = patch.gameTagline.trim().slice(0, MAX_TAGLINE);
+    }
+    if (patch.gameUrl !== undefined) {
+      studio.gameUrl = cleanGameUrl(patch.gameUrl);
+    }
     studio.vrmSrc = studio.vrmSrc ?? "";
     studio.avatarScale = studio.avatarScale ?? 1;
     studio.avatarYaw = studio.avatarYaw ?? 0;
+    studio.gameName = studio.gameName ?? "";
+    studio.gameTagline = studio.gameTagline ?? "";
+    studio.gameUrl = studio.gameUrl ?? "";
     store[unit] = studio;
     await writeStore(store);
     return studio;
