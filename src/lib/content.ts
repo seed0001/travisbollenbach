@@ -455,7 +455,7 @@ export const venue = {
   name: "THE COLOSSUS",
   eyebrow: "the colossus",
   intro:
-    "One monolith, two rooms. The game arena is a lobby of playable 3D worlds; the concert hall is a hall in the round with a live stage at its heart. Pick your room.",
+    "One monolith, three rooms. The game arena is a lobby of playable 3D worlds; the concert hall is a hall in the round with a live stage at its heart; the movie theater puts your own films on a giant screen. Pick your room.",
   doors: [
     {
       key: "arena",
@@ -474,6 +474,15 @@ export const venue = {
         "A hall in the round: a sunken center stage, tiers climbing outward, and a performer on the floor.",
       href: "/rabbit-hole/concert",
       accent: "#8b5cf6",
+    },
+    {
+      key: "theater",
+      eyebrow: "Single-screen cinema",
+      title: "Movie Theater",
+      description:
+        "Stepped rows under a starfield ceiling and a giant screen. Bring your own film — it plays for the whole house.",
+      href: "/rabbit-hole/theater",
+      accent: "#f43f5e",
     },
   ],
 } as const;
