@@ -33,7 +33,7 @@ const REVEAL_RADIUS = 13;
 // The Superdome closes off the far end of the street. Walking into this
 // forecourt zone (centered on the entrance) lets the visitor press E to enter.
 const ARENA_ENTRANCE = { x: 0, z: -104, radius: 12 };
-const ARENA_HREF = "/rabbit-hole/arena";
+const ARENA_HREF = "/rabbit-hole/venue";
 const RAIN_COUNT = 2200;
 
 const ORB_COLORS = [
@@ -93,10 +93,13 @@ function makeSignTexture(number: string, name: string, accent: string) {
   return texture;
 }
 
-// The giant marquee over the Superdome entrance. Driven by content.arena so
-// the copy can be re-lettered from one place.
+// The giant marquee over the venue entrance: one monolithic house name, with
+// its two rooms lettered into the top corners (left wing / right wing). Driven
+// by content.arena.billboard so the copy can be re-lettered from one place.
 function makeBillboardTexture(
-  title: string,
+  name: string,
+  leftWing: string,
+  rightWing: string,
   subtitle: string,
   accent: string,
 ) {
@@ -111,18 +114,41 @@ function makeBillboardTexture(
     ctx.lineWidth = 10;
     ctx.strokeRect(6, 6, canvas.width - 12, canvas.height - 12);
 
-    ctx.textAlign = "center";
     ctx.textBaseline = "middle";
+
+    // Top-corner wing labels — left room and right room.
     ctx.shadowColor = accent;
-    ctx.shadowBlur = 34;
+    ctx.shadowBlur = 14;
+    ctx.fillStyle = "#dbe5ff";
+    ctx.font = "800 44px Arial";
+    ctx.textAlign = "left";
+    ctx.fillText(leftWing.toUpperCase(), 44, 62, 440);
+    ctx.textAlign = "right";
+    ctx.fillText(rightWing.toUpperCase(), canvas.width - 44, 62, 440);
+
+    // Accent rule separating the corner labels from the house name.
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = `${accent}`;
+    ctx.globalAlpha = 0.5;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(44, 104);
+    ctx.lineTo(canvas.width - 44, 104);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // The monolithic house name, centered and dominant.
+    ctx.textAlign = "center";
+    ctx.shadowColor = accent;
+    ctx.shadowBlur = 40;
     ctx.fillStyle = accent;
-    ctx.font = "900 168px Arial";
-    ctx.fillText(title.toUpperCase(), canvas.width / 2, 170, canvas.width - 60);
+    ctx.font = "900 150px Arial";
+    ctx.fillText(name.toUpperCase(), canvas.width / 2, 220, canvas.width - 80);
 
     ctx.shadowBlur = 12;
-    ctx.fillStyle = "#dbe5ff";
-    ctx.font = "600 56px Arial";
-    ctx.fillText(subtitle, canvas.width / 2, 310, canvas.width - 80);
+    ctx.fillStyle = "#8fa0c2";
+    ctx.font = "600 42px Arial";
+    ctx.fillText(subtitle, canvas.width / 2, 336, canvas.width - 90);
   }
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
@@ -1390,7 +1416,9 @@ export default function ConstructGame() {
       bbFrame.position.set(0, FACADE_H - 5, FACADE_Z + 2.0);
       arenaGroup.add(bbFrame);
       const billboardTex = makeBillboardTexture(
-        arena.billboard.title,
+        arena.billboard.name,
+        arena.billboard.leftWing,
+        arena.billboard.rightWing,
         arena.billboard.subtitle,
         arena.accent,
       );
@@ -2212,7 +2240,7 @@ export default function ConstructGame() {
                 className="text-[11px] font-bold uppercase tracking-[0.28em]"
                 style={{ color: arena.accent }}
               >
-                the superdome
+                the colossus
               </p>
               <p className="mt-1.5 text-lg font-black tracking-tight text-[#dbe5ff]">
                 {arena.entrance.name}
