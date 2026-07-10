@@ -6,27 +6,112 @@ import * as THREE from "three";
 import { portfolioWalk } from "@/lib/content";
 import WalkWorld, { type Interactable, type WorldHandle } from "./WalkWorld";
 
-// Every panel is now an empty, numbered placeholder. Walk up to one to read
-// its number, then it gets filled with real content later. Positions and
-// accent colors are kept so the layout is ready — only the content is stripped.
-type Panel = { n: number; side: -1 | 0 | 1; z: number; accent: string };
+const PORTRAIT = "/travis-and-dog.jpg";
+const GH_USER = "seed0001";
 
-const PANELS: Panel[] = [
-  { n: 1, side: -1, z: -8, accent: "#38bdf8" },
-  { n: 2, side: 1, z: -8, accent: "#7dffa8" },
-  { n: 3, side: -1, z: -22, accent: "#a78bfa" },
-  { n: 4, side: 1, z: -22, accent: "#f78fb3" },
-  { n: 5, side: -1, z: -36, accent: "#fcd34d" },
-  { n: 6, side: 1, z: -36, accent: "#6ee7b7" },
-  { n: 7, side: -1, z: -50, accent: "#5eead4" },
-  { n: 8, side: 1, z: -50, accent: "#c4b5fd" },
-  { n: 9, side: -1, z: -64, accent: "#fca5a5" },
-  { n: 10, side: 1, z: -64, accent: "#66e0ff" },
-  { n: 11, side: -1, z: -76, accent: "#ffd166" },
-  { n: 12, side: 1, z: -76, accent: "#f0abfc" },
-  { n: 13, side: 0, z: -86, accent: "#f43f5e" },
+// Every panel in the walk is a category of GitHub projects. Walk up to one and
+// press E to open its subpage — a list of every repo in that category, each a
+// link to GitHub. The 13th panel, at the center end of the road, is the photo.
+type Repo = { name: string; url: string };
+type Category = { title: string; repos: Repo[] };
+
+const gh = (name: string): Repo => ({
+  name,
+  url: `https://github.com/${GH_USER}/${name}`,
+});
+
+const CATEGORIES: Category[] = [
+  {
+    title: "3D Worlds",
+    repos: ["travisbollenbach", "AI-City", "outdoor-world", "human-sim", "throngs"].map(gh),
+  },
+  {
+    title: "Games",
+    repos: ["survival-sim", "darkness-game", "Map_Game", "MiniSim"].map(gh),
+  },
+  {
+    title: "AI Companions",
+    repos: ["amy", "Adam", "Andrew", "NOVA", "eve-and-the-endless-convo"].map(gh),
+  },
+  {
+    title: "Agents & Autonomy",
+    repos: ["agent", "growing-agent", "Adam-GURU", "workshop-RT", "claude"].map(gh),
+  },
+  {
+    title: "Frameworks & Cores",
+    repos: ["the-foundation", "Framework", "baseline", "seed", "memory-core", "SeedKG"].map(gh),
+  },
+  {
+    title: "Business & Apps",
+    repos: [
+      "my-company",
+      "company-website",
+      "the-biz-app",
+      "3d-printing-company-software",
+      "marketplace",
+      "b-bBros",
+    ].map(gh),
+  },
+  {
+    title: "Learn AI",
+    repos: ["ai-for-everyone", "how-ai-works", "ai-tools", "quote-ai"].map(gh),
+  },
+  {
+    title: "Vibe Coding",
+    repos: ["vibecoding247", "vibecoding101", "speedy-coder"].map(gh),
+  },
+  {
+    title: "About Me",
+    repos: ["who-i-am", "my-hobby", "Hopes-Place", "mental-space"].map(gh),
+  },
+  {
+    title: "Media & Creative",
+    repos: ["media-network", "Audio-Podcast", "travis-s-creations", "travis-and-andrew-website"].map(gh),
+  },
+  {
+    title: "Experiments",
+    repos: ["pressure", "digital-pressure", "flowMax", "Star-Ant"].map(gh),
+  },
+  {
+    title: "Bots & Toys",
+    repos: ["seg-bot", "dan", "jar"].map(gh),
+  },
 ];
 
+// Panel positions down the boulevard: 12 category stations + the photo at the
+// center end. side -1 = left, 1 = right, 0 = center.
+const LAYOUT: { side: -1 | 0 | 1; z: number; accent: string }[] = [
+  { side: -1, z: -8, accent: "#38bdf8" },
+  { side: 1, z: -8, accent: "#7dffa8" },
+  { side: -1, z: -22, accent: "#a78bfa" },
+  { side: 1, z: -22, accent: "#f78fb3" },
+  { side: -1, z: -36, accent: "#fcd34d" },
+  { side: 1, z: -36, accent: "#6ee7b7" },
+  { side: -1, z: -50, accent: "#5eead4" },
+  { side: 1, z: -50, accent: "#c4b5fd" },
+  { side: -1, z: -64, accent: "#fca5a5" },
+  { side: 1, z: -64, accent: "#66e0ff" },
+  { side: -1, z: -76, accent: "#ffd166" },
+  { side: 1, z: -76, accent: "#f0abfc" },
+  { side: 0, z: -86, accent: "#f43f5e" }, // photo
+];
+
+type Panel = {
+  n: number;
+  side: -1 | 0 | 1;
+  z: number;
+  accent: string;
+  category?: Category;
+  photo?: boolean;
+};
+
+const PANELS: Panel[] = LAYOUT.map((l, i) =>
+  i < CATEGORIES.length
+    ? { n: i + 1, ...l, category: CATEGORIES[i] }
+    : { n: i + 1, ...l, photo: true },
+);
+
+// --- Canvas panel faces -----------------------------------------------------
 function roundRectPath(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -44,9 +129,14 @@ function roundRectPath(
   ctx.closePath();
 }
 
-// A blank placeholder panel stamped with its big number and a dashed accent
-// border, so you can walk up and say "fill panel 5".
-function makeLabelTexture(n: number, accent: string) {
+// A category panel: accent header with the number + project count, the title
+// big in the middle, and a "press E to open" hint.
+function makeCategoryTexture(
+  n: number,
+  title: string,
+  count: number,
+  accent: string,
+) {
   const canvas = document.createElement("canvas");
   canvas.width = 1200;
   canvas.height = 800;
@@ -56,42 +146,63 @@ function makeLabelTexture(n: number, accent: string) {
     ctx.fillStyle = "#0c1220";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Dark panel
     roundRectPath(ctx, pad, pad, canvas.width - pad * 2, canvas.height - pad * 2, 28);
     ctx.fillStyle = "#0f1830";
     ctx.fill();
 
-    // Dashed accent border → reads clearly as an empty slot.
-    ctx.strokeStyle = accent;
-    ctx.lineWidth = 6;
-    ctx.setLineDash([20, 15]);
-    roundRectPath(
-      ctx,
-      pad + 22,
-      pad + 22,
-      canvas.width - (pad + 22) * 2,
-      canvas.height - (pad + 22) * 2,
-      20,
-    );
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    ctx.textAlign = "center";
+    // Accent header band
+    const headerH = 116;
+    ctx.save();
+    roundRectPath(ctx, pad, pad, canvas.width - pad * 2, headerH, 28);
+    ctx.clip();
     ctx.fillStyle = accent;
-    ctx.font = "800 40px Arial";
-    ctx.fillText("PORTFOLIO PANEL", canvas.width / 2, 250);
+    ctx.fillRect(pad, pad, canvas.width - pad * 2, headerH);
+    ctx.restore();
+    ctx.fillStyle = "#04283a";
+    ctx.textBaseline = "middle";
+    ctx.font = "800 38px Arial";
+    ctx.textAlign = "left";
+    ctx.fillText(`CATEGORY ${String(n).padStart(2, "0")}`, pad + 56, pad + headerH / 2 + 2);
+    ctx.textAlign = "right";
+    ctx.fillText(
+      `${count} PROJECT${count === 1 ? "" : "S"}`,
+      canvas.width - pad - 56,
+      pad + headerH / 2 + 2,
+    );
 
+    // Title (shrinks to fit one line)
+    ctx.textAlign = "center";
+    ctx.textBaseline = "alphabetic";
     ctx.fillStyle = "#ffffff";
-    ctx.font = "900 300px Arial";
-    ctx.fillText(String(n).padStart(2, "0"), canvas.width / 2, 560);
+    let size = 96;
+    const maxWidth = canvas.width - 180;
+    do {
+      ctx.font = `800 ${size}px Arial`;
+      if (ctx.measureText(title).width <= maxWidth) break;
+      size -= 6;
+    } while (size > 40);
+    ctx.fillText(title, canvas.width / 2, 470);
 
-    ctx.fillStyle = "#7f8ba6";
-    ctx.font = "600 32px Arial";
-    ctx.fillText("empty · ready for content", canvas.width / 2, 660);
+    ctx.fillStyle = accent;
+    ctx.font = "700 32px Arial";
+    ctx.fillText("PRESS  E  TO  OPEN  →", canvas.width / 2, 690);
   }
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
+}
+
+// Placeholder behind the photo panel while the portrait loads.
+function makePhotoPlaceholder() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 8;
+  canvas.height = 8;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    ctx.fillStyle = "#111826";
+    ctx.fillRect(0, 0, 8, 8);
+  }
+  return new THREE.CanvasTexture(canvas);
 }
 
 // Soft radial glow laid flat on the floor under a pad.
@@ -129,7 +240,10 @@ function makeBeamTexture() {
   return new THREE.CanvasTexture(canvas);
 }
 
-type Overlay = { n: number; accent: string } | null;
+type Overlay =
+  | { type: "category"; n: number; category: Category; accent: string }
+  | { type: "photo" }
+  | null;
 
 export default function PortfolioWalk() {
   const [overlay, setOverlay] = useState<Overlay>(null);
@@ -184,8 +298,8 @@ export default function PortfolioWalk() {
 
     // --- Stations: each panel floats above a lit pad, inside a light beam --
     const BOARD_X = 8.5;
-    const PANEL_Y = 4.4; // hover height of the panel's center
-    const FOCUS_RADIUS = 7.5; // within this, a panel stops spinning and faces you
+    const PANEL_Y = 4.4;
+    const FOCUS_RADIUS = 7.5;
 
     const cardGeo = new THREE.PlaneGeometry(9, 6);
     const frameGeo = new THREE.PlaneGeometry(9.5, 6.5);
@@ -196,18 +310,17 @@ export default function PortfolioWalk() {
     const beamTex = makeBeamTexture();
     disposables.push(cardGeo, frameGeo, padGeo, beamGeo, glowGeo, glowTex, beamTex);
 
+    const textureLoader = new THREE.TextureLoader();
     const interactables: Interactable[] = [];
 
-    // A panel's rotation lerps toward facing you when you're near, and free-
-    // spins otherwise. wrapAngle keeps the eased turn taking the short way.
     const wrapAngle = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
     type Live = {
       pivot: THREE.Group;
       x: number;
       z: number;
       phase: number;
-      spin: number; // idle spin speed (rad/s)
-      rot: number; // current rotation.y
+      spin: number;
+      rot: number;
       beamMat: THREE.MeshBasicMaterial;
       padMat: THREE.MeshBasicMaterial;
       glowMat: THREE.MeshBasicMaterial;
@@ -221,7 +334,6 @@ export default function PortfolioWalk() {
       const station = new THREE.Group();
       station.position.set(x, 0, panel.z);
 
-      // Glowing pedestal pad.
       const padMat = new THREE.MeshBasicMaterial({
         color: accent,
         transparent: true,
@@ -232,7 +344,6 @@ export default function PortfolioWalk() {
       station.add(pad);
       disposables.push(padMat);
 
-      // Radial glow pooled on the floor under the pad.
       const glowMat = new THREE.MeshBasicMaterial({
         map: glowTex,
         color: accent,
@@ -246,8 +357,6 @@ export default function PortfolioWalk() {
       station.add(glow);
       disposables.push(glowMat);
 
-      // The light beam: a translucent shaft rising from the pad, holding the
-      // panel aloft.
       const beamMat = new THREE.MeshBasicMaterial({
         map: beamTex,
         color: accent,
@@ -258,11 +367,10 @@ export default function PortfolioWalk() {
         opacity: 0.34,
       });
       const beam = new THREE.Mesh(beamGeo, beamMat);
-      beam.position.y = 5.0; // base sits on the pad, top clears the panel
+      beam.position.y = 5.0;
       station.add(beam);
       disposables.push(beamMat);
 
-      // The panel itself — spins and floats on this pivot.
       const pivot = new THREE.Group();
       pivot.position.y = PANEL_Y;
 
@@ -274,10 +382,16 @@ export default function PortfolioWalk() {
       pivot.add(frame);
       disposables.push(frameMat);
 
-      const texture = makeLabelTexture(panel.n, panel.accent);
+      const texture = panel.photo
+        ? makePhotoPlaceholder()
+        : makeCategoryTexture(
+            panel.n,
+            panel.category!.title,
+            panel.category!.repos.length,
+            panel.accent,
+          );
       disposables.push(texture);
 
-      // Two back-to-back faces so the number reads from either side as it turns.
       const contentMat = new THREE.MeshBasicMaterial({ map: texture });
       const front = new THREE.Mesh(cardGeo, contentMat);
       front.position.z = 0.06;
@@ -287,6 +401,16 @@ export default function PortfolioWalk() {
       back.rotation.y = Math.PI;
       pivot.add(back);
       disposables.push(contentMat);
+
+      // The photo panel swaps in the real portrait once it loads.
+      if (panel.photo) {
+        textureLoader.load(PORTRAIT, (loaded) => {
+          loaded.colorSpace = THREE.SRGBColorSpace;
+          contentMat.map = loaded;
+          contentMat.needsUpdate = true;
+          disposables.push(loaded);
+        });
+      }
 
       station.add(pivot);
       scene.add(station);
@@ -303,18 +427,29 @@ export default function PortfolioWalk() {
         glowMat,
       });
 
-      // Walk-up interaction: names the panel by number so it's easy to point at.
+      // Walk-up interaction.
+      const category = panel.category;
       interactables.push({
         id: `panel-${panel.n}`,
         x: panel.side * 5,
         z: panel.z,
         radius: panel.side === 0 ? 9 : 4.6,
         accent: panel.accent,
-        eyebrow: "portfolio panel",
-        title: `Panel ${panel.n}`,
-        blurb: "Empty — ready for content.",
-        prompt: "Inspect",
-        onInteract: () => setOverlay({ n: panel.n, accent: panel.accent }),
+        eyebrow: panel.photo ? "the end of the road" : `category ${panel.n}`,
+        title: panel.photo ? "Travis & his QA lead" : category!.title,
+        blurb: panel.photo
+          ? "The one who approves every release."
+          : `${category!.repos.length} projects · open to see them all`,
+        prompt: panel.photo ? "See the photo" : "Open",
+        onInteract: panel.photo
+          ? () => setOverlay({ type: "photo" })
+          : () =>
+              setOverlay({
+                type: "category",
+                n: panel.n,
+                category: category!,
+                accent: panel.accent,
+              }),
       });
     });
 
@@ -350,18 +485,15 @@ export default function PortfolioWalk() {
           const focused = Math.hypot(dx, dz) < FOCUS_RADIUS;
 
           if (focused) {
-            // Ease around to face the visitor and hold.
             const target = Math.atan2(dx, dz);
             const diff = wrapAngle(target - b.rot);
             b.rot = wrapAngle(b.rot + diff * Math.min(1, delta * 3.2));
           } else {
-            // Idle: keep turning slowly on the beam.
             b.rot = wrapAngle(b.rot + delta * b.spin);
           }
           b.pivot.rotation.y = b.rot;
           b.pivot.position.y = PANEL_Y + Math.sin(elapsed * 1.1 + b.phase) * 0.22;
 
-          // Brighten the pad, glow, and beam when a visitor is present.
           const lift = focused ? 1 : 0;
           b.beamMat.opacity =
             0.3 + lift * 0.16 + Math.sin(elapsed * 1.6 + b.phase) * 0.05;
@@ -373,7 +505,7 @@ export default function PortfolioWalk() {
 
         const positions = moteGeo.attributes.position.array as Float32Array;
         for (let i = 0; i < MOTES; i += 1) {
-          positions[i * 3 + 1] += moteSpeed[i] * 0.016; // drift upward
+          positions[i * 3 + 1] += moteSpeed[i] * 0.016;
           if (positions[i * 3 + 1] > 40) positions[i * 3 + 1] = 0;
         }
         moteGeo.attributes.position.needsUpdate = true;
@@ -393,9 +525,9 @@ export default function PortfolioWalk() {
         paused={!!overlay}
         overlay={{
           kicker: portfolioWalk.kicker,
-          title: "Numbered panels",
+          title: "The project gallery",
           intro:
-            "Every panel here is empty and numbered. Walk up to any one to read its number, then say which panel to fill and what goes on it.",
+            "Every panel is a category of what I've built on GitHub — 53 projects across 12 rooms. Walk up to one and press E to open it, then jump to any repo. At the center end of the road, that's me and my QA lead.",
           enter: "start walking",
         }}
         hint={portfolioWalk.hint}
@@ -411,24 +543,47 @@ export default function PortfolioWalk() {
         }
       />
 
-      {/* Inspect overlay — confirms which numbered panel you're at */}
-      {overlay && (
+      {/* Category subpage — the repos in this panel, each a link to GitHub */}
+      {overlay?.type === "category" && (
         <div className="pointer-events-auto fixed inset-0 z-40 flex items-center justify-center bg-black/85 p-4">
-          <div className="w-full max-w-md rounded-xl border border-white/12 bg-white p-8 text-center text-slate-900 md:p-10">
-            <p
-              className="text-xs font-bold uppercase tracking-[0.24em]"
-              style={{ color: overlay.accent }}
-            >
-              portfolio panel
-            </p>
-            <h2 className="mt-2 text-6xl font-black tracking-tight">
-              Panel {overlay.n}
+          <div className="max-h-[86vh] w-full max-w-lg overflow-y-auto rounded-xl border border-white/12 bg-white p-8 text-slate-900 md:p-10">
+            <div className="flex items-start justify-between gap-6">
+              <p
+                className="text-xs font-bold uppercase tracking-[0.24em]"
+                style={{ color: "#0369a1" }}
+              >
+                Category {String(overlay.n).padStart(2, "0")} ·{" "}
+                {overlay.category.repos.length} projects
+              </p>
+              <button
+                type="button"
+                onClick={() => setOverlay(null)}
+                className="text-slate-400 transition-colors hover:text-slate-900"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+            <h2 className="mt-2 text-4xl font-black tracking-tight">
+              {overlay.category.title}
             </h2>
-            <p className="mt-4 leading-relaxed text-slate-600">
-              This panel is empty and ready for content. Tell me what to put on
-              Panel {overlay.n} — text, an image, a link — and I&apos;ll build
-              it.
-            </p>
+            <ul className="mt-6 divide-y divide-slate-200 border-y border-slate-200">
+              {overlay.category.repos.map((repo) => (
+                <li key={repo.name}>
+                  <a
+                    href={repo.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center justify-between gap-4 py-3 text-slate-800 transition-colors hover:text-sky-700"
+                  >
+                    <span className="font-semibold">{repo.name}</span>
+                    <span className="text-xs font-bold uppercase tracking-[0.16em] text-sky-700">
+                      github ↗
+                    </span>
+                  </a>
+                </li>
+              ))}
+            </ul>
             <button
               type="button"
               onClick={() => setOverlay(null)}
@@ -440,11 +595,41 @@ export default function PortfolioWalk() {
         </div>
       )}
 
-      {/* Crawler / screen-reader fallback */}
+      {/* Photo viewer */}
+      {overlay?.type === "photo" && (
+        <div className="pointer-events-auto fixed inset-0 z-40 flex flex-col items-center justify-center gap-4 bg-black/92 p-4">
+          <button
+            type="button"
+            onClick={() => setOverlay(null)}
+            className="absolute right-4 top-4 rounded-md border border-white/20 px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-[#dbe5ff] transition-colors hover:bg-[#dbe5ff] hover:text-[#0b1020]"
+          >
+            close ✕
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={PORTRAIT}
+            alt="Travis and his dog"
+            className="max-h-[82vh] max-w-full rounded-lg border border-white/12 object-contain"
+          />
+        </div>
+      )}
+
+      {/* Crawler / screen-reader fallback — real links for every project */}
       <div className="sr-only">
-        <h1>Portfolio panels</h1>
-        {PANELS.map((p) => (
-          <p key={p.n}>Panel {p.n} — empty, ready for content.</p>
+        <h1>Project gallery</h1>
+        {CATEGORIES.map((cat, i) => (
+          <section key={cat.title}>
+            <h2>
+              Category {i + 1}: {cat.title}
+            </h2>
+            <ul>
+              {cat.repos.map((repo) => (
+                <li key={repo.name}>
+                  <a href={repo.url}>{repo.name}</a>
+                </li>
+              ))}
+            </ul>
+          </section>
         ))}
       </div>
     </>
