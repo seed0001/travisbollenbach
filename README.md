@@ -24,6 +24,23 @@ The centerpiece (`/rabbit-hole/game`) is a browser-rendered 3D city block built 
 
 A live unit on the street (`/rabbit-hole/workshop`) lets anyone design a persona — either a **character** (stays in-role) or a **tool** (a focused assistant) — and chat with it. Personas are turned into a system prompt and run against an LLM through [OpenRouter](https://openrouter.ai). Usage is rate-limited per IP since each message spends the operator's API credits.
 
+## The Concert Hall
+
+A multi-level hall in the round (`/rabbit-hole/concert`) where **Luna**, a VRM performer, sings and dances on the sunken center stage:
+
+- **Lip sync & expressions** driven by the vocal stem of the playing track
+- **VRMA dance choreography** synced to beat and genre analysis
+- **Setlist** (Starline Dream, Pixel Escape) plus **custom song upload**
+- **Stage menu board** — walk up to it to resize Luna, switch songs, and control the overhead jumbotron (live face cam or a YouTube video)
+
+Custom uploads are a single mixed song; the server splits it into instrumental + vocal stems with [Demucs](https://github.com/facebookresearch/demucs). That requires a one-time Python setup on the machine running the server:
+
+```bash
+pip install -r requirements-server.txt
+```
+
+The first split can take a few minutes on CPU. Without the Python setup, the built-in setlist still works — only custom uploads need it.
+
 ## Accounts & studios
 
 The site has its own lightweight auth and content-management layer, all backed by JSON files on disk (no external database):

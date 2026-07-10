@@ -1,34 +1,38 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import * as THREE from "three";
-import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import {
-  VRMLoaderPlugin,
-  VRMUtils,
-  VRMHumanBoneName,
-  type VRM,
-} from "@pixiv/three-vrm";
+  createConcertPerformer,
+  type ConcertPerformer,
+} from "@/lib/luna/createConcertPerformer";
+import {
+  splitFullSong,
+  stemsAsFiles,
+} from "@/lib/luna/audio/stemSplitClient";
+import {
+  DEFAULT_CONCERT_TRACK,
+  LUNA_CONCERT_TRACKS,
+  LUNA_SCALE_DEFAULT,
+  customUploadTrack,
+  type ConcertTrack,
+} from "@/lib/luna/concertConfig";
+import {
+  MENU_BOARD_POS,
+  MENU_BOARD_RADIUS,
+  createMenuBoard,
+} from "@/lib/luna/stageMenuBoard";
+import LunaStageMenu from "@/components/LunaStageMenu";
 
 // ============================================================================
 // The Concert Hall — a very large, multi-level hall "in the round".
 //
 // A sunken stage sits at the dead center, at the bottom. Concentric tiers
 // (balconies) rise outward and upward around it, so from any upper level you
-// look DOWN across the void at the stage. A VRM artist paces back and forth
-// on the stage.
+// look DOWN across the void at the stage. Luna performs at center stage with
+// lip sync, expressions, and beat-synced motion from the Luna Singing SDK.
 //
-// This is an OUTLINE / blockout for the model developer to build on:
-//   • The architecture (levels, ramps, railings, dome, stage) is real and
-//     walkable — floor-height following + ramp connectors between tiers.
-//   • The performer is a placeholder mannequin driven by a procedural walk.
-//     Pass `artistSrc` (a .vrm / .glb URL) to drop in the real avatar — it
-//     reuses the exact procedural gait from ConstructGame, so the handoff is
-//     just "give it a URL."
-//
-// Everything uses the site's unlit neon material language (MeshBasicMaterial),
-// so it matches The Arena and drops straight into the rabbit-hole.
+// Everything uses the site's unlit neon material language (MeshBasicMaterial).
 // ============================================================================
 
 const ACCENT = "#8b5cf6"; // stage / house accent — swap to taste
@@ -100,13 +104,32 @@ function floorAt(x: number, z: number): number | null {
   return null; // outside the outer wall
 }
 
-export default function ConcertHall({ artistSrc }: { artistSrc?: string }) {
+export default function ConcertHall({
+  track: initialTrack = DEFAULT_CONCERT_TRACK,
+}: {
+  track?: ConcertTrack;
+}) {
   const hostRef = useRef<HTMLDivElement>(null);
   const lockFnRef = useRef<(() => void) | null>(null);
   const overlayOpenRef = useRef(true);
+  const performerRef = useRef<ConcertPerformer | null>(null);
+  const customTrackRef = useRef<ConcertTrack | null>(null);
+  const pendingPlayRef = useRef(false);
+  const initialTrackRef = useRef(initialTrack);
+  const selectedTrackIdRef = useRef(initialTrack.id);
+  const lunaScaleRef = useRef(LUNA_SCALE_DEFAULT);
+  const enteredRef = useRef(false);
+  const nearMenuRef = useRef(false);
 
   const [entered, setEntered] = useState(false);
   const [locked, setLocked] = useState(false);
+  const [performerStatus, setPerformerStatus] = useState("Loading Luna…");
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [selectedTrackId, setSelectedTrackId] = useState(initialTrack.id);
+  const [trackLoading, setTrackLoading] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [nearMenuBoard, setNearMenuBoard] = useState(false);
+  const [lunaScale, setLunaScale] = useState(LUNA_SCALE_DEFAULT);
   const isTouch = useSyncExternalStore(
     subscribeToPointerType,
     () => window.matchMedia("(pointer: coarse)").matches,
@@ -114,14 +137,103 @@ export default function ConcertHall({ artistSrc }: { artistSrc?: string }) {
   );
 
   useEffect(() => {
-    overlayOpenRef.current = !entered;
+    selectedTrackIdRef.current = selectedTrackId;
+  }, [selectedTrackId]);
+
+  useEffect(() => {
+    enteredRef.current = entered;
   }, [entered]);
 
+  useEffect(() => {
+    lunaScaleRef.current = lunaScale;
+    performerRef.current?.setScale(lunaScale);
+  }, [lunaScale]);
+
+  useEffect(() => {
+    overlayOpenRef.current = !entered && !menuOpen;
+  }, [entered, menuOpen]);
+
+  const selectedTrack =
+    customTrackRef.current?.id === selectedTrackId
+      ? customTrackRef.current
+      : LUNA_CONCERT_TRACKS.find((t) => t.id === selectedTrackId) ??
+        DEFAULT_CONCERT_TRACK;
+
+  const loadTrack = useCallback(
+    async (next: ConcertTrack, autoplay?: boolean) => {
+      setSelectedTrackId(next.id);
+      const performer = performerRef.current;
+      if (!performer) return;
+
+      setTrackLoading(true);
+      try {
+        await performer.loadTrack(
+          next,
+          autoplay ?? (entered && (isPlaying || pendingPlayRef.current)),
+        );
+        setIsPlaying(performer.isPlaying());
+      } catch (err) {
+        console.error(err);
+        setPerformerStatus(
+          `Track failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      } finally {
+        setTrackLoading(false);
+      }
+    },
+    [entered, isPlaying],
+  );
+
+  const pickTrack = useCallback(
+    async (next: ConcertTrack) => {
+      if (next.id === selectedTrackId && !trackLoading) return;
+      customTrackRef.current = null;
+      await loadTrack(next);
+    },
+    [loadTrack, selectedTrackId, trackLoading],
+  );
+
+  const uploadSong = useCallback(
+    async (file: File, title: string) => {
+      setTrackLoading(true);
+      try {
+        const split = await splitFullSong(file, setPerformerStatus);
+        const { music, vocals } = stemsAsFiles(split);
+        const track = customUploadTrack(title, music, vocals);
+        customTrackRef.current = track;
+        await loadTrack(track);
+      } catch (err) {
+        console.error(err);
+        setPerformerStatus(
+          `Track failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      } finally {
+        setTrackLoading(false);
+      }
+    },
+    [loadTrack],
+  );
+
+  const startPerformance = useCallback(async () => {
+    const performer = performerRef.current;
+    if (!performer || performer.isPlaying()) return;
+    await performer.play();
+    setIsPlaying(true);
+  }, []);
+
   const enterDesktop = () => {
+    enteredRef.current = true;
     setEntered(true);
+    pendingPlayRef.current = true;
     lockFnRef.current?.();
+    void startPerformance();
   };
-  const enterTouch = () => setEntered(true);
+  const enterTouch = () => {
+    enteredRef.current = true;
+    setEntered(true);
+    pendingPlayRef.current = true;
+    void startPerformance();
+  };
 
   useEffect(() => {
     const host = hostRef.current;
@@ -146,6 +258,7 @@ export default function ConcertHall({ artistSrc }: { artistSrc?: string }) {
     const spawnLevel = LEVELS[2];
     const spawnR = (spawnLevel.inner + spawnLevel.outer) / 2;
     camera.position.set(spawnR, spawnLevel.y + EYE_HEIGHT, 0);
+    camera.layers.enable(1);
 
     const renderer = new THREE.WebGLRenderer({
       antialias: true,
@@ -154,6 +267,15 @@ export default function ConcertHall({ artistSrc }: { artistSrc?: string }) {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
     renderer.setSize(window.innerWidth, window.innerHeight);
     host.appendChild(renderer.domElement);
+
+    const ambientLight = new THREE.AmbientLight(0xffffff, 1.4);
+    scene.add(ambientLight);
+    const keyLight = new THREE.DirectionalLight(0xdbe5ff, 1.6);
+    keyLight.position.set(4, 12, 6);
+    scene.add(keyLight);
+    const fillLight = new THREE.DirectionalLight(0x8b5cf6, 0.45);
+    fillLight.position.set(-6, 8, -4);
+    scene.add(fillLight);
 
     // --- Shared materials (unlit neon language) ---------------------------
     const floorMat = new THREE.MeshBasicMaterial({ color: 0x0a0e1c });
@@ -376,178 +498,54 @@ export default function ConcertHall({ artistSrc }: { artistSrc?: string }) {
       disposables.push(beamMat);
     }
 
+    createMenuBoard(scene, accent);
+
     // ======================================================================
-    // The performer — placeholder mannequin now, real VRM when `artistSrc`
-    // is provided. Both are driven by the same procedural walk cycle.
+    // Luna — center-stage performer (Luna Singing SDK)
     // ======================================================================
-    const STAGE_PATROL = STAGE_R - 6; // walk from -X to +X across the stage
-    const ARTIST_SPEED = 1.7; // metres/sec
-
-    type ArtistBones = {
-      leftUpperLeg: THREE.Object3D | null;
-      rightUpperLeg: THREE.Object3D | null;
-      leftLowerLeg: THREE.Object3D | null;
-      rightLowerLeg: THREE.Object3D | null;
-      leftUpperArm: THREE.Object3D | null;
-      rightUpperArm: THREE.Object3D | null;
-      spine: THREE.Object3D | null;
-    };
-    const artist = {
-      root: null as THREE.Object3D | null,
-      vrm: null as VRM | null,
-      bones: null as ArtistBones | null,
-      baseY: 0,
-      dir: 1, // +1 walking toward +X, -1 toward -X
-      gait: 0,
-    };
-
-    // A rough blockout figure so the stage isn't empty before the real avatar
-    // is dropped in. Legs/arms are named so the same gait drives them.
-    function buildMannequin(): { root: THREE.Object3D; bones: ArtistBones } {
-      const group = new THREE.Group();
-      const skin = new THREE.MeshBasicMaterial({ color: accent });
-      const dark = new THREE.MeshBasicMaterial({ color: 0x1a1330 });
-      disposables.push(skin, dark);
-
-      const torsoGeo = new THREE.CapsuleGeometry(0.32, 0.7, 4, 12);
-      const torso = new THREE.Mesh(torsoGeo, dark);
-      torso.position.y = 1.15;
-      group.add(torso);
-      const headGeo = new THREE.SphereGeometry(0.24, 16, 12);
-      const head = new THREE.Mesh(headGeo, skin);
-      head.position.y = 1.75;
-      group.add(head);
-      disposables.push(torsoGeo, headGeo);
-
-      const limbGeo = new THREE.CapsuleGeometry(0.1, 0.6, 4, 8);
-      disposables.push(limbGeo);
-      const mkLimb = (x: number, y: number, m: THREE.Material) => {
-        // pivot at the top so rotation.x swings the limb from the joint
-        const pivot = new THREE.Object3D();
-        pivot.position.set(x, y, 0);
-        const limb = new THREE.Mesh(limbGeo, m);
-        limb.position.y = -0.4;
-        pivot.add(limb);
-        group.add(pivot);
-        return pivot;
-      };
-      const leftUpperArm = mkLimb(-0.42, 1.45, dark);
-      const rightUpperArm = mkLimb(0.42, 1.45, dark);
-      const leftUpperLeg = mkLimb(-0.18, 0.78, dark);
-      const rightUpperLeg = mkLimb(0.18, 0.78, dark);
-
-      return {
-        root: group,
-        bones: {
-          leftUpperArm,
-          rightUpperArm,
-          leftUpperLeg,
-          rightUpperLeg,
-          leftLowerLeg: null,
-          rightLowerLeg: null,
-          spine: torso,
-        },
-      };
-    }
-
-    const placeholder = buildMannequin();
-    artist.root = placeholder.root;
-    artist.bones = placeholder.bones;
-    artist.baseY = 0.02;
-    artist.root.position.set(-STAGE_PATROL, artist.baseY, 0);
-    scene.add(artist.root);
-
-    // Real VRM handoff: give it a URL and it swaps the placeholder out, wiring
-    // the same humanoid bones the gait already knows how to drive.
     let sceneDisposed = false;
-    if (artistSrc) {
-      const loader = new GLTFLoader();
-      loader.register((parser) => new VRMLoaderPlugin(parser));
-      loader.load(
-        artistSrc,
-        (gltf) => {
-          const vrm = (gltf.userData.vrm as VRM | undefined) ?? null;
-          if (!vrm || sceneDisposed) {
-            if (vrm) VRMUtils.deepDispose(vrm.scene);
-            return;
+    void createConcertPerformer(
+      scene,
+      initialTrackRef.current,
+      (status) => {
+        if (!sceneDisposed) {
+          setPerformerStatus(status);
+          if (status.startsWith("Playing")) setIsPlaying(true);
+          if (status.startsWith("Paused") || status.startsWith("Finished")) {
+            setIsPlaying(false);
           }
-          VRMUtils.rotateVRM0(vrm); // VRM0 faces -Z; align to +Z
-          const b = (name: VRMHumanBoneName) =>
-            vrm.humanoid?.getNormalizedBoneNode(name) ?? null;
+        }
+      },
+      () => lunaScaleRef.current,
+    )
+      .then(async (performer) => {
+        if (sceneDisposed) {
+          performer.dispose();
+          return;
+        }
+        performerRef.current = performer;
 
-          // remove the placeholder
-          if (artist.root) {
-            scene.remove(artist.root);
-          }
-          const root = vrm.scene;
-          root.traverse((o) => (o.frustumCulled = false));
-          // normalize height, stand feet on the stage
-          root.updateMatrixWorld(true);
-          const size = new THREE.Box3()
-            .setFromObject(root)
-            .getSize(new THREE.Vector3());
-          root.scale.setScalar(1.7 / (size.y > 1e-3 ? size.y : 1.7));
-          root.updateMatrixWorld(true);
-          const minY = new THREE.Box3().setFromObject(root).min.y;
-          artist.baseY = 0.02 - minY;
-          root.position.set(-STAGE_PATROL, artist.baseY, 0);
-          scene.add(root);
+        const wanted =
+          LUNA_CONCERT_TRACKS.find((t) => t.id === selectedTrackIdRef.current) ??
+          initialTrackRef.current;
+        if (wanted.id !== performer.getTrackId()) {
+          await performer.loadTrack(wanted, false);
+        }
 
-          artist.root = root;
-          artist.vrm = vrm;
-          artist.bones = {
-            spine: b(VRMHumanBoneName.Spine),
-            leftUpperArm: b(VRMHumanBoneName.LeftUpperArm),
-            rightUpperArm: b(VRMHumanBoneName.RightUpperArm),
-            leftUpperLeg: b(VRMHumanBoneName.LeftUpperLeg),
-            rightUpperLeg: b(VRMHumanBoneName.RightUpperLeg),
-            leftLowerLeg: b(VRMHumanBoneName.LeftLowerLeg),
-            rightLowerLeg: b(VRMHumanBoneName.RightLowerLeg),
-          };
-        },
-        undefined,
-        () => {}, // a missing avatar shouldn't break the hall
-      );
-    }
-
-    const poseBone = (node: THREE.Object3D | null, x: number) => {
-      if (node) node.rotation.x = x;
-    };
-
-    // Walk the artist from one side of the stage to the other, turn, repeat.
-    const updateArtist = (delta: number) => {
-      const root = artist.root;
-      if (!root) return;
-      root.position.x += artist.dir * ARTIST_SPEED * delta;
-      if (root.position.x > STAGE_PATROL) {
-        root.position.x = STAGE_PATROL;
-        artist.dir = -1;
-      } else if (root.position.x < -STAGE_PATROL) {
-        root.position.x = -STAGE_PATROL;
-        artist.dir = 1;
-      }
-      // face the walk direction (+X → +90°, -X → -90°)
-      const targetYaw = artist.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
-      let diff = targetYaw - root.rotation.y;
-      diff = Math.atan2(Math.sin(diff), Math.cos(diff));
-      root.rotation.y += diff * Math.min(1, delta * 8);
-
-      // procedural gait (shared by mannequin + VRM)
-      const b = artist.bones;
-      if (b) {
-        artist.gait += delta * 6.5;
-        const swing = Math.sin(artist.gait) * 0.5;
-        poseBone(b.leftUpperLeg, swing);
-        poseBone(b.rightUpperLeg, -swing);
-        poseBone(b.leftLowerLeg, -Math.max(0, -swing) * 0.6);
-        poseBone(b.rightLowerLeg, -Math.max(0, swing) * 0.6);
-        poseBone(b.leftUpperArm, -swing * 0.45);
-        poseBone(b.rightUpperArm, swing * 0.45);
-        poseBone(b.spine, Math.abs(swing) * 0.05);
-        root.position.y = artist.baseY + Math.abs(Math.sin(artist.gait)) * 0.04;
-      }
-      artist.vrm?.update(delta);
-    };
+        if (pendingPlayRef.current) {
+          await performer.play();
+          setIsPlaying(true);
+        }
+        performer.setScale(lunaScaleRef.current);
+      })
+      .catch((err) => {
+        console.error(err);
+        if (!sceneDisposed) {
+          setPerformerStatus(
+            `Luna failed to load: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      });
 
     // ======================================================================
     // Controls — desktop pointer-lock + WASD, or dual-thumb touch. (Mirrors
@@ -692,6 +690,16 @@ export default function ConcertHall({ artistSrc }: { artistSrc?: string }) {
       }
       if (overlayOpenRef.current) velocity.set(0, 0, 0);
 
+      const nearMenuNow =
+        Math.hypot(
+          camera.position.x - MENU_BOARD_POS.x,
+          camera.position.z - MENU_BOARD_POS.z,
+        ) < MENU_BOARD_RADIUS;
+      if (nearMenuNow !== nearMenuRef.current) {
+        nearMenuRef.current = nearMenuNow;
+        setNearMenuBoard(nearMenuNow);
+      }
+
       if (velocity.lengthSq() > 0) {
         if (velocity.lengthSq() > 1) velocity.normalize();
         const nx = camera.position.x + velocity.x * MOVE_SPEED * delta;
@@ -714,7 +722,11 @@ export default function ConcertHall({ artistSrc }: { artistSrc?: string }) {
       const pulse = 0.06 + Math.sin(elapsed * 1.6) * 0.03;
       for (const m of beamMats) m.opacity = pulse;
 
-      updateArtist(delta);
+      performerRef.current?.setAudienceTarget(
+        enteredRef.current ? camera.position : null,
+      );
+      performerRef.current?.update(delta);
+
       renderer.render(scene, camera);
     };
     animate();
@@ -734,18 +746,92 @@ export default function ConcertHall({ artistSrc }: { artistSrc?: string }) {
       if (document.pointerLockElement === renderer.domElement) {
         document.exitPointerLock();
       }
-      if (artist.vrm) VRMUtils.deepDispose(artist.vrm.scene);
+      performerRef.current?.dispose();
+      performerRef.current = null;
       disposables.forEach((d) => d.dispose());
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [artistSrc]);
+  }, []);
+
+  const togglePerformance = async () => {
+    const performer = performerRef.current;
+    if (!performer) return;
+    await performer.togglePlayPause();
+    setIsPlaying(performer.isPlaying());
+  };
 
   const showOverlay = !entered;
+
+  const setlistPicker = (compact = false) => (
+    <div
+      className={
+        compact
+          ? "pointer-events-auto flex flex-wrap items-center justify-center gap-2"
+          : "flex w-full max-w-md flex-col gap-3"
+      }
+      role="group"
+      aria-label="Concert setlist"
+    >
+      {!compact && (
+        <p className="text-xs font-bold uppercase tracking-[0.22em] text-ink-dim">
+          Setlist
+        </p>
+      )}
+      <div
+        className={
+          compact
+            ? "flex flex-wrap items-center justify-center gap-2"
+            : "flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-center"
+        }
+      >
+        {LUNA_CONCERT_TRACKS.map((item) => {
+          const active = item.id === selectedTrackId;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              disabled={trackLoading}
+              onClick={() => void pickTrack(item)}
+              className={
+                compact
+                  ? "rounded-md border px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] transition-colors disabled:opacity-45"
+                  : "w-full rounded-md border px-4 py-3 text-xs font-bold uppercase tracking-[0.14em] transition-colors disabled:opacity-45 sm:w-auto"
+              }
+              style={{
+                borderColor: active ? ACCENT : "rgba(255,255,255,0.18)",
+                backgroundColor: active ? `${ACCENT}22` : "rgba(255,255,255,0.055)",
+                color: active ? "#dbe5ff" : "rgba(219,229,255,0.72)",
+              }}
+            >
+              {item.title}
+            </button>
+          );
+        })}
+      </div>
+      {trackLoading && (
+        <p className="text-center text-[10px] uppercase tracking-[0.18em] text-ink-dim">
+          Loading track…
+        </p>
+      )}
+    </div>
+  );
 
   return (
     <div className="fixed inset-0 overflow-hidden bg-black">
       <div ref={hostRef} className="stage-fixed" />
+
+      <LunaStageMenu
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        lunaScale={lunaScale}
+        onLunaScaleChange={setLunaScale}
+        selectedTrackId={selectedTrackId}
+        onPickTrack={(t) => void pickTrack(t)}
+        onUploadSong={(file, title) => void uploadSong(file, title)}
+        trackLoading={trackLoading}
+        status={performerStatus}
+      />
 
       {/* HUD */}
       <div className="pointer-events-none absolute inset-0 z-10">
@@ -756,15 +842,50 @@ export default function ConcertHall({ artistSrc }: { artistSrc?: string }) {
             className="text-xs font-bold uppercase tracking-[0.24em]"
             style={{ color: ACCENT }}
           >
-            The Concert Hall · outline
+            The Concert Hall · Luna live
           </p>
-          <Link
-            href="/rabbit-hole/game"
-            className="pointer-events-auto rounded-md border border-white/18 bg-white/[0.055] px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-[#dbe5ff] transition-colors hover:bg-[#dbe5ff] hover:text-[#0b1020]"
-          >
-            back to the street
-          </Link>
+          <div className="pointer-events-auto flex flex-wrap items-center gap-2">
+            {entered && (
+              <button
+                type="button"
+                onClick={() => setMenuOpen(true)}
+                className="rounded-md border border-white/18 bg-white/[0.055] px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-[#dbe5ff] transition-colors hover:bg-[#dbe5ff] hover:text-[#0b1020]"
+                style={{ borderColor: `${ACCENT}66` }}
+              >
+                stage menu
+              </button>
+            )}
+            {entered && (
+              <button
+                type="button"
+                onClick={() => void togglePerformance()}
+                className="rounded-md border border-white/18 bg-white/[0.055] px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-[#dbe5ff] transition-colors hover:bg-[#dbe5ff] hover:text-[#0b1020]"
+                style={{ borderColor: `${ACCENT}66` }}
+              >
+                {isPlaying ? "pause set" : "play set"}
+              </button>
+            )}
+          </div>
         </div>
+
+        {entered && (
+          <p
+            className="absolute inset-x-0 top-[4.5rem] px-4 text-center text-[11px] uppercase tracking-[0.2em] text-ink-soft sm:top-20"
+          >
+            {performerStatus}
+          </p>
+        )}
+
+        {entered && nearMenuBoard && !menuOpen && (
+          <button
+            type="button"
+            onClick={() => setMenuOpen(true)}
+            className="pointer-events-auto absolute bottom-16 left-1/2 -translate-x-1/2 rounded-md border bg-[#121826]/90 px-5 py-3 text-xs font-bold uppercase tracking-[0.16em] text-[#dbe5ff]"
+            style={{ borderColor: `${ACCENT}99` }}
+          >
+            open stage menu board
+          </button>
+        )}
 
         <p className="absolute inset-x-0 bottom-4 px-4 text-center text-[11px] uppercase tracking-[0.25em] text-ink-dim">
           {isTouch
@@ -787,7 +908,12 @@ export default function ConcertHall({ artistSrc }: { artistSrc?: string }) {
           <p className="max-w-sm text-sm leading-relaxed text-ink-soft">
             A hall in the round: the stage sits at the bottom center, ringed by
             balconies that climb outward. Walk the tiers, lean over a railing,
-            or follow a ramp down to the floor. The performer paces the stage.
+            or follow a ramp down to the floor. Luna sings and dances at center
+            stage. Use the stage menu board on the floor for songs and size.
+          </p>
+          {setlistPicker()}
+          <p className="text-xs uppercase tracking-[0.18em] text-ink-dim">
+            Selected: {selectedTrack.title}
           </p>
           <button
             type="button"
@@ -797,12 +923,6 @@ export default function ConcertHall({ artistSrc }: { artistSrc?: string }) {
           >
             enter the hall
           </button>
-          <Link
-            href="/rabbit-hole/game"
-            className="text-xs uppercase tracking-[0.22em] text-ink-dim underline-offset-4 transition-colors hover:text-[#dbe5ff] hover:underline"
-          >
-            back to the street
-          </Link>
         </div>
       )}
     </div>
