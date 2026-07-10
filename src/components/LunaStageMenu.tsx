@@ -19,6 +19,10 @@ type LunaStageMenuProps = {
   onPickTrack: (track: ConcertTrack) => void;
   onUploadSong: (file: File, title: string) => void;
   trackLoading: boolean;
+  avatarName: string;
+  avatarLoading: boolean;
+  onUploadAvatar: (file: File) => void;
+  onResetAvatar: () => void;
   status: string;
 };
 
@@ -31,6 +35,10 @@ export default function LunaStageMenu({
   onPickTrack,
   onUploadSong,
   trackLoading,
+  avatarName,
+  avatarLoading,
+  onUploadAvatar,
+  onResetAvatar,
   status,
 }: LunaStageMenuProps) {
   if (!open) return null;
@@ -81,6 +89,41 @@ export default function LunaStageMenu({
             {lunaScale.toFixed(2)}× height
             {lunaScale >= LUNA_SCALE_MAX - 0.05 ? " · giant scale" : ""}
           </p>
+        </section>
+
+        <section className="mb-5 space-y-3">
+          <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-ink-dim">
+            Performer
+          </p>
+          <p className="text-[10px] leading-relaxed text-ink-dim">
+            Swap the singer for any <span className="uppercase">.vrm</span>{" "}
+            avatar — lip sync, expressions, and choreography re-attach
+            automatically. On stage now:{" "}
+            <span className="font-bold text-ink-soft">{avatarName}</span>
+          </p>
+          <label className="block text-[10px] uppercase tracking-wider text-ink-dim">
+            VRM avatar file
+            <input
+              type="file"
+              accept=".vrm"
+              disabled={avatarLoading}
+              onChange={(e) => {
+                const file = e.currentTarget.files?.[0];
+                e.currentTarget.value = "";
+                if (file) onUploadAvatar(file);
+              }}
+              className="mt-1 block w-full text-xs text-ink-soft disabled:opacity-45"
+            />
+          </label>
+          <button
+            type="button"
+            disabled={avatarLoading}
+            onClick={onResetAvatar}
+            className="w-full rounded-md border px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-[#dbe5ff] transition-colors hover:bg-[#dbe5ff] hover:text-[#0b1020] disabled:opacity-45"
+            style={{ borderColor: `${ACCENT}99` }}
+          >
+            {avatarLoading ? "loading performer…" : "bring Luna back"}
+          </button>
         </section>
 
         <section className="mb-5 space-y-3">

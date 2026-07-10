@@ -7,6 +7,10 @@ import {
   type ConcertPerformer,
 } from "@/lib/luna/createConcertPerformer";
 import {
+  DEFAULT_AVATAR_NAME,
+  DEFAULT_VRM_URL,
+} from "@/lib/luna/avatar/VRMAvatarController";
+import {
   splitFullSong,
   stemsAsFiles,
 } from "@/lib/luna/audio/stemSplitClient";
@@ -130,6 +134,8 @@ export default function ConcertHall({
   const [menuOpen, setMenuOpen] = useState(false);
   const [nearMenuBoard, setNearMenuBoard] = useState(false);
   const [lunaScale, setLunaScale] = useState(LUNA_SCALE_DEFAULT);
+  const [avatarName, setAvatarName] = useState(DEFAULT_AVATAR_NAME);
+  const [avatarLoading, setAvatarLoading] = useState(false);
   const isTouch = useSyncExternalStore(
     subscribeToPointerType,
     () => window.matchMedia("(pointer: coarse)").matches,
@@ -213,6 +219,38 @@ export default function ConcertHall({
     },
     [loadTrack],
   );
+
+  const uploadAvatar = useCallback(async (file: File) => {
+    const performer = performerRef.current;
+    if (!performer) return;
+    setAvatarLoading(true);
+    try {
+      await performer.loadAvatar({ kind: "file", file });
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setAvatarName(performerRef.current?.getAvatarName() ?? DEFAULT_AVATAR_NAME);
+      setAvatarLoading(false);
+    }
+  }, []);
+
+  const resetAvatar = useCallback(async () => {
+    const performer = performerRef.current;
+    if (!performer) return;
+    setAvatarLoading(true);
+    try {
+      await performer.loadAvatar({
+        kind: "url",
+        url: DEFAULT_VRM_URL,
+        name: DEFAULT_AVATAR_NAME,
+      });
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setAvatarName(performerRef.current?.getAvatarName() ?? DEFAULT_AVATAR_NAME);
+      setAvatarLoading(false);
+    }
+  }, []);
 
   const startPerformance = useCallback(async () => {
     const performer = performerRef.current;
@@ -830,6 +868,10 @@ export default function ConcertHall({
         onPickTrack={(t) => void pickTrack(t)}
         onUploadSong={(file, title) => void uploadSong(file, title)}
         trackLoading={trackLoading}
+        avatarName={avatarName}
+        avatarLoading={avatarLoading}
+        onUploadAvatar={(file) => void uploadAvatar(file)}
+        onResetAvatar={() => void resetAvatar()}
         status={performerStatus}
       />
 
