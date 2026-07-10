@@ -42,3 +42,7 @@ next-env.d.ts
 
 # local comment storage
 /data
+
+# reference clone of Luna Singing SDK (integrated copy lives in src/lib/luna)
+/.cache
+/luna-sdk

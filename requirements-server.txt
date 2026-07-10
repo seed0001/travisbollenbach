@@ -1,0 +1,5 @@
+# Stem splitting for Luna (install once on the machine running npm run dev):
+#   pip install -r requirements-server.txt
+#
+# Splits run on CPU by default. Optional GPU: LUNA_STEM_DEVICE=cuda|auto
+demucs>=4.0.0

@@ -1,0 +1,289 @@
+import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import type { GLTFParser } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { VRMHumanBoneName, VRMLoaderPlugin } from "@pixiv/three-vrm";
+import { VRMAnimationLoaderPlugin } from "@pixiv/three-vrm-animation";
+import { VRMAvatarController } from "./avatar/VRMAvatarController";
+import { ALL_DANCE_URLS, IDLE_ANIMATION_URL } from "./animation/danceAnimations";
+import type { MotionCatalog } from "./avatar/avatarMotionCatalog";
+import { analyzeMusicGenre } from "./audio/genreAnalysis";
+import type { StemPerformance } from "./audio/StemPerformance";
+import {
+  LUNA_BASE_HEIGHT,
+  LUNA_SCALE_DEFAULT,
+  type ConcertAudioSource,
+  type ConcertTrack,
+} from "./concertConfig";
+
+/** Full VRMA dance cycle for the concert stage (not procedural sway-only mode). */
+const CONCERT_MOTION_CATALOG: MotionCatalog = {
+  idleUrl: IDLE_ANIMATION_URL,
+  playlistUrls: ALL_DANCE_URLS,
+  label: "concert VRMA dances",
+  proceduralPerformance: false,
+};
+
+const LUNA_LAYER = 1;
+const TARGET_HEIGHT = LUNA_BASE_HEIGHT;
+const STAGE_FLOOR_Y = 0.02;
+/** VRM model forward offset baked into the anchor child (see normalizeVrmInAnchor). */
+const LUNA_MODEL_YAW = Math.PI / 2;
+
+export type ConcertPerformer = {
+  update: (delta: number) => void;
+  dispose: () => void;
+  play: () => Promise<void>;
+  pause: () => void;
+  togglePlayPause: () => Promise<void>;
+  loadTrack: (track: ConcertTrack, autoplay?: boolean) => Promise<void>;
+  setScale: (multiplier: number) => void;
+  getScale: () => number;
+  setAudienceTarget: (position: THREE.Vector3 | null) => void;
+  getHeadWorldPosition: (target: THREE.Vector3) => boolean;
+  isPlaying: () => boolean;
+  getTrackId: () => string;
+  getStatus: () => string;
+};
+
+async function fetchBlob(url: string): Promise<Blob> {
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`Failed to load ${url} (${res.status})`);
+  }
+  return res.blob();
+}
+
+async function resolveMusicBlob(
+  source: ConcertAudioSource,
+): Promise<Blob | null> {
+  if (typeof source === "string") {
+    try {
+      return await fetchBlob(source);
+    } catch {
+      return null;
+    }
+  }
+  return source;
+}
+
+async function loadTrackStems(
+  controller: VRMAvatarController,
+  stemPerformance: StemPerformance,
+  track: ConcertTrack,
+  setStatus: (next: string) => void,
+): Promise<void> {
+  setStatus(`Loading ${track.title}…`);
+  await stemPerformance.loadStems({
+    music: track.music,
+    vocals: track.vocals,
+  });
+
+  try {
+    const musicBlob = await resolveMusicBlob(track.music);
+    if (musicBlob) {
+      const genre = await analyzeMusicGenre(musicBlob);
+      controller.animationDirector?.setPlaylist(genre.danceUrls);
+      setStatus(`Ready · ${track.title} · ${genre.label}`);
+      return;
+    }
+  } catch {
+    // fall through
+  }
+  setStatus(`Ready · ${track.title}`);
+}
+
+/** Normalize VRM height inside the anchor; feet sit at the anchor origin. */
+function normalizeVrmInAnchor(vrmRoot: THREE.Object3D): void {
+  vrmRoot.scale.set(1, 1, 1);
+  vrmRoot.position.set(0, 0, 0);
+  vrmRoot.rotation.set(0, LUNA_MODEL_YAW, 0);
+  vrmRoot.updateMatrixWorld(true);
+
+  const box = new THREE.Box3().setFromObject(vrmRoot);
+  const size = box.getSize(new THREE.Vector3());
+  const normalize = TARGET_HEIGHT / (size.y > 1e-3 ? size.y : TARGET_HEIGHT);
+  vrmRoot.scale.setScalar(normalize);
+  vrmRoot.updateMatrixWorld(true);
+
+  const minY = new THREE.Box3().setFromObject(vrmRoot).min.y;
+  vrmRoot.position.set(0, -minY, 0);
+  vrmRoot.traverse((obj) => {
+    obj.layers.enable(LUNA_LAYER);
+  });
+}
+
+function lerpAngle(current: number, target: number, t: number): number {
+  let delta = target - current;
+  while (delta > Math.PI) delta -= Math.PI * 2;
+  while (delta < -Math.PI) delta += Math.PI * 2;
+  return current + delta * t;
+}
+
+function applyAnchorScale(stageAnchor: THREE.Group, userScale: number): void {
+  stageAnchor.scale.setScalar(userScale);
+  stageAnchor.position.set(0, STAGE_FLOOR_Y, 0);
+}
+
+export async function createConcertPerformer(
+  scene: THREE.Scene,
+  track: ConcertTrack,
+  onStatus?: (status: string) => void,
+  getUserScale?: () => number,
+): Promise<ConcertPerformer> {
+  const loader = new GLTFLoader();
+  loader.register((parser: GLTFParser) => new VRMLoaderPlugin(parser));
+  loader.register((parser: GLTFParser) => new VRMAnimationLoaderPlugin(parser));
+
+  const stageAnchor = new THREE.Group();
+  stageAnchor.name = "LunaStageAnchor";
+  scene.add(stageAnchor);
+
+  const anchorWorld = new THREE.Vector3();
+  const AUDIENCE_TURN_SPEED = 10;
+  let audienceTarget: THREE.Vector3 | null = null;
+  let hasSnappedToAudience = false;
+  let vrmRoot: THREE.Object3D | null = null;
+
+  const controller = new VRMAvatarController(scene, loader);
+  let status = "Loading Luna…";
+  let currentTrack = track;
+  let userScale = getUserScale?.() ?? LUNA_SCALE_DEFAULT;
+  let appliedScale = -1;
+
+  const setStatus = (next: string) => {
+    status = next;
+    onStatus?.(next);
+  };
+
+  const syncScale = () => {
+    const next = getUserScale?.() ?? userScale;
+    userScale = next;
+    if (Math.abs(next - appliedScale) < 1e-4) return;
+    appliedScale = next;
+    applyAnchorScale(stageAnchor, userScale);
+  };
+
+  const syncAudienceFacing = (delta: number) => {
+    if (!audienceTarget) return;
+
+    stageAnchor.updateMatrixWorld(true);
+    stageAnchor.getWorldPosition(anchorWorld);
+
+    const dx = audienceTarget.x - anchorWorld.x;
+    const dz = audienceTarget.z - anchorWorld.z;
+    if (dx * dx + dz * dz < 0.25) return;
+
+    const targetY = Math.atan2(dx, dz) - LUNA_MODEL_YAW + Math.PI;
+    if (!hasSnappedToAudience) {
+      stageAnchor.rotation.y = targetY;
+      hasSnappedToAudience = true;
+      return;
+    }
+
+    const t = 1 - Math.exp(-AUDIENCE_TURN_SPEED * delta);
+    stageAnchor.rotation.y = lerpAngle(stageAnchor.rotation.y, targetY, t);
+  };
+
+  const pinModelOrientation = () => {
+    if (!vrmRoot) return;
+    vrmRoot.rotation.set(0, LUNA_MODEL_YAW, 0);
+  };
+
+  await controller.loadDefault();
+  await controller.applyMotionCatalog(CONCERT_MOTION_CATALOG);
+
+  vrmRoot = controller.vrm?.scene ?? null;
+  if (vrmRoot) {
+    // Parent to our anchor so slider scale does not fight VRM animation updates.
+    if (vrmRoot.parent) {
+      vrmRoot.parent.remove(vrmRoot);
+    }
+    stageAnchor.add(vrmRoot);
+    normalizeVrmInAnchor(vrmRoot);
+    syncScale();
+  }
+
+  const stemPerformance = controller.stemPerformance;
+  if (!stemPerformance) {
+    throw new Error("Luna stem performance not ready.");
+  }
+
+  controller.onSongEnded = () => {
+    controller.animationDirector?.startIdle();
+    setStatus(`Finished · ${currentTrack.title}`);
+  };
+
+  await loadTrackStems(controller, stemPerformance, track, setStatus);
+
+  const startPlayback = async () => {
+    await stemPerformance.play();
+    controller.animationDirector?.startDance();
+    setStatus(`Playing · ${currentTrack.title}`);
+  };
+
+  return {
+    update: (delta) => {
+      syncScale();
+      controller.update(delta);
+      pinModelOrientation();
+      syncAudienceFacing(delta);
+    },
+    dispose: () => {
+      stemPerformance.dispose();
+      controller.unloadAvatar();
+      scene.remove(stageAnchor);
+    },
+    play: startPlayback,
+    pause: () => {
+      stemPerformance.pause();
+      controller.animationDirector?.startIdle();
+      setStatus(`Paused · ${currentTrack.title}`);
+    },
+    togglePlayPause: async () => {
+      if (stemPerformance.mixer.mixerState === "playing") {
+        stemPerformance.pause();
+        controller.animationDirector?.startIdle();
+        setStatus(`Paused · ${currentTrack.title}`);
+      } else {
+        await startPlayback();
+      }
+    },
+    loadTrack: async (nextTrack, autoplay = false) => {
+      const wasPlaying = stemPerformance.mixer.mixerState === "playing";
+      stemPerformance.pause();
+      controller.animationDirector?.startIdle();
+
+      currentTrack = nextTrack;
+      await loadTrackStems(controller, stemPerformance, nextTrack, setStatus);
+
+      if (autoplay || wasPlaying) {
+        await startPlayback();
+      }
+    },
+    setScale: (multiplier) => {
+      userScale = multiplier;
+      appliedScale = -1;
+      syncScale();
+    },
+    setAudienceTarget: (position) => {
+      if (!position) {
+        hasSnappedToAudience = false;
+      }
+      audienceTarget = position;
+    },
+    getScale: () => userScale,
+    getHeadWorldPosition: (target) => {
+      const head =
+        controller.vrm?.humanoid?.getNormalizedBoneNode(VRMHumanBoneName.Head) ??
+        null;
+      if (!head) return false;
+      head.getWorldPosition(target);
+      return true;
+    },
+    isPlaying: () => stemPerformance.mixer.mixerState === "playing",
+    getTrackId: () => currentTrack.id,
+    getStatus: () => status,
+  };
+}
+
+export { LUNA_LAYER };
