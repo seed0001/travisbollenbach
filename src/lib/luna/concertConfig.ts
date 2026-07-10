@@ -14,7 +14,8 @@ export const CONCERT_SPOTLIGHT_HEIGHT = 50;
 /** Slider max — Luna at full scale matches the overhead spotlight beams. */
 export const LUNA_SCALE_MIN = 0.55;
 export const LUNA_SCALE_MAX = CONCERT_SPOTLIGHT_HEIGHT / LUNA_BASE_HEIGHT;
-export const LUNA_SCALE_DEFAULT = 1;
+/** Larger-than-life by default — 1× (real-world 1.7m) reads tiny in a hall this big. */
+export const LUNA_SCALE_DEFAULT = 2;
 
 export const LUNA_CONCERT_TRACKS: ConcertTrack[] = [
   {
