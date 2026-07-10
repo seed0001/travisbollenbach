@@ -27,6 +27,7 @@ import {
   MENU_BOARD_RADIUS,
   createMenuBoard,
 } from "@/lib/luna/stageMenuBoard";
+import { createConcertCrowd } from "@/lib/concertCrowd";
 import LunaStageMenu from "@/components/LunaStageMenu";
 
 // ============================================================================
@@ -552,6 +553,20 @@ export default function ConcertHall({
 
     createMenuBoard(scene, accent);
 
+    // The audience — instanced figures swaying on the first three tiers,
+    // some holding glowing lights overhead. Thinner crowd on touch devices.
+    const crowd = createConcertCrowd(
+      scene,
+      LEVELS.slice(1, 4).map((l) => ({
+        inner: l.inner,
+        outer: l.outer,
+        y: l.y,
+      })),
+      {
+        density: window.matchMedia("(pointer: coarse)").matches ? 0.5 : 1,
+      },
+    );
+
     // ======================================================================
     // Luna — center-stage performer (Luna Singing SDK)
     // ======================================================================
@@ -789,6 +804,8 @@ export default function ConcertHall({
       const pulse = 0.06 + Math.sin(elapsed * 1.6) * 0.03;
       for (const m of beamMats) m.opacity = pulse;
 
+      crowd.update(elapsed);
+
       performerRef.current?.setAudienceTarget(
         enteredRef.current ? camera.position : null,
       );
@@ -815,6 +832,7 @@ export default function ConcertHall({
       }
       performerRef.current?.dispose();
       performerRef.current = null;
+      crowd.dispose();
       disposables.forEach((d) => d.dispose());
       renderer.dispose();
       renderer.domElement.remove();
