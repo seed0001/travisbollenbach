@@ -378,18 +378,21 @@ export type ArenaGame = {
 // from their back office. See getPublicArenaGames() in lib/studios.ts. The
 // `games` array below is unused and kept only as a shape reference.
 export const arena = {
-  // The big billboard over the dome entrance — change these lines any time.
+  // The big billboard over the dome entrance. One monolithic house name, with
+  // its two rooms lettered into the top corners — change any line here.
   billboard: {
-    title: "THE ARENA",
-    subtitle: "immersive games — step inside to play",
+    name: "THE COLOSSUS",
+    leftWing: "Game Arena",
+    rightWing: "Concert Hall",
+    subtitle: "step inside — pick your room",
   },
   accent: "#66e0ff",
   // Shown on the placard when you walk up to the dome on the street.
   entrance: {
-    name: "The Arena",
+    name: "The Colossus",
     blurb:
-      "A domed game hall at the end of the block. Step inside to drop into a lobby of 3D worlds.",
-    cta: "Enter the Arena",
+      "The monolith at the end of the block — a game arena and a concert hall under one dome. Step inside to choose your room.",
+    cta: "Step inside",
   },
   // Shown in the lobby overlay before you walk in.
   lobby: {
@@ -442,6 +445,38 @@ export const arena = {
     },
   ] as ArenaGame[],
 };
+
+// ---------------------------------------------------------------------------
+// The Venue landing — the door you hit after stepping into The Colossus:
+// pick the Game Arena or the Concert Hall.
+// ---------------------------------------------------------------------------
+
+export const venue = {
+  name: "THE COLOSSUS",
+  eyebrow: "the colossus",
+  intro:
+    "One monolith, two rooms. The game arena is a lobby of playable 3D worlds; the concert hall is a hall in the round with a live stage at its heart. Pick your room.",
+  doors: [
+    {
+      key: "arena",
+      eyebrow: "Multiplayer game hall",
+      title: "Game Arena",
+      description:
+        "A domed lobby ringed with game pods. Walk up to one and step into its 3D world.",
+      href: "/rabbit-hole/arena",
+      accent: "#66e0ff",
+    },
+    {
+      key: "concert",
+      eyebrow: "Live concert hall",
+      title: "Concert Hall",
+      description:
+        "A hall in the round: a sunken center stage, tiers climbing outward, and a performer on the floor.",
+      href: "/rabbit-hole/concert",
+      accent: "#8b5cf6",
+    },
+  ],
+} as const;
 
 // ---------------------------------------------------------------------------
 // The Character Workshop — design a persona, then talk to it
