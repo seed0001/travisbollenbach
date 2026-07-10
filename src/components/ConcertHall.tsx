@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import * as THREE from "three";
 import {
@@ -907,6 +908,14 @@ export default function ConcertHall({
                 {isPlaying ? "pause set" : "play set"}
               </button>
             )}
+            {entered && (
+              <Link
+                href="/rabbit-hole/game"
+                className="rounded-md border border-white/18 bg-white/[0.055] px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-[#dbe5ff] transition-colors hover:bg-[#dbe5ff] hover:text-[#0b1020]"
+              >
+                leave the hall
+              </Link>
+            )}
           </div>
         </div>
 
@@ -931,10 +940,10 @@ export default function ConcertHall({
 
         <p className="absolute inset-x-0 bottom-4 px-4 text-center text-[11px] uppercase tracking-[0.25em] text-ink-dim">
           {isTouch
-            ? "left thumb: walk — right thumb: look — ramps take you down to the stage"
+            ? "left thumb: walk — right thumb: look — leave the hall up top"
             : locked
-              ? "wasd / arrows: move — mouse: look — walk a ramp down toward the stage"
-              : "cursor released — click the scene to look around again"}
+              ? "wasd / arrows: move — mouse: look — esc: free the cursor for the buttons"
+              : "cursor released — click the scene to look around, or leave the hall up top"}
         </p>
       </div>
 
@@ -965,6 +974,12 @@ export default function ConcertHall({
           >
             enter the hall
           </button>
+          <Link
+            href="/rabbit-hole/game"
+            className="text-xs uppercase tracking-[0.22em] text-ink-dim underline-offset-4 transition-colors hover:text-[#dbe5ff] hover:underline"
+          >
+            back to the street
+          </Link>
         </div>
       )}
     </div>
