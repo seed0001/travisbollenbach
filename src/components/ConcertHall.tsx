@@ -7,20 +7,20 @@ import {
   createConcertPerformer,
   type ConcertPerformer,
 } from "@/lib/luna/createConcertPerformer";
-import {
-  DEFAULT_AVATAR_NAME,
-  DEFAULT_VRM_URL,
-} from "@/lib/luna/avatar/VRMAvatarController";
+import { DEFAULT_AVATAR_NAME } from "@/lib/luna/avatar/VRMAvatarController";
 import {
   splitFullSong,
   stemsAsFiles,
 } from "@/lib/luna/audio/stemSplitClient";
 import {
   DEFAULT_CONCERT_TRACK,
+  DEFAULT_LINEUP,
   LUNA_CONCERT_TRACKS,
   LUNA_SCALE_DEFAULT,
+  STAGE_LINEUPS,
   customUploadTrack,
   type ConcertTrack,
+  type StageLineup,
 } from "@/lib/luna/concertConfig";
 import {
   MENU_BOARD_POS,
@@ -137,6 +137,8 @@ export default function ConcertHall({
   const [lunaScale, setLunaScale] = useState(LUNA_SCALE_DEFAULT);
   const [avatarName, setAvatarName] = useState(DEFAULT_AVATAR_NAME);
   const [avatarLoading, setAvatarLoading] = useState(false);
+  const [lineupId, setLineupId] = useState(DEFAULT_LINEUP.id);
+  const lineupRef = useRef<StageLineup>(DEFAULT_LINEUP);
   const isTouch = useSyncExternalStore(
     subscribeToPointerType,
     () => window.matchMedia("(pointer: coarse)").matches,
@@ -235,16 +237,23 @@ export default function ConcertHall({
     }
   }, []);
 
-  const resetAvatar = useCallback(async () => {
+  // Swap the stage lineup: lead singer, plus optional duet partner. Both
+  // singers share the playing stems, so the song never stops mid-swap.
+  const applyLineup = useCallback(async (lineup: StageLineup) => {
+    lineupRef.current = lineup;
+    setLineupId(lineup.id);
     const performer = performerRef.current;
     if (!performer) return;
     setAvatarLoading(true);
     try {
-      await performer.loadAvatar({
-        kind: "url",
-        url: DEFAULT_VRM_URL,
-        name: DEFAULT_AVATAR_NAME,
-      });
+      if (performer.getAvatarName() !== lineup.lead.name) {
+        await performer.loadAvatar({
+          kind: "url",
+          url: lineup.lead.url,
+          name: lineup.lead.name,
+        });
+      }
+      await performer.setDuetPartner(lineup.partner);
     } catch (err) {
       console.error(err);
     } finally {
@@ -252,6 +261,10 @@ export default function ConcertHall({
       setAvatarLoading(false);
     }
   }, []);
+
+  const resetAvatar = useCallback(async () => {
+    await applyLineup(DEFAULT_LINEUP);
+  }, [applyLineup]);
 
   const startPerformance = useCallback(async () => {
     const performer = performerRef.current;
@@ -571,6 +584,21 @@ export default function ConcertHall({
           await performer.loadTrack(wanted, false);
         }
 
+        // Apply a lineup picked on the enter overlay before the performer
+        // finished loading (default lineup is what loadDefault gave us).
+        const lineup = lineupRef.current;
+        if (lineup.id !== DEFAULT_LINEUP.id) {
+          if (performer.getAvatarName() !== lineup.lead.name) {
+            await performer.loadAvatar({
+              kind: "url",
+              url: lineup.lead.url,
+              name: lineup.lead.name,
+            });
+          }
+          await performer.setDuetPartner(lineup.partner);
+          setAvatarName(performer.getAvatarName());
+        }
+
         if (pendingPlayRef.current) {
           await performer.play();
           setIsPlaying(true);
@@ -802,6 +830,44 @@ export default function ConcertHall({
 
   const showOverlay = !entered;
 
+  const lineupPicker = (
+    <div
+      className="flex w-full max-w-md flex-col gap-3"
+      role="group"
+      aria-label="Stage lineup"
+    >
+      <p className="text-xs font-bold uppercase tracking-[0.22em] text-ink-dim">
+        Singers
+      </p>
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-center">
+        {STAGE_LINEUPS.map((lineup) => {
+          const active = lineup.id === lineupId;
+          return (
+            <button
+              key={lineup.id}
+              type="button"
+              disabled={avatarLoading}
+              onClick={() => void applyLineup(lineup)}
+              className="w-full rounded-md border px-4 py-3 text-xs font-bold uppercase tracking-[0.14em] transition-colors disabled:opacity-45 sm:w-auto"
+              style={{
+                borderColor: active ? ACCENT : "rgba(255,255,255,0.18)",
+                backgroundColor: active ? `${ACCENT}22` : "rgba(255,255,255,0.055)",
+                color: active ? "#dbe5ff" : "rgba(219,229,255,0.72)",
+              }}
+            >
+              {lineup.label}
+            </button>
+          );
+        })}
+      </div>
+      {avatarLoading && (
+        <p className="text-center text-[10px] uppercase tracking-[0.18em] text-ink-dim">
+          Loading performer…
+        </p>
+      )}
+    </div>
+  );
+
   const setlistPicker = (compact = false) => (
     <div
       className={
@@ -871,6 +937,8 @@ export default function ConcertHall({
         trackLoading={trackLoading}
         avatarName={avatarName}
         avatarLoading={avatarLoading}
+        lineupId={lineupId}
+        onPickLineup={(lineup) => void applyLineup(lineup)}
         onUploadAvatar={(file) => void uploadAvatar(file)}
         onResetAvatar={() => void resetAvatar()}
         status={performerStatus}
@@ -959,9 +1027,10 @@ export default function ConcertHall({
           <p className="max-w-sm text-sm leading-relaxed text-ink-soft">
             A hall in the round: the stage sits at the bottom center, ringed by
             balconies that climb outward. Walk the tiers, lean over a railing,
-            or follow a ramp down to the floor. Luna sings and dances at center
-            stage. Use the stage menu board on the floor for songs and size.
+            or follow a ramp down to the floor. Pick your singers — solo or
+            duet — and a song. The stage menu board on the floor has the rest.
           </p>
+          {lineupPicker}
           {setlistPicker()}
           <p className="text-xs uppercase tracking-[0.18em] text-ink-dim">
             Selected: {selectedTrack.title}

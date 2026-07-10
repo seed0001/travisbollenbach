@@ -33,6 +33,9 @@ const TARGET_HEIGHT = LUNA_BASE_HEIGHT;
 const STAGE_FLOOR_Y = 0.02;
 /** VRM model forward offset baked into the anchor child (see normalizeVrmInAnchor). */
 const LUNA_MODEL_YAW = Math.PI / 2;
+/** Half-gap between duet singers, metres at 1× scale (clamped in world units). */
+const DUET_SPACING = 1.6;
+const DUET_SPACING_MAX = 14;
 
 export type ConcertPerformer = {
   update: (delta: number) => void;
@@ -45,6 +48,8 @@ export type ConcertPerformer = {
   getAvatarName: () => string;
   setScale: (multiplier: number) => void;
   getScale: () => number;
+  setDuetPartner: (partner: { url: string; name: string } | null) => Promise<void>;
+  getDuetPartnerName: () => string | null;
   setAudienceTarget: (position: THREE.Vector3 | null) => void;
   getHeadWorldPosition: (target: THREE.Vector3) => boolean;
   isPlaying: () => boolean;
@@ -126,9 +131,13 @@ function lerpAngle(current: number, target: number, t: number): number {
   return current + delta * t;
 }
 
-function applyAnchorScale(stageAnchor: THREE.Group, userScale: number): void {
+function applyAnchorScale(
+  stageAnchor: THREE.Group,
+  userScale: number,
+  offsetX = 0,
+): void {
   stageAnchor.scale.setScalar(userScale);
-  stageAnchor.position.set(0, STAGE_FLOOR_Y, 0);
+  stageAnchor.position.set(offsetX, STAGE_FLOOR_Y, 0);
 }
 
 export async function createConcertPerformer(
@@ -148,8 +157,15 @@ export async function createConcertPerformer(
   const anchorWorld = new THREE.Vector3();
   const AUDIENCE_TURN_SPEED = 10;
   let audienceTarget: THREE.Vector3 | null = null;
-  let hasSnappedToAudience = false;
   let vrmRoot: THREE.Object3D | null = null;
+
+  // Optional second singer for duet mode — shares the lead's stem mixer so
+  // both lip-sync the same vocals.
+  let duetController: VRMAvatarController | null = null;
+  let duetAnchor: THREE.Group | null = null;
+  let duetRoot: THREE.Object3D | null = null;
+  let duetSwapping = false;
+  const anchorSnapped = [false, false];
 
   const controller = new VRMAvatarController(scene, loader);
   let status = "Loading Luna…";
@@ -168,33 +184,42 @@ export async function createConcertPerformer(
     userScale = next;
     if (Math.abs(next - appliedScale) < 1e-4) return;
     appliedScale = next;
-    applyAnchorScale(stageAnchor, userScale);
+    const spacing = duetController
+      ? Math.min(DUET_SPACING * userScale, DUET_SPACING_MAX)
+      : 0;
+    applyAnchorScale(stageAnchor, userScale, -spacing);
+    if (duetAnchor) applyAnchorScale(duetAnchor, userScale, spacing);
   };
 
-  const syncAudienceFacing = (delta: number) => {
+  const faceAnchor = (anchor: THREE.Group, delta: number, idx: number) => {
     if (!audienceTarget) return;
 
-    stageAnchor.updateMatrixWorld(true);
-    stageAnchor.getWorldPosition(anchorWorld);
+    anchor.updateMatrixWorld(true);
+    anchor.getWorldPosition(anchorWorld);
 
     const dx = audienceTarget.x - anchorWorld.x;
     const dz = audienceTarget.z - anchorWorld.z;
     if (dx * dx + dz * dz < 0.25) return;
 
     const targetY = Math.atan2(dx, dz) - LUNA_MODEL_YAW + Math.PI;
-    if (!hasSnappedToAudience) {
-      stageAnchor.rotation.y = targetY;
-      hasSnappedToAudience = true;
+    if (!anchorSnapped[idx]) {
+      anchor.rotation.y = targetY;
+      anchorSnapped[idx] = true;
       return;
     }
 
     const t = 1 - Math.exp(-AUDIENCE_TURN_SPEED * delta);
-    stageAnchor.rotation.y = lerpAngle(stageAnchor.rotation.y, targetY, t);
+    anchor.rotation.y = lerpAngle(anchor.rotation.y, targetY, t);
+  };
+
+  const syncAudienceFacing = (delta: number) => {
+    faceAnchor(stageAnchor, delta, 0);
+    if (duetAnchor) faceAnchor(duetAnchor, delta, 1);
   };
 
   const pinModelOrientation = () => {
-    if (!vrmRoot) return;
-    vrmRoot.rotation.set(0, LUNA_MODEL_YAW, 0);
+    if (vrmRoot) vrmRoot.rotation.set(0, LUNA_MODEL_YAW, 0);
+    if (duetRoot) duetRoot.rotation.set(0, LUNA_MODEL_YAW, 0);
   };
 
   let stemPerformance!: StemPerformance;
@@ -226,9 +251,28 @@ export async function createConcertPerformer(
   await controller.applyMotionCatalog(CONCERT_MOTION_CATALOG);
   adoptLoadedAvatar();
 
-  controller.onSongEnded = () => {
-    controller.animationDirector?.startIdle();
+  const resetDrivers = (c: VRMAvatarController) => {
+    c.animationDirector?.startIdle();
+    c.lipsync?.reset();
+    c.emotion?.reset();
+    c.phonetics?.reset();
+    c.singingPerformance?.reset();
+  };
+
+  // One master end-of-song handler on the shared mixer. Constructing the duet
+  // controller against the same mixer would otherwise steal it (last wins), so
+  // it is re-asserted after every duet construction.
+  const onMixerEnded = () => {
+    resetDrivers(controller);
+    if (duetController) resetDrivers(duetController);
     setStatus(`Finished · ${currentTrack.title}`);
+  };
+  controller.mixer.onEnded = onMixerEnded;
+
+  const reconnectDuetDrivers = () => {
+    if (!duetController) return;
+    duetController.lipsync?.connectVocalsStem(controller.mixer);
+    duetController.emotion?.connectVocalsStem(controller.mixer);
   };
 
   await loadTrackStems(controller, stemPerformance, track, setStatus);
@@ -236,6 +280,10 @@ export async function createConcertPerformer(
   const startPlayback = async () => {
     await stemPerformance.play();
     controller.animationDirector?.startDance();
+    if (duetController) {
+      reconnectDuetDrivers();
+      duetController.animationDirector?.startDance();
+    }
     setStatus(`Playing · ${currentTrack.title}`);
   };
 
@@ -243,24 +291,29 @@ export async function createConcertPerformer(
     update: (delta) => {
       syncScale();
       controller.update(delta);
+      duetController?.update(delta);
       pinModelOrientation();
       syncAudienceFacing(delta);
     },
     dispose: () => {
       stemPerformance.dispose();
       controller.unloadAvatar();
+      duetController?.unloadAvatar();
+      if (duetAnchor) scene.remove(duetAnchor);
       scene.remove(stageAnchor);
     },
     play: startPlayback,
     pause: () => {
       stemPerformance.pause();
       controller.animationDirector?.startIdle();
+      if (duetController) resetDrivers(duetController);
       setStatus(`Paused · ${currentTrack.title}`);
     },
     togglePlayPause: async () => {
       if (stemPerformance.mixer.mixerState === "playing") {
         stemPerformance.pause();
         controller.animationDirector?.startIdle();
+        if (duetController) resetDrivers(duetController);
         setStatus(`Paused · ${currentTrack.title}`);
       } else {
         await startPlayback();
@@ -317,9 +370,11 @@ export async function createConcertPerformer(
       const wasPlaying = stemPerformance.mixer.mixerState === "playing";
       stemPerformance.pause();
       controller.animationDirector?.startIdle();
+      if (duetController) resetDrivers(duetController);
 
       currentTrack = nextTrack;
       await loadTrackStems(controller, stemPerformance, nextTrack, setStatus);
+      reconnectDuetDrivers();
 
       if (autoplay || wasPlaying) {
         await startPlayback();
@@ -332,10 +387,93 @@ export async function createConcertPerformer(
     },
     setAudienceTarget: (position) => {
       if (!position) {
-        hasSnappedToAudience = false;
+        anchorSnapped[0] = false;
+        anchorSnapped[1] = false;
       }
       audienceTarget = position;
     },
+    setDuetPartner: async (partner) => {
+      if (duetSwapping) return;
+      duetSwapping = true;
+      try {
+        if (!partner) {
+          if (duetController) {
+            duetController.unloadAvatar();
+            duetController = null;
+            duetRoot = null;
+            if (duetAnchor) {
+              scene.remove(duetAnchor);
+              duetAnchor = null;
+            }
+            anchorSnapped[1] = false;
+            appliedScale = -1;
+            syncScale();
+          }
+          return;
+        }
+        if (duetController?.displayName === partner.name) return;
+
+        setStatus(`Loading duet partner · ${partner.name}…`);
+        const wasPlaying = stemPerformance.mixer.mixerState === "playing";
+
+        if (!duetAnchor) {
+          duetAnchor = new THREE.Group();
+          duetAnchor.name = "DuetStageAnchor";
+          scene.add(duetAnchor);
+        }
+        if (!duetController) {
+          duetController = new VRMAvatarController(
+            scene,
+            loader,
+            controller.mixer,
+          );
+          controller.mixer.onEnded = onMixerEnded;
+        }
+        await duetController.load({
+          kind: "url",
+          url: partner.url,
+          name: partner.name,
+        });
+        await duetController.applyMotionCatalog(CONCERT_MOTION_CATALOG);
+
+        duetRoot = duetController.vrm?.scene ?? null;
+        if (duetRoot) {
+          duetRoot.parent?.remove(duetRoot);
+          duetAnchor.add(duetRoot);
+          normalizeVrmInAnchor(duetRoot);
+        }
+        anchorSnapped[1] = false;
+        appliedScale = -1;
+        syncScale();
+        reconnectDuetDrivers();
+        if (wasPlaying) {
+          duetController.animationDirector?.startDance();
+          setStatus(`Playing · ${currentTrack.title}`);
+        } else {
+          duetController.animationDirector?.startIdle();
+          setStatus(
+            `${controller.displayName} + ${partner.name} ready · ${currentTrack.title}`,
+          );
+        }
+      } catch (err) {
+        duetController?.unloadAvatar();
+        duetController = null;
+        duetRoot = null;
+        if (duetAnchor) {
+          scene.remove(duetAnchor);
+          duetAnchor = null;
+        }
+        appliedScale = -1;
+        syncScale();
+        setStatus(
+          `Duet failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        throw err;
+      } finally {
+        duetSwapping = false;
+      }
+    },
+    getDuetPartnerName: () => duetController?.displayName ?? null,
     getScale: () => userScale,
     getHeadWorldPosition: (target) => {
       const head =

@@ -4,8 +4,9 @@ import {
   LUNA_CONCERT_TRACKS,
   LUNA_SCALE_MAX,
   LUNA_SCALE_MIN,
-  customUploadTrack,
+  STAGE_LINEUPS,
   type ConcertTrack,
+  type StageLineup,
 } from "@/lib/luna/concertConfig";
 
 const ACCENT = "#8b5cf6";
@@ -21,6 +22,8 @@ type LunaStageMenuProps = {
   trackLoading: boolean;
   avatarName: string;
   avatarLoading: boolean;
+  lineupId: string;
+  onPickLineup: (lineup: StageLineup) => void;
   onUploadAvatar: (file: File) => void;
   onResetAvatar: () => void;
   status: string;
@@ -37,6 +40,8 @@ export default function LunaStageMenu({
   trackLoading,
   avatarName,
   avatarLoading,
+  lineupId,
+  onPickLineup,
   onUploadAvatar,
   onResetAvatar,
   status,
@@ -93,12 +98,39 @@ export default function LunaStageMenu({
 
         <section className="mb-5 space-y-3">
           <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-ink-dim">
+            Singers
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {STAGE_LINEUPS.map((lineup) => (
+              <button
+                key={lineup.id}
+                type="button"
+                disabled={avatarLoading}
+                onClick={() => onPickLineup(lineup)}
+                className="rounded-md border px-3 py-2 text-[10px] font-bold uppercase tracking-[0.14em] disabled:opacity-45"
+                style={{
+                  borderColor:
+                    lineupId === lineup.id ? ACCENT : "rgba(255,255,255,0.18)",
+                  backgroundColor:
+                    lineupId === lineup.id
+                      ? `${ACCENT}22`
+                      : "rgba(255,255,255,0.055)",
+                }}
+              >
+                {lineup.label}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="mb-5 space-y-3">
+          <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-ink-dim">
             Performer
           </p>
           <p className="text-[10px] leading-relaxed text-ink-dim">
-            Swap the singer for any <span className="uppercase">.vrm</span>{" "}
+            Swap the lead singer for any <span className="uppercase">.vrm</span>{" "}
             avatar — lip sync, expressions, and choreography re-attach
-            automatically. On stage now:{" "}
+            automatically. Lead on stage now:{" "}
             <span className="font-bold text-ink-soft">{avatarName}</span>
           </p>
           <label className="block text-[10px] uppercase tracking-wider text-ink-dim">
@@ -122,7 +154,7 @@ export default function LunaStageMenu({
             className="w-full rounded-md border px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-[#dbe5ff] transition-colors hover:bg-[#dbe5ff] hover:text-[#0b1020] disabled:opacity-45"
             style={{ borderColor: `${ACCENT}99` }}
           >
-            {avatarLoading ? "loading performer…" : "bring Luna back"}
+            {avatarLoading ? "loading performer…" : "reset to Luna solo"}
           </button>
         </section>
 

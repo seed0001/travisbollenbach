@@ -17,6 +17,34 @@ export const LUNA_SCALE_MAX = CONCERT_SPOTLIGHT_HEIGHT / LUNA_BASE_HEIGHT;
 /** Larger-than-life by default — 1× (real-world 1.7m) reads tiny in a hall this big. */
 export const LUNA_SCALE_DEFAULT = 2;
 
+export type ConcertSinger = { id: string; name: string; url: string };
+
+export const CONCERT_SINGERS: ConcertSinger[] = [
+  { id: "luna", name: "Luna", url: "/luna/Luna.vrm" },
+  { id: "victor", name: "Victor", url: "/luna/Victor.vrm" },
+];
+
+/** A stage lineup: one lead singer, optionally a duet partner beside them. */
+export type StageLineup = {
+  id: string;
+  label: string;
+  lead: ConcertSinger;
+  partner: ConcertSinger | null;
+};
+
+export const STAGE_LINEUPS: StageLineup[] = [
+  { id: "luna-solo", label: "Luna", lead: CONCERT_SINGERS[0], partner: null },
+  { id: "victor-solo", label: "Victor", lead: CONCERT_SINGERS[1], partner: null },
+  {
+    id: "duet",
+    label: "Duet · Luna + Victor",
+    lead: CONCERT_SINGERS[0],
+    partner: CONCERT_SINGERS[1],
+  },
+];
+
+export const DEFAULT_LINEUP = STAGE_LINEUPS[0];
+
 export const LUNA_CONCERT_TRACKS: ConcertTrack[] = [
   {
     id: "starline-dream",
