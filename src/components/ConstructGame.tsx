@@ -34,7 +34,6 @@ const REVEAL_RADIUS = 13;
 // forecourt zone (centered on the entrance) lets the visitor press E to enter.
 const ARENA_ENTRANCE = { x: 0, z: -104, radius: 12 };
 const ARENA_HREF = "/rabbit-hole/venue";
-const RAIN_COUNT = 2200;
 
 const ORB_COLORS = [
   "#8fb3ff",
@@ -1464,31 +1463,6 @@ export default function ConstructGame() {
       wallApiRef.current.applyStudios([...studiosRef.current.values()]);
     }
 
-    // --- Falling code rain (3D points) ----------------------------------------
-    const rainGeometry = new THREE.BufferGeometry();
-    const rainPositions = new Float32Array(RAIN_COUNT * 3);
-    const rainSpeeds = new Float32Array(RAIN_COUNT);
-    for (let i = 0; i < RAIN_COUNT; i += 1) {
-      rainPositions[i * 3] = (Math.random() - 0.5) * 300;
-      rainPositions[i * 3 + 1] = Math.random() * 60;
-      rainPositions[i * 3 + 2] = -140 + Math.random() * 180;
-      rainSpeeds[i] = 2 + Math.random() * 7;
-    }
-    rainGeometry.setAttribute(
-      "position",
-      new THREE.BufferAttribute(rainPositions, 3),
-    );
-    const rainMaterial = new THREE.PointsMaterial({
-      color: 0x8fb3ff,
-      size: 0.22,
-      transparent: true,
-      opacity: 0.7,
-      sizeAttenuation: true,
-    });
-    const rain = new THREE.Points(rainGeometry, rainMaterial);
-    scene.add(rain);
-    disposables.push(rainGeometry, rainMaterial);
-
     // --- Other visitors: glowing orbs -----------------------------------------
     type RemoteOrb = {
       group: THREE.Group;
@@ -1809,17 +1783,6 @@ export default function ConstructGame() {
       } else {
         camera.position.y = EYE_HEIGHT;
       }
-
-      // rain fall + wrap
-      const positions = rainGeometry.attributes.position
-        .array as Float32Array;
-      for (let i = 0; i < RAIN_COUNT; i += 1) {
-        positions[i * 3 + 1] -= rainSpeeds[i] * delta;
-        if (positions[i * 3 + 1] < 0) {
-          positions[i * 3 + 1] = 60;
-        }
-      }
-      rainGeometry.attributes.position.needsUpdate = true;
 
       // remote orbs drift toward their latest reported spot and bob gently
       const smoothing = 1 - Math.exp(-8 * delta);
