@@ -3,7 +3,12 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import type { GLTFParser } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { VRMHumanBoneName, VRMLoaderPlugin } from "@pixiv/three-vrm";
 import { VRMAnimationLoaderPlugin } from "@pixiv/three-vrm-animation";
-import { VRMAvatarController } from "./avatar/VRMAvatarController";
+import {
+  DEFAULT_AVATAR_NAME,
+  DEFAULT_VRM_URL,
+  VRMAvatarController,
+  type AvatarSource,
+} from "./avatar/VRMAvatarController";
 import { ALL_DANCE_URLS, IDLE_ANIMATION_URL } from "./animation/danceAnimations";
 import type { MotionCatalog } from "./avatar/avatarMotionCatalog";
 import { analyzeMusicGenre } from "./audio/genreAnalysis";
@@ -36,6 +41,8 @@ export type ConcertPerformer = {
   pause: () => void;
   togglePlayPause: () => Promise<void>;
   loadTrack: (track: ConcertTrack, autoplay?: boolean) => Promise<void>;
+  loadAvatar: (source: AvatarSource) => Promise<void>;
+  getAvatarName: () => string;
   setScale: (multiplier: number) => void;
   getScale: () => number;
   setAudienceTarget: (position: THREE.Vector3 | null) => void;
@@ -149,6 +156,7 @@ export async function createConcertPerformer(
   let currentTrack = track;
   let userScale = getUserScale?.() ?? LUNA_SCALE_DEFAULT;
   let appliedScale = -1;
+  let avatarSwapping = false;
 
   const setStatus = (next: string) => {
     status = next;
@@ -189,24 +197,34 @@ export async function createConcertPerformer(
     vrmRoot.rotation.set(0, LUNA_MODEL_YAW, 0);
   };
 
+  let stemPerformance!: StemPerformance;
+
+  // Re-parent the controller's freshly loaded VRM into the stage anchor and
+  // re-grab the per-avatar performance drivers. Runs on first load and again
+  // after every avatar swap.
+  const adoptLoadedAvatar = () => {
+    vrmRoot = controller.vrm?.scene ?? null;
+    if (vrmRoot) {
+      // Parent to our anchor so slider scale does not fight VRM animation updates.
+      if (vrmRoot.parent) {
+        vrmRoot.parent.remove(vrmRoot);
+      }
+      stageAnchor.add(vrmRoot);
+      normalizeVrmInAnchor(vrmRoot);
+      appliedScale = -1;
+      syncScale();
+    }
+
+    const performance = controller.stemPerformance;
+    if (!performance) {
+      throw new Error(`${controller.displayName} stem performance not ready.`);
+    }
+    stemPerformance = performance;
+  };
+
   await controller.loadDefault();
   await controller.applyMotionCatalog(CONCERT_MOTION_CATALOG);
-
-  vrmRoot = controller.vrm?.scene ?? null;
-  if (vrmRoot) {
-    // Parent to our anchor so slider scale does not fight VRM animation updates.
-    if (vrmRoot.parent) {
-      vrmRoot.parent.remove(vrmRoot);
-    }
-    stageAnchor.add(vrmRoot);
-    normalizeVrmInAnchor(vrmRoot);
-    syncScale();
-  }
-
-  const stemPerformance = controller.stemPerformance;
-  if (!stemPerformance) {
-    throw new Error("Luna stem performance not ready.");
-  }
+  adoptLoadedAvatar();
 
   controller.onSongEnded = () => {
     controller.animationDirector?.startIdle();
@@ -248,6 +266,53 @@ export async function createConcertPerformer(
         await startPlayback();
       }
     },
+    loadAvatar: async (source) => {
+      if (avatarSwapping) return;
+      avatarSwapping = true;
+
+      // The mixer survives avatar swaps, so the song keeps playing while the
+      // new model loads and its lip sync / dance rigs reconnect.
+      const wasPlaying = stemPerformance.mixer.mixerState === "playing";
+      const incomingName =
+        source.kind === "file"
+          ? source.file.name.replace(/\.vrm$/i, "")
+          : source.name;
+      setStatus(`Loading performer · ${incomingName}…`);
+
+      const wireUp = async () => {
+        await controller.applyMotionCatalog(CONCERT_MOTION_CATALOG);
+        adoptLoadedAvatar();
+        if (wasPlaying) {
+          controller.animationDirector?.startDance();
+        }
+      };
+
+      try {
+        await controller.load(source);
+        await wireUp();
+        setStatus(
+          wasPlaying
+            ? `Playing · ${currentTrack.title}`
+            : `${controller.displayName} ready · ${currentTrack.title}`,
+        );
+      } catch (err) {
+        // The old avatar is already unloaded by controller.load — bring the
+        // default performer back so the stage is never left empty.
+        await controller.load({
+          kind: "url",
+          url: DEFAULT_VRM_URL,
+          name: DEFAULT_AVATAR_NAME,
+        });
+        await wireUp();
+        setStatus(
+          `Avatar failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        throw err;
+      } finally {
+        avatarSwapping = false;
+      }
+    },
+    getAvatarName: () => controller.displayName,
     loadTrack: async (nextTrack, autoplay = false) => {
       const wasPlaying = stemPerformance.mixer.mixerState === "playing";
       stemPerformance.pause();
