@@ -50,6 +50,8 @@ export type ConcertPerformer = {
   getScale: () => number;
   setDuetPartner: (partner: { url: string; name: string } | null) => Promise<void>;
   getDuetPartnerName: () => string | null;
+  /** Tap on the music stem for stage visuals — lasers, crowd lights. */
+  getMusicAnalyser: () => AnalyserNode;
   setAudienceTarget: (position: THREE.Vector3 | null) => void;
   getHeadWorldPosition: (target: THREE.Vector3) => boolean;
   isPlaying: () => boolean;
@@ -474,6 +476,7 @@ export async function createConcertPerformer(
       }
     },
     getDuetPartnerName: () => duetController?.displayName ?? null,
+    getMusicAnalyser: () => controller.mixer.musicAnalyser,
     getScale: () => userScale,
     getHeadWorldPosition: (target) => {
       const head =

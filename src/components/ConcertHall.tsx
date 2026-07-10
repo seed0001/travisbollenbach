@@ -28,6 +28,7 @@ import {
   createMenuBoard,
 } from "@/lib/luna/stageMenuBoard";
 import { createConcertCrowd } from "@/lib/concertCrowd";
+import { createConcertLasers } from "@/lib/concertLasers";
 import LunaStageMenu from "@/components/LunaStageMenu";
 
 // ============================================================================
@@ -567,6 +568,15 @@ export default function ConcertHall({
       },
     );
 
+    // The laser show — a rig of sweeping beams over the stage, driven by an
+    // analyser tapped off the music stem (idles gently when nothing plays).
+    const lasers = createConcertLasers(scene, {
+      rigY: topY + 16,
+      rigRadius: STAGE_R * 0.75,
+      beamLength: topY + 22,
+      floorRadius: STAGE_R,
+    });
+
     // ======================================================================
     // Luna — center-stage performer (Luna Singing SDK)
     // ======================================================================
@@ -800,11 +810,19 @@ export default function ConcertHall({
       const targetY = currentFloorY + EYE_HEIGHT;
       camera.position.y += (targetY - camera.position.y) * Math.min(1, delta * 8);
 
-      // pulse the stage beams
-      const pulse = 0.06 + Math.sin(elapsed * 1.6) * 0.03;
+      // lasers analyze the music stem; everything reactive shares the result
+      const audio = lasers.update(
+        elapsed,
+        delta,
+        performerRef.current?.getMusicAnalyser() ?? null,
+      );
+
+      // spotlight beams: gentle idle sine, swelling with the music
+      const pulse =
+        0.05 + Math.sin(elapsed * 1.6) * 0.02 + audio.level * 0.12;
       for (const m of beamMats) m.opacity = pulse;
 
-      crowd.update(elapsed);
+      crowd.update(elapsed, audio.level);
 
       performerRef.current?.setAudienceTarget(
         enteredRef.current ? camera.position : null,
@@ -833,6 +851,7 @@ export default function ConcertHall({
       performerRef.current?.dispose();
       performerRef.current = null;
       crowd.dispose();
+      lasers.dispose();
       disposables.forEach((d) => d.dispose());
       renderer.dispose();
       renderer.domElement.remove();

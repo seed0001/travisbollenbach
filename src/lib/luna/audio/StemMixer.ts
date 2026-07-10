@@ -16,6 +16,8 @@ export class StemMixer {
   private readonly musicGain: GainNode;
   private readonly vocalsGain: GainNode;
   readonly vocalsAnalyser: AnalyserNode;
+  /** Tap on the music stem for stage visuals (lasers, lights). Never vocals. */
+  readonly musicAnalyser: AnalyserNode;
 
   private musicSource: MediaElementAudioSourceNode | null = null;
   private vocalsSource: MediaElementAudioSourceNode | null = null;
@@ -38,6 +40,13 @@ export class StemMixer {
     this.vocalsGain = this.ctx.createGain();
     this.vocalsAnalyser = this.ctx.createAnalyser();
     this.vocalsAnalyser.fftSize = 2048;
+
+    // Permanent parallel tap: musicGain → musicAnalyser (no audible path).
+    // Lives here, not in buildAudioGraph, so stem reloads never re-connect it.
+    this.musicAnalyser = this.ctx.createAnalyser();
+    this.musicAnalyser.fftSize = 256;
+    this.musicAnalyser.smoothingTimeConstant = 0.75;
+    this.musicGain.connect(this.musicAnalyser);
   }
 
   get audioContext(): AudioContext {

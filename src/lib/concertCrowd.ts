@@ -14,8 +14,11 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 export type CrowdTier = { inner: number; outer: number; y: number };
 
 export type ConcertCrowd = {
-  /** Per-frame sway. `elapsed` is total seconds (THREE.Clock.elapsedTime). */
-  update: (elapsed: number) => void;
+  /**
+   * Per-frame sway. `elapsed` is total seconds (THREE.Clock.elapsedTime);
+   * `energy` (0–1, optional) speeds the sway and widens the light swings.
+   */
+  update: (elapsed: number, energy?: number) => void;
   dispose: () => void;
 };
 
@@ -119,10 +122,20 @@ export function createConcertCrowd(
   const Z_AXIS = new THREE.Vector3(0, 0, 1);
   const IDENTITY_Q = new THREE.Quaternion();
 
-  const update = (elapsed: number) => {
+  // Internal sway clock: advancing it faster (instead of scaling the sine
+  // frequency directly) keeps every phase continuous when the energy jumps.
+  let lastElapsed = 0;
+  let swayTime = 0;
+
+  const update = (elapsed: number, energy = 0) => {
+    const dt = Math.max(0, elapsed - lastElapsed);
+    lastElapsed = elapsed;
+    swayTime += dt * (1 + energy * 1.1);
+    const lightBoost = 1 + energy * 0.5;
+
     for (let i = 0; i < seats.length; i += 1) {
       const seat = seats[i];
-      const sway = Math.sin(elapsed * seat.speed + seat.phase);
+      const sway = Math.sin(swayTime * seat.speed + seat.phase);
 
       qYaw.setFromAxisAngle(Y_AXIS, seat.yaw);
       qLean.setFromAxisAngle(Z_AXIS, sway * seat.amp);
@@ -134,7 +147,7 @@ export function createConcertCrowd(
       if (seat.lightIndex >= 0) {
         // held overhead, swinging on a wider arc than the body lean —
         // tangential to the ring (local X after the yaw)
-        const swing = sway * seat.lightAmp;
+        const swing = sway * seat.lightAmp * lightBoost;
         const tx = -Math.sin(seat.yaw);
         const tz = -Math.cos(seat.yaw);
         p.set(
