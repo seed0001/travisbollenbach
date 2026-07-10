@@ -30,6 +30,18 @@ export const LUNA_CONCERT_TRACKS: ConcertTrack[] = [
     music: "/luna/pixel-escape-instrumental.wav",
     vocals: "/luna/pixel-escape-vocals.wav",
   },
+  {
+    id: "stuck-in-the-chat",
+    title: "Stuck in the Chat",
+    music: "/luna/stuck-in-the-chat-instrumental.mp3",
+    vocals: "/luna/stuck-in-the-chat-vocals.mp3",
+  },
+  {
+    id: "mud-life-anthem",
+    title: "Mud Life Anthem",
+    music: "/luna/mud-life-anthem-instrumental.mp3",
+    vocals: "/luna/mud-life-anthem-vocals.mp3",
+  },
 ];
 
 export const DEFAULT_CONCERT_TRACK = LUNA_CONCERT_TRACKS[0];
