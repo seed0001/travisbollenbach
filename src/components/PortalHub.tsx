@@ -2,10 +2,116 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import * as THREE from "three";
 import { hub } from "@/lib/content";
 import WalkWorld, { type WorldHandle } from "./WalkWorld";
+
+type HubStats = {
+  onlineNow: number;
+  hostOnline: boolean;
+  members: number;
+  visitorsToday: number;
+  visitsToday: number;
+  recentVisits: number;
+};
+
+const STATS_REFRESH_MS = 30000;
+const statFormat = new Intl.NumberFormat("en-US");
+
+// The giant scoreboard at the back of the hub: live site stats drawn onto a
+// canvas texture, jumbotron-style. Returns the texture plus a redraw function
+// so fresh numbers can be painted in without rebuilding the scene.
+function makeScoreboardTexture() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1280;
+  canvas.height = 720;
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+
+  const draw = (stats: HubStats | null) => {
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const W = canvas.width;
+    const H = canvas.height;
+    const num = (v: number | undefined) =>
+      v === undefined ? "—" : statFormat.format(v);
+
+    ctx.fillStyle = "#050810";
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "rgba(143,179,255,0.045)";
+    for (let y = 0; y < H; y += 6) ctx.fillRect(0, y, W, 2);
+    ctx.strokeStyle = "#8fb3ff";
+    ctx.lineWidth = 10;
+    ctx.strokeRect(8, 8, W - 16, H - 16);
+    ctx.strokeStyle = "rgba(143,179,255,0.35)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(26, 26, W - 52, H - 52);
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    ctx.shadowColor = "#8fb3ff";
+    ctx.shadowBlur = 18;
+    ctx.fillStyle = "#8fb3ff";
+    ctx.font = "900 40px Arial";
+    ctx.fillText("L I V E   S I T E   T E L E M E T R Y", W / 2, 84);
+
+    ctx.shadowColor = "#7dffa8";
+    ctx.shadowBlur = 34;
+    ctx.fillStyle = "#7dffa8";
+    ctx.font = "900 170px Arial";
+    ctx.fillText(num(stats?.onlineNow), W / 2, 240);
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = "#dbe5ff";
+    ctx.font = "700 30px Arial";
+    ctx.fillText("IN THE CONSTRUCT RIGHT NOW", W / 2, 352);
+
+    const hostLabel =
+      stats === null
+        ? "CHECKING THE CONSTRUCT…"
+        : stats.hostOnline
+          ? "● TRAVIS IS IN THE CONSTRUCT"
+          : "○ TRAVIS IS NOT INSIDE AT THE MOMENT";
+    ctx.shadowColor = stats?.hostOnline ? "#7dffa8" : "#8fb3ff";
+    ctx.shadowBlur = stats?.hostOnline ? 22 : 6;
+    ctx.fillStyle = stats?.hostOnline ? "#7dffa8" : "rgba(219,229,255,0.55)";
+    ctx.font = "800 30px Arial";
+    ctx.fillText(hostLabel, W / 2, 418);
+
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = "rgba(143,179,255,0.4)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(70, 468);
+    ctx.lineTo(W - 70, 468);
+    ctx.stroke();
+
+    const cells = [
+      { label: "VISITORS TODAY", value: num(stats?.visitorsToday) },
+      { label: "VISITS TODAY", value: num(stats?.visitsToday) },
+      { label: "MEMBERS", value: num(stats?.members) },
+      { label: "RECENT VISITS", value: num(stats?.recentVisits) },
+    ];
+    const cellWidth = (W - 140) / cells.length;
+    cells.forEach((cell, i) => {
+      const cx = 70 + cellWidth * i + cellWidth / 2;
+      ctx.shadowColor = "#8fb3ff";
+      ctx.shadowBlur = 16;
+      ctx.fillStyle = "#dbe5ff";
+      ctx.font = "900 72px Arial";
+      ctx.fillText(cell.value, cx, 556);
+      ctx.shadowBlur = 4;
+      ctx.fillStyle = "rgba(143,179,255,0.8)";
+      ctx.font = "700 22px Arial";
+      ctx.fillText(cell.label, cx, 634);
+    });
+
+    texture.needsUpdate = true;
+  };
+
+  return { texture, draw };
+}
 
 // The lit sign that floats over each pill: its name + a one-line subtitle.
 function makeSignTexture(title: string, subtitle: string, accent: string) {
@@ -66,6 +172,35 @@ type PillSpec = {
 
 export default function PortalHub() {
   const router = useRouter();
+
+  // Live stats feed for the scoreboard. The scene assigns its redraw function
+  // into redrawRef when it builds; the fetch loop paints fresh numbers in.
+  const statsRef = useRef<HubStats | null>(null);
+  const redrawRef = useRef<((stats: HubStats | null) => void) | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      try {
+        const response = await fetch("/api/stats", { cache: "no-store" });
+        if (!response.ok) return;
+        const data = (await response.json()) as HubStats;
+        if (cancelled) return;
+        statsRef.current = data;
+        redrawRef.current?.(data);
+      } catch {
+        // stats are decorative — stay quiet on failure
+      }
+    };
+
+    load();
+    const timer = setInterval(load, STATS_REFRESH_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, []);
 
   const build = useCallback(
     (scene: THREE.Scene): WorldHandle => {
@@ -221,6 +356,71 @@ export default function PortalHub() {
         });
       }
 
+      // --- The scoreboard: live site stats, way at the back -----------------
+      // Sits beyond the walkable bounds so it reads as a glowing backdrop.
+      // Its materials ignore fog so it stays highlighted through the haze.
+      const BOARD_Z = -56;
+      const BOARD_Y = 11;
+      const BOARD_W = 26;
+      const BOARD_H = BOARD_W * (720 / 1280);
+
+      const scoreboard = makeScoreboardTexture();
+      scoreboard.draw(statsRef.current);
+      redrawRef.current = scoreboard.draw;
+      disposables.push(scoreboard.texture);
+
+      const boardGroup = new THREE.Group();
+      boardGroup.position.set(0, 0, BOARD_Z);
+
+      const frameGeo = new THREE.BoxGeometry(BOARD_W + 1.6, BOARD_H + 1.8, 1.2);
+      const frameMat = new THREE.MeshBasicMaterial({ color: 0x0b1020 });
+      const frame = new THREE.Mesh(frameGeo, frameMat);
+      frame.position.set(0, BOARD_Y, -0.7);
+      boardGroup.add(frame);
+      disposables.push(frameGeo, frameMat);
+
+      const faceGeo = new THREE.PlaneGeometry(BOARD_W, BOARD_H);
+      const faceMat = new THREE.MeshBasicMaterial({
+        map: scoreboard.texture,
+        fog: false,
+        toneMapped: false,
+      });
+      const face = new THREE.Mesh(faceGeo, faceMat);
+      face.position.set(0, BOARD_Y, 0);
+      boardGroup.add(face);
+      disposables.push(faceGeo, faceMat);
+
+      const legGeo = new THREE.BoxGeometry(1.3, BOARD_Y - BOARD_H / 2 + 0.2, 1.3);
+      const legMat = new THREE.MeshBasicMaterial({ color: 0x131a2b });
+      for (const legX of [-9, 9]) {
+        const leg = new THREE.Mesh(legGeo, legMat);
+        leg.position.set(legX, (BOARD_Y - BOARD_H / 2) / 2, -0.7);
+        boardGroup.add(leg);
+      }
+      disposables.push(legGeo, legMat);
+
+      // Halo behind the board — the frame occludes its center, leaving a rim.
+      const boardGlowMat = new THREE.SpriteMaterial({
+        map: glowTex,
+        color: 0x8fb3ff,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        opacity: 0.55,
+        fog: false,
+      });
+      const boardGlow = new THREE.Sprite(boardGlowMat);
+      boardGlow.scale.set(46, 30, 1);
+      boardGlow.position.set(0, BOARD_Y, -1.6);
+      boardGroup.add(boardGlow);
+      disposables.push(boardGlowMat);
+
+      const boardLight = new THREE.PointLight(0x8fb3ff, 30, 40);
+      boardLight.position.set(0, BOARD_Y - 2, BOARD_Z + 6);
+      scene.add(boardLight);
+
+      scene.add(boardGroup);
+
       // --- Drifting motes for depth ----------------------------------------
       const MOTES = 900;
       const moteGeo = new THREE.BufferGeometry();
@@ -255,6 +455,7 @@ export default function PortalHub() {
           for (const g of glowMats) {
             g.material.opacity = 0.72 + Math.sin(elapsed * 1.6 + g.phase) * 0.18;
           }
+          boardGlowMat.opacity = 0.45 + Math.sin(elapsed * 0.9) * 0.12;
           const positions = moteGeo.attributes.position.array as Float32Array;
           for (let i = 0; i < MOTES; i += 1) {
             positions[i * 3 + 1] -= moteSpeed[i] * 0.016;
@@ -263,6 +464,9 @@ export default function PortalHub() {
           moteGeo.attributes.position.needsUpdate = true;
         },
         disposables,
+        dispose() {
+          if (redrawRef.current === scoreboard.draw) redrawRef.current = null;
+        },
       };
     },
     [router],
