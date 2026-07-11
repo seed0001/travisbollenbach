@@ -4,7 +4,7 @@ The source for **[travisbollenbach.com](https://travisbollenbach.com)** — a pe
 
 A visitor lands in **the Gateway** — a walkable 3D hub with a live stats scoreboard glowing at the back — and picks a pill:
 
-- **Blue pill → `/storefront`** — a clean professional portfolio: software, services, projects, and an about section, staged as a 3D boulevard.
+- **Blue pill → `/storefront`** — the professional portfolio: a project gallery of 53 GitHub repos in twelve categories, staged as a 3D boulevard of walkable panels.
 - **Red pill → `/rabbit-hole/game`** — the experimental world behind the work: **The Construct**, a live 3D multiplayer environment, with essays, an AI persona workshop, and a three-room venue branching off it.
 
 It's part portfolio, part playground.
@@ -98,7 +98,7 @@ All persistent data (accounts, sessions, studios, comments, uploads, VRM files) 
 src/
   app/
     page.tsx              The pill-choice landing screen
-    storefront/           Blue pill — professional portfolio
+    storefront/           Blue pill — the GitHub project gallery
     rabbit-hole/          Red pill — essays, The Construct, Arena, Workshop
     account/  admin/  studio/   Auth, owner console, studio back office
     api/                  Auth, comments, studios, uploads, workshop chat, stats, analytics
@@ -108,7 +108,7 @@ src/
 server.mjs               Custom Next.js + WebSocket server (the multiplayer lobby)
 ```
 
-All site copy lives in `src/lib/content.ts` — edit there to change text everywhere.
+Most site copy lives in `src/lib/content.ts` — edit there to change text everywhere. The Portfolio Walk's project categories and repo links live in `src/components/PortfolioWalk.tsx`.
 
 ## Deployment
 

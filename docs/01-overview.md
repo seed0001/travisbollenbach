@@ -6,14 +6,14 @@
 
 The landing page is a *Matrix*-style choice, staged as a small 3D world ([The Gateway](02-the-gateway.md)) with two pills hovering on pedestals:
 
-- **Blue pill → [The Portfolio Walk](03-portfolio-walk.md)** (`/storefront`) — the professional version: software, services, projects, and the person behind them, presented as a 3D boulevard of readable panels.
+- **Blue pill → [The Portfolio Walk](03-portfolio-walk.md)** (`/storefront` — a legacy route name; nothing is for sale) — the professional version: a project gallery of everything Travis has built, presented as a 3D boulevard of category panels that link out to every GitHub repo.
 - **Red pill → [The Construct](05-the-construct.md)** (`/rabbit-hole/game`) — the experimental version: a live multiplayer 3D city block, plus the essays, venues, and AI experiments that branch off it.
 
-Nothing is hidden behind the choice — both halves are always reachable — but the framing sets the tone: one door is for clients, the other is for the curious.
+Nothing is hidden behind the choice — both halves are always reachable — but the framing sets the tone: one door shows the work, the other is for the curious.
 
 ## What's in each half
 
-**The professional half** is a single walkable boulevard: a hero panel, a stats wall, four project panels, three service panels, an about panel with a photo, and a contact panel at the end of the road.
+**The professional half** is a single walkable boulevard: twelve category panels covering 53 GitHub projects — 3D worlds, games, AI companions, agents, frameworks, and more — each opening a list of direct repo links, with the photo of Travis and his dog at the center end of the road.
 
 **The experimental half** fans out:
 

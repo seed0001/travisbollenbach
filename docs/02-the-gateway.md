@@ -6,7 +6,7 @@ The first thing every visitor sees. Instead of a flat landing page, the site dro
 
 ## What's in the room
 
-- **The blue pill** (left) — a glossy blue capsule spinning over a lit pad. Taking it routes to `/storefront`, the professional portfolio.
+- **The blue pill** (left) — a glossy blue capsule spinning over a lit pad. Taking it routes to `/storefront`, the project gallery of Travis's GitHub work (the route name is a leftover — nothing is sold there).
 - **The red pill** (right) — the same treatment in red. Taking it routes to `/rabbit-hole/game`, straight into the Construct.
 - **The scoreboard** — a giant jumbotron deep at the back of the room, past the walkable boundary, showing live site stats (see below).
 - **Signage** — each pill carries a floating lit sign with its name and a one-line description of where it leads.
@@ -25,7 +25,7 @@ Walking into a pill's trigger zone pops a prompt card ("Take the blue pill" / "T
 
 Not everyone wants the theater:
 
-- **portfolio** (top-right) — jumps straight to `/storefront` without walking anywhere.
+- **portfolio** (top-right) — jumps straight to the project gallery at `/storefront` without walking anywhere.
 - **sign in** (corner link) — goes to `/account` for members and the owner.
 
 ## The live scoreboard
