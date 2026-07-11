@@ -15,12 +15,12 @@ Per-section guides live in [`docs/`](docs/README.md) — one page for each part 
 
 ## The Construct
 
-The centerpiece (`/rabbit-hole/game`) is a browser-rendered 3D city block built with **Three.js**, where visitors move around as avatars in real time:
+The centerpiece (`/rabbit-hole/game`) is a browser-rendered 3D city block built with **Three.js**, where visitors walk around together in real time:
 
-- **Multiplayer presence** — see other visitors move and turn, synced over a WebSocket server.
+- **Multiplayer presence** — every visitor appears as a glowing orb with their name above it; see each other move live, synced over a WebSocket server.
 - **Text + voice chat** — chat messages broadcast to everyone in the lobby, with WebRTC peer-to-peer voice over a mesh (the WebSocket doubles as the signaling channel).
 - **Walk-up interactions** — approach a storefront or the Arena entrance and a prompt appears to step inside.
-- **VRM avatars** — humanoid avatars via [`@pixiv/three-vrm`](https://github.com/pixiv/three-vrm), with a procedural walk cycle; `.vrm`, `.glb`, `.gltf`, and `.fbx` models are supported.
+- **Shopkeeper avatars** — unit owners can upload a humanoid model (`.vrm`, `.glb`, `.gltf`, or `.fbx`, via [`@pixiv/three-vrm`](https://github.com/pixiv/three-vrm)) that paces around inside their unit with a procedural walk cycle.
 - **Ten rentable storefront units** — a street of shops. One is live (the Character Workshop); others are demo tenants or vacant "for lease" spots.
 - **The Arena** — a domed game hall at the end of the block. Each unit owns a pod inside, and an owner can point their pod at an external game URL to make it playable.
 
@@ -53,7 +53,7 @@ The site has its own lightweight auth and content-management layer, all backed b
 - **Auth** (`/account`) — email/password sign-up with scrypt-hashed passwords and cookie sessions. The account matching the `ADMIN_EMAIL` env var is minted as the owner and can't be demoted or deleted.
 - **Studio back office** (`/studio`) — a unit owner customizes their storefront: wall content (image, website, or YouTube embed), merch links, an uploaded VRM avatar, and the game their Arena pod links to.
 - **Admin console** (`/admin`) — the owner manages members and studios.
-- **Guestbook** — an account-free comment channel on the portfolio.
+- **Guestbook** — an account-free comment channel on the essays page (`/rabbit-hole`).
 - **Analytics** — a self-hosted page-view beacon and a live stats endpoint (visitor count, whether the host is online).
 
 ## Tech stack
