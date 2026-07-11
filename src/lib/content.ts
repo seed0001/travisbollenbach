@@ -23,7 +23,7 @@ export const choice = {
   prompt: "Choose.",
   blue: {
     label: "Blue Pill",
-    hint: "A clean portfolio: software, services, projects, and the professional version of the work.",
+    hint: "A clean portfolio: every project, categorized and linked to its GitHub repo.",
     href: "/storefront",
   },
   red: {
@@ -49,7 +49,7 @@ export const hub = {
   pills: {
     blue: {
       label: "Blue Pill",
-      subtitle: "A clean portfolio: software, services, and projects.",
+      subtitle: "A clean portfolio: the projects and their GitHub repos.",
       prompt: "Take the blue pill",
       href: "/storefront",
       accent: "#38bdf8",
@@ -65,95 +65,15 @@ export const hub = {
 };
 
 // ---------------------------------------------------------------------------
-// Blue pill — the Storefront
+// Blue pill — the Portfolio Walk (the GitHub project gallery)
+//
+// The gallery's categories and repo links live in the CATEGORIES array in
+// src/components/PortfolioWalk.tsx — only the page kicker and control hints
+// live here (the portfolioWalk object below).
 // ---------------------------------------------------------------------------
-
-export type Product = {
-  title: string;
-  category: string;
-  year: string;
-  description: string;
-  tags: string[];
-  status: "Available" | "In development" | "By request";
-  href?: string;
-};
-
-export const products: Product[] = [
-  {
-    title: "Flagship Web Platform",
-    category: "Software",
-    year: "2026",
-    description:
-      "A full-stack product built end to end — from architecture to pixel-perfect UI. Fast, accessible, and built to scale with your business.",
-    tags: ["Next.js", "TypeScript", "Cloud"],
-    status: "Available",
-  },
-  {
-    title: "AI-Powered Tooling",
-    category: "Automation",
-    year: "2025",
-    description:
-      "Applied LLMs to real workflows — turning slow manual processes into something that feels like magic. Built for teams that ship.",
-    tags: ["AI / LLMs", "Product", "UX"],
-    status: "Available",
-  },
-  {
-    title: "Brand Identity System",
-    category: "Design",
-    year: "2025",
-    description:
-      "A complete visual language: logo, type, color, and motion guidelines that make a brand instantly recognizable.",
-    tags: ["Branding", "Design", "Motion"],
-    status: "By request",
-  },
-  {
-    title: "Launch Campaign Kit",
-    category: "Strategy",
-    year: "2024",
-    description:
-      "Strategy, site, and story for a product launch — positioning that converts attention into customers.",
-    tags: ["Strategy", "Web", "Content"],
-    status: "By request",
-  },
-];
-
-export type Service = {
-  title: string;
-  description: string;
-  points: string[];
-};
-
-export const services: Service[] = [
-  {
-    title: "Product & Software",
-    description:
-      "From idea to shipped. I design and build web apps and tools that are fast, reliable, and a joy to use.",
-    points: ["Full-stack web apps", "AI integration", "Technical architecture"],
-  },
-  {
-    title: "Design & Brand",
-    description:
-      "Identity, interface, and motion. I make things that look sharp and feel intentional at every touchpoint.",
-    points: ["Brand identity", "UI / UX design", "Design systems"],
-  },
-  {
-    title: "Strategy & Launch",
-    description:
-      "The plan around the product. Positioning, story, and the site that turns interest into results.",
-    points: ["Positioning", "Landing pages", "Go-to-market"],
-  },
-];
 
 export const about = {
   photoAlt: "Travis Bollenbach crouched beside his dog on a stone wall",
-  storefront: {
-    eyebrow: "The human behind the tools",
-    title: "Hi, I'm Travis.",
-    paragraphs: [
-      "Part engineer, part creative, part founder. I've spent over a decade building software, brands, and products — usually all three at once. When you work with me, the person who designs the thing is the same person who builds it and the same person who answers the email.",
-      "Off the clock you'll find me outside with the head of my quality assurance department. He approves every release.",
-    ],
-  },
   rabbitHole: {
     eyebrow: "the architect",
     title: "Every construct has an architect.",
@@ -172,36 +92,13 @@ export const guestbook = {
   emptyState: "No transmissions yet. Be the first voice in the channel.",
 };
 
-export const stats = [
-  { value: "10+", label: "Years building" },
-  { value: "50+", label: "Projects shipped" },
-  { value: "3", label: "Disciplines, one focus" },
-  { value: "∞", label: "Curiosity" },
-];
-
-// The 3D portfolio walk — a boulevard of readable panels you stroll past.
+// The 3D portfolio walk — a boulevard of project-category panels you stroll
+// past, each opening a list of GitHub repo links.
 export const portfolioWalk = {
   kicker: "professional portfolio",
-  title: "Walk the work.",
-  intro:
-    "A boulevard of panels. Stroll down the road and read them on either side — the projects, the services, and the person behind them. Walk up to any panel and press E to read it up close.",
   hint: {
     desktop: "wasd / arrows: walk — mouse: look — E at a panel: read it",
     touch: "left thumb: walk — right thumb / motion: look — tap a panel: read it",
-  },
-  hero: {
-    eyebrow: "professional portfolio",
-    title: "Software, systems &\nlaunch-ready work.",
-    body: "Tools, applications, and software for businesses that need things to actually work. Clear scope, polished interface, practical execution. Keep walking — the work is on both sides of the road.",
-  },
-  statsHeading: "By the numbers",
-  productsHeading: "Tools & applications",
-  servicesHeading: "Work with me",
-  contact: {
-    eyebrow: "the end of the road",
-    title: "Need something built?",
-    body: "Tell me what your business needs and let's make it real.",
-    cta: "Email me",
   },
 };
 
