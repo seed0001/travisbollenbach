@@ -2,12 +2,16 @@
 
 The source for **[travisbollenbach.com](https://travisbollenbach.com)** — a personal site that's really two sites behind one door.
 
-A visitor lands on a *Matrix*-style choice screen and picks a pill:
+A visitor lands in **the Gateway** — a walkable 3D hub with a live stats scoreboard glowing at the back — and picks a pill:
 
-- **Blue pill → `/storefront`** — a clean professional portfolio: software, services, projects, an about section, a guestbook, and site stats.
-- **Red pill → `/rabbit-hole`** — the experimental world behind the work: short essays on characters, AI, simulation, and story, opening into **The Construct**, a live 3D multiplayer environment you can walk around in.
+- **Blue pill → `/storefront`** — a clean professional portfolio: software, services, projects, and an about section, staged as a 3D boulevard.
+- **Red pill → `/rabbit-hole/game`** — the experimental world behind the work: **The Construct**, a live 3D multiplayer environment, with essays, an AI persona workshop, and a three-room venue branching off it.
 
 It's part portfolio, part playground.
+
+## Documentation
+
+Per-section guides live in [`docs/`](docs/README.md) — one page for each part of the site (the Gateway, the Portfolio Walk, the Rabbit Hole, the Construct, the Colossus, the Concert Hall, the Character Workshop, the management layer, and the architecture).
 
 ## The Construct
 
@@ -30,8 +34,9 @@ A multi-level hall in the round (`/rabbit-hole/concert`) where **Luna**, a VRM p
 
 - **Lip sync & expressions** driven by the vocal stem of the playing track
 - **VRMA dance choreography** synced to beat and genre analysis
-- **Setlist** (Starline Dream, Pixel Escape) plus **custom song upload**
-- **Stage menu board** — walk up to it to resize Luna, switch songs, and control the overhead jumbotron (live face cam or a YouTube video)
+- **Singer roster** — Luna, Victor, or both as a duet
+- **Setlist** (Starline Dream, Pixel Escape, Stuck in the Chat, Mud Life Anthem) plus **custom song upload**
+- **Stage menu board** — walk up to it to resize the performer, swap the lineup, switch songs, or replace the lead singer with an uploaded `.vrm`
 
 Custom uploads are a single mixed song; the server splits it into instrumental + vocal stems with [Demucs](https://github.com/facebookresearch/demucs). That requires a one-time Python setup on the machine running the server:
 
