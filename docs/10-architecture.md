@@ -68,7 +68,7 @@ src/
   components/             PortalHub, PortfolioWalk, ConstructGame, ArenaLobby,
                           ConcertHall, MovieTheater, Workshop, StudioBackOffice,
                           AdminConsole, AccountPanel, Guestbook, WalkWorld, …
-  lib/                    content (ALL site copy), auth, studios, analytics,
+  lib/                    content (most site copy), auth, studios, analytics,
                           lobby (WebRTC client), persona, openrouter, luna/ …
 server.mjs                Custom Next + WebSocket server (the multiplayer lobby)
 server/split_stems.py     The Demucs stem-split worker
