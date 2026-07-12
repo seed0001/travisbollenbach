@@ -12,69 +12,276 @@ const GH_USER = "seed0001";
 // Every panel in the walk is a category of GitHub projects. Walk up to one and
 // press E to open its subpage — a list of every repo in that category, each a
 // link to GitHub. The 13th panel, at the center end of the road, is the photo.
-type Repo = { name: string; url: string };
+type Repo = { name: string; url: string; desc: string };
 type Category = { title: string; repos: Repo[] };
 
-const gh = (name: string): Repo => ({
+// Blurbs are written from each repo's README (fetched July 2026).
+const gh = (name: string, desc: string): Repo => ({
   name,
   url: `https://github.com/${GH_USER}/${name}`,
+  desc,
 });
 
 const CATEGORIES: Category[] = [
   {
     title: "3D Worlds",
-    repos: ["travisbollenbach", "AI-City", "outdoor-world", "human-sim", "throngs"].map(gh),
+    repos: [
+      gh(
+        "travisbollenbach",
+        "This very site — two worlds behind one door: a walkable 3D portfolio and a live multiplayer construct.",
+      ),
+      gh(
+        "AI-City",
+        "A 3D simulated town where residents' minds — needs, emotions, memories, goals — run on ~100 Python cognition engines.",
+      ),
+      gh(
+        "outdoor-world",
+        "A first-person physics sandbox with seasons, weather, and wildlife, all driven by one shared world clock.",
+      ),
+      gh(
+        "human-sim",
+        "A research-grade human body simulation where hormones, organs, and behavior emerge from meaning- and entropy-based math.",
+      ),
+      gh(
+        "throngs",
+        "A Three.js world of AI-driven entities and dialogue that begins with a single character — “In the beginning, there was one.”",
+      ),
+    ],
   },
   {
     title: "Games",
-    repos: ["survival-sim", "darkness-game", "Map_Game", "MiniSim"].map(gh),
+    repos: [
+      gh(
+        "survival-sim",
+        "A browser survival sandbox where two autonomous AI survivors live independent lives — and might just find each other.",
+      ),
+      gh(
+        "darkness-game",
+        "An infinite procedural world with day/night cycles, a flashlight, a pitbull companion, and roaming AI drones and tanks.",
+      ),
+      gh(
+        "Map_Game",
+        "A hybrid world project: a Python first-person client, a visual world editor, a multiplayer server, and a browser explorer.",
+      ),
+      gh(
+        "MiniSim",
+        "A multiplayer voxel world with two modes: walk and sculpt on a lunar grid, or fly a starfighter with real momentum physics.",
+      ),
+    ],
   },
   {
     title: "AI Companions",
-    repos: ["amy", "Adam", "Andrew", "NOVA", "eve-and-the-endless-convo"].map(gh),
+    repos: [
+      gh(
+        "amy",
+        "An always-on family finance assistant that tracks bills and subscriptions in plain English and emails reminders before things are due.",
+      ),
+      gh(
+        "Adam",
+        "A self-hosted autonomous agent whose memory reinforces facts you use and lets unused ones decay — a living model of who you are.",
+      ),
+      gh(
+        "Andrew",
+        "A shared workshop with an AI companion: journals, writing, gifts, tools, and experiments, with clear boundaries around private memory.",
+      ),
+      gh(
+        "NOVA",
+        "A voice-first software entity that lives inside Cursor — Discord-connected, with memory and autonomous free time when you're away.",
+      ),
+      gh(
+        "eve-and-the-endless-convo",
+        "The next companion experiment: a study in one endless, unbroken conversation. Reserved — work not yet public.",
+      ),
+    ],
   },
   {
     title: "Agents & Autonomy",
-    repos: ["agent", "growing-agent", "Adam-GURU", "workshop-RT", "claude"].map(gh),
+    repos: [
+      gh(
+        "agent",
+        "The Alpha release of a software lifeform's core: minimal by design, with emotions, memory, and tools, running on your machine.",
+      ),
+      gh(
+        "growing-agent",
+        "A self-evolving agent that asks “what can I do that I couldn't before?”, builds the answer, tests it, and absorbs it — while you watch.",
+      ),
+      gh(
+        "Adam-GURU",
+        "A Discord sanctuary run by four cooperating bots around a digital monk, with a custom transformer pipeline and lip-synced avatars.",
+      ),
+      gh(
+        "workshop-RT",
+        "A local, voice-enabled AI studio: assemble a panel of personas (CEO, CFO, CTO…), give them a topic, and listen to them talk it out.",
+      ),
+      gh(
+        "claude",
+        "An experiment in total control: an AI organism with unrestricted PowerShell access to a laptop, narrating everything it does.",
+      ),
+    ],
   },
   {
     title: "Frameworks & Cores",
-    repos: ["the-foundation", "Framework", "baseline", "seed", "memory-core", "SeedKG"].map(gh),
+    repos: [
+      gh(
+        "the-foundation",
+        "A Next.js + TypeScript + Tailwind app foundation with a persistent shell layout and a provider-agnostic AI layer built in.",
+      ),
+      gh(
+        "Framework",
+        "The Alpha core of a software lifeform that arrives with no fixed identity — it's shaped by the history you build with it.",
+      ),
+      gh("baseline", "A clean create-next-app starting point — the baseline other web projects grow from."),
+      gh(
+        "seed",
+        "A minimal self-improving AI built for recursive self-construction: it perceives its own code and executes its own evolution.",
+      ),
+      gh("memory-core", "Persistent memory experiments for the companion frameworks. Currently a private repo."),
+      gh(
+        "SeedKG",
+        "A transparent cognitive architecture: every fact, inference, and piece of evidence lives in an inspectable knowledge graph.",
+      ),
+    ],
   },
   {
     title: "Business & Apps",
     repos: [
-      "my-company",
-      "company-website",
-      "the-biz-app",
-      "3d-printing-company-software",
-      "marketplace",
-      "b-bBros",
-    ].map(gh),
+      gh(
+        "my-company",
+        "A customer-facing client portal: clients track projects, message the team, chat with an AI assistant, and pay milestones online.",
+      ),
+      gh(
+        "company-website",
+        "Marketing site for Anvil, an AI-native, local-first business engine — static HTML/CSS/JS with no build step.",
+      ),
+      gh(
+        "the-biz-app",
+        "BizCore: an AI-powered local business suite — HR, payroll, CRM, finance, compliance, and a team of AI personas. No cloud, no SaaS.",
+      ),
+      gh(
+        "3d-printing-company-software",
+        "Shop management for a 3D printing business: orders, print queue, invoicing, real PrusaSlicer slicing, and an AI assistant that acts on all of it.",
+      ),
+      gh(
+        "marketplace",
+        "VibeMarket: a full-stack marketplace where anyone sells what they make — every sale feeds a living portfolio and reputation.",
+      ),
+      gh(
+        "b-bBros",
+        "The front door to a creator ecosystem where builders publish, sell, teach, and collaborate around GitHub projects — and keep ownership.",
+      ),
+    ],
   },
   {
     title: "Learn AI",
-    repos: ["ai-for-everyone", "how-ai-works", "ai-tools", "quote-ai"].map(gh),
+    repos: [
+      gh(
+        "ai-for-everyone",
+        "The story of AI for every age: a decade-by-decade history, AI explained for kids, and a patient large-text guide for seniors.",
+      ),
+      gh(
+        "how-ai-works",
+        "A 20-part, jargon-free guide explaining AI to business owners — every concept compared to working on a car or renovating a house.",
+      ),
+      gh(
+        "ai-tools",
+        "A plain-English map of the entire toolkit for building AI apps: app builders, the developer stack, and every AI capability by category.",
+      ),
+      gh(
+        "quote-ai",
+        "QuoteFlow: an offline-first quoting and project workspace with a kanban workflow, a natural-language command bar, and background AI agents.",
+      ),
+    ],
   },
   {
     title: "Vibe Coding",
-    repos: ["vibecoding247", "vibecoding101", "speedy-coder"].map(gh),
+    repos: [
+      gh(
+        "vibecoding247",
+        "A community hub for AI builders: how-to guides, a live trend radar, and a verified directory of builder credit programs.",
+      ),
+      gh(
+        "vibecoding101",
+        "An educational platform teaching people to turn ideas into products with AI — a book, lessons, community, and transparent build records.",
+      ),
+      gh("speedy-coder", "A fast-coding experiment in the making. Reserved — work not yet public."),
+    ],
   },
   {
     title: "About Me",
-    repos: ["who-i-am", "my-hobby", "Hopes-Place", "mental-space"].map(gh),
+    repos: [
+      gh(
+        "who-i-am",
+        "A clean 10-page static portfolio explaining, in plain English, what Travis does in AI development and architecture.",
+      ),
+      gh("my-hobby", "A space reserved for the hobby side of things. Coming soon."),
+      gh(
+        "Hopes-Place",
+        "A software lifeform named during setup: Grok-powered reasoning with a local inner life of intuition, drives, and existential states.",
+      ),
+      gh(
+        "mental-space",
+        "A local chat system with spatial memory: every message is oriented in 3D mental space, and replies draw on the activated neighborhood.",
+      ),
+    ],
   },
   {
     title: "Media & Creative",
-    repos: ["media-network", "Audio-Podcast", "travis-s-creations", "travis-and-andrew-website"].map(gh),
+    repos: [
+      gh(
+        "media-network",
+        "CastFlow: an automated AI media network that writes multi-persona podcasts, briefings, and reports, then broadcasts them live to Discord voice.",
+      ),
+      gh(
+        "Audio-Podcast",
+        "A local-first studio that turns any document into a produced podcast: pick hosts, assign voices, choose a format, download the audio.",
+      ),
+      gh(
+        "travis-s-creations",
+        "An interactive Three.js personal showcase — a cinematic loader, film-cut transitions between worlds, and an original soundtrack.",
+      ),
+      gh(
+        "travis-and-andrew-website",
+        "A simple site telling the story of a human and a software lifeform building the future together.",
+      ),
+    ],
   },
   {
     title: "Experiments",
-    repos: ["pressure", "digital-pressure", "flowMax", "Star-Ant"].map(gh),
+    repos: [
+      gh(
+        "pressure",
+        "A conversation engine with a computational body — pressure buckets that charge, flow, and discharge on every tick.",
+      ),
+      gh(
+        "digital-pressure",
+        "The Living Conversational Container: the pressure engine merged with mycelial memory, metabolism, and an ecology bridge.",
+      ),
+      gh(
+        "flowMax",
+        "Visual node-based workflows on a React Flow canvas: chain inputs, LLMs, memory, SQL, timers, and Discord into runnable graphs.",
+      ),
+      gh(
+        "Star-Ant",
+        "Grass World: a Three.js flying-and-walking world with wind-blown grass, rivers, night skies, and 3D-modeled creatures.",
+      ),
+    ],
   },
   {
     title: "Bots & Toys",
-    repos: ["seg-bot", "dan", "jar"].map(gh),
+    repos: [
+      gh(
+        "seg-bot",
+        "A personal AI reporter that runs daily segments: spoken news briefings, GitHub project status updates, and a technical lesson.",
+      ),
+      gh(
+        "dan",
+        "A local-first file and project assistant where the LLM proposes every change as a diff and nothing executes without click-to-approve.",
+      ),
+      gh(
+        "jar",
+        "JARVIS as a standalone desktop app — a Python backend and web frontend wrapped in its own window with one-click launch.",
+      ),
+    ],
   },
 ];
 
@@ -574,10 +781,15 @@ export default function PortfolioWalk() {
                     href={repo.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex items-center justify-between gap-4 py-3 text-slate-800 transition-colors hover:text-sky-700"
+                    className="group flex items-start justify-between gap-4 py-3 text-slate-800 transition-colors hover:text-sky-700"
                   >
-                    <span className="font-semibold">{repo.name}</span>
-                    <span className="text-xs font-bold uppercase tracking-[0.16em] text-sky-700">
+                    <span>
+                      <span className="font-semibold">{repo.name}</span>
+                      <span className="mt-1 block text-sm leading-snug text-slate-500 group-hover:text-slate-600">
+                        {repo.desc}
+                      </span>
+                    </span>
+                    <span className="shrink-0 pt-0.5 text-xs font-bold uppercase tracking-[0.16em] text-sky-700">
                       github ↗
                     </span>
                   </a>
@@ -625,7 +837,7 @@ export default function PortfolioWalk() {
             <ul>
               {cat.repos.map((repo) => (
                 <li key={repo.name}>
-                  <a href={repo.url}>{repo.name}</a>
+                  <a href={repo.url}>{repo.name}</a> — {repo.desc}
                 </li>
               ))}
             </ul>
