@@ -12,6 +12,7 @@ import {
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
+import { Water } from "three/examples/jsm/objects/Water.js";
 import {
   VRMLoaderPlugin,
   VRMUtils,
@@ -338,8 +339,8 @@ const DUSK = {
   sunCore: new THREE.Color(0xfff4d8),
   sunGlow: new THREE.Color(0xffb36b),
   fog: 0xef9c62,
-  waterDeep: new THREE.Color(0x0b2e47),
-  waterShallow: new THREE.Color(0x155a76),
+  sunColor: 0xffdca8, // warm glare the Water shader throws back at you
+  waterColor: 0x0b3a4a, // deep teal base under the sky's reflection
 };
 
 // Gradient sky dome with the sun disc, its glow, and drifting fbm clouds all
@@ -409,77 +410,6 @@ const SKY_FRAGMENT = /* glsl */ `
       col = mix(col, cloud, cl * 0.8);
     }
 
-    gl_FragColor = vec4(col, 1.0);
-  }
-`;
-
-// Open-ocean water: gentle swells displace the mesh, while a finer analytic
-// wave field perturbs the normal per-pixel for fresnel sky reflection and the
-// sun's glitter path. Distance haze fades it into the horizon.
-const WATER_VERTEX = /* glsl */ `
-  uniform float uTime;
-  varying vec3 vWorldPos;
-  void main() {
-    vec4 wp = modelMatrix * vec4(position, 1.0);
-    float t = uTime;
-    wp.y += sin(dot(wp.xz, vec2(0.055, 0.033)) + t * 0.9) * 0.32;
-    wp.y += sin(dot(wp.xz, vec2(-0.028, 0.061)) + t * 0.65) * 0.24;
-    wp.y += sin(dot(wp.xz, vec2(0.012, -0.021)) + t * 0.4) * 0.35;
-    vWorldPos = wp.xyz;
-    gl_Position = projectionMatrix * viewMatrix * wp;
-  }
-`;
-
-const WATER_FRAGMENT = /* glsl */ `
-  precision highp float;
-  varying vec3 vWorldPos;
-  uniform float uTime;
-  uniform vec3 uSunDir;
-  uniform vec3 uDeep;
-  uniform vec3 uShallow;
-  uniform vec3 uZenith;
-  uniform vec3 uHorizon;
-  uniform vec3 uSunGlow;
-  uniform vec3 uFog;
-
-  vec3 waveNormal(vec2 p, float t) {
-    float dx = 0.0;
-    float dz = 0.0;
-    vec2 d;
-    float ph;
-    d = normalize(vec2(1.0, 0.6));
-    ph = dot(p, d) * 0.9 + t * 1.2;
-    dx += 0.14 * 0.9 * d.x * cos(ph); dz += 0.14 * 0.9 * d.y * cos(ph);
-    d = normalize(vec2(-0.7, 1.0));
-    ph = dot(p, d) * 1.7 + t * 1.6;
-    dx += 0.09 * 1.7 * d.x * cos(ph); dz += 0.09 * 1.7 * d.y * cos(ph);
-    d = normalize(vec2(0.3, -1.0));
-    ph = dot(p, d) * 3.1 + t * 2.2;
-    dx += 0.05 * 3.1 * d.x * cos(ph); dz += 0.05 * 3.1 * d.y * cos(ph);
-    d = normalize(vec2(-1.0, -0.4));
-    ph = dot(p, d) * 5.9 + t * 2.8;
-    dx += 0.028 * 5.9 * d.x * cos(ph); dz += 0.028 * 5.9 * d.y * cos(ph);
-    return normalize(vec3(-dx, 1.0, -dz));
-  }
-
-  void main() {
-    vec3 V = normalize(cameraPosition - vWorldPos);
-    vec3 N = waveNormal(vWorldPos.xz, uTime);
-    float ndv = max(dot(N, V), 0.0);
-    float fres = 0.04 + 0.96 * pow(1.0 - ndv, 5.0);
-
-    vec3 R = reflect(-V, N);
-    float rt = pow(clamp((R.y + 0.05) / 0.7, 0.0, 1.0), 0.8);
-    vec3 skyRef = mix(uHorizon, uZenith, rt);
-
-    float dR = clamp(dot(R, uSunDir), 0.0, 1.0);
-    float spec = pow(dR, 900.0) * 3.2 + pow(dR, 120.0) * 0.7 + pow(dR, 18.0) * 0.12;
-
-    vec3 base = mix(uDeep, uShallow, 0.5 + 0.5 * N.x);
-    vec3 col = mix(base, skyRef, fres) + uSunGlow * spec;
-
-    float dist = length(cameraPosition.xz - vWorldPos.xz);
-    col = mix(col, uFog, smoothstep(150.0, 1100.0, dist));
     gl_FragColor = vec4(col, 1.0);
   }
 `;
@@ -917,29 +847,30 @@ export default function ConstructGame() {
     scene.add(sky);
     disposables.push(skyGeo, skyMat);
 
-    // Tessellated so the vertex shader can roll gentle swells through it; the
-    // fragment shader's finer wave field does the sparkle.
-    const waterGeo = new THREE.PlaneGeometry(2200, 2200, 128, 128);
-    waterGeo.rotateX(-Math.PI / 2);
-    const waterMat = new THREE.ShaderMaterial({
-      vertexShader: WATER_VERTEX,
-      fragmentShader: WATER_FRAGMENT,
-      uniforms: {
-        uSunDir: { value: SUN_DIR },
-        uDeep: { value: DUSK.waterDeep },
-        uShallow: { value: DUSK.waterShallow },
-        uZenith: { value: DUSK.zenith },
-        uHorizon: { value: DUSK.horizon },
-        uSunGlow: { value: DUSK.sunGlow },
-        uFog: { value: new THREE.Color(DUSK.fog) },
-        uTime: { value: 0 },
+    // The ocean itself is three.js's own Water (examples/webgl_shaders_ocean):
+    // a flat mirror that renders the scene into a reflection texture and rolls
+    // the waternormals map across it for moving ripples and a real sun glare.
+    const waterGeo = new THREE.PlaneGeometry(4000, 4000);
+    const waterNormals = new THREE.TextureLoader().load(
+      "/textures/waternormals.jpg",
+      (texture) => {
+        texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
       },
-      fog: false,
+    );
+    const water = new Water(waterGeo, {
+      textureWidth: 512,
+      textureHeight: 512,
+      waterNormals,
+      sunDirection: SUN_DIR.clone(),
+      sunColor: DUSK.sunColor,
+      waterColor: DUSK.waterColor,
+      distortionScale: 3.7,
+      fog: scene.fog !== undefined,
     });
-    const water = new THREE.Mesh(waterGeo, waterMat);
+    water.rotation.x = -Math.PI / 2;
     water.position.y = WATER_Y;
     scene.add(water);
-    disposables.push(waterGeo, waterMat);
+    disposables.push(waterGeo, waterNormals, water.material);
 
     // --- The pier: an elevated boardwalk carrying the whole block -------------
     // The main walk holds the ten shops; it widens into a plaza under the
@@ -2137,8 +2068,10 @@ export default function ConstructGame() {
       const delta = Math.min(clock.getDelta(), 0.05);
       const elapsed = clock.elapsedTime;
 
-      // the ocean swells and the clouds drift
-      waterMat.uniforms.uTime.value = elapsed;
+      // the ocean ripples and the clouds drift
+      (
+        water.material as THREE.ShaderMaterial
+      ).uniforms.time.value += delta;
       skyMat.uniforms.uTime.value = elapsed;
 
       // orientation: AR-style from device sensors, or yaw/pitch from input
