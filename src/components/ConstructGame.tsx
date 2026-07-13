@@ -414,54 +414,139 @@ const SKY_FRAGMENT = /* glsl */ `
   }
 `;
 
-// Weathered boardwalk planks: staggered butt joints, grain streaks, and nail
-// heads, tileable in both directions. Planks run along the texture's v axis.
-function makePlankTexture() {
-  const canvas = document.createElement("canvas");
-  canvas.width = 512;
-  canvas.height = 512;
-  const ctx = canvas.getContext("2d");
-  if (ctx) {
-    const plankW = 64; // 8 planks per tile
-    for (let i = 0; i < 8; i += 1) {
-      const x = i * plankW;
-      const light = 88 + ((i * 37) % 5) * 9 + (i % 2) * 6;
-      ctx.fillStyle = `rgb(${light + 42}, ${light + 12}, ${light - 22})`;
-      ctx.fillRect(x, 0, plankW, canvas.height);
+// --- Procedural boardwalk decking ------------------------------------------
+// A world-space wood shader for the deck: planks run along the pier (z), each
+// board carved out with staggered butt joints, dark seams, domain-warped grain
+// with growth-ring streaks and knots, iron nail heads, and a faint darker
+// runner down the center so the "main road" still reads. Dusk-lit and fogged
+// to sit under the same sky as everything else. Because it's driven by world
+// coordinates it never tiles or repeats the way a bitmap would.
+const WOOD_VERTEX = /* glsl */ `
+  varying vec3 vWorldPos;
+  void main() {
+    vec4 wp = modelMatrix * vec4(position, 1.0);
+    vWorldPos = wp.xyz;
+    gl_Position = projectionMatrix * viewMatrix * wp;
+  }
+`;
 
-      // grain: faint darker streaks running the plank's length
-      for (let g = 0; g < 9; g += 1) {
-        const gx = x + 5 + ((i * 13 + g * 23) % (plankW - 10));
-        ctx.strokeStyle = `rgba(40, 26, 12, ${0.05 + ((g * 7 + i) % 4) * 0.02})`;
-        ctx.lineWidth = 1 + ((g + i) % 2);
-        ctx.beginPath();
-        ctx.moveTo(gx, 0);
-        ctx.bezierCurveTo(gx + 4, 170, gx - 4, 340, gx + 2, 512);
-        ctx.stroke();
-      }
+const WOOD_FRAGMENT = /* glsl */ `
+  precision highp float;
+  varying vec3 vWorldPos;
+  uniform vec3 uSunDir;
+  uniform vec3 uSunGlow;
+  uniform vec3 uFogColor;
+  uniform float uFogNear;
+  uniform float uFogFar;
+  uniform float uRunnerHalf; // center runner half-width, in metres
+  uniform float uRunnerZ;    // runner only ahead of this z (down the walk)
 
-      // seam between planks
-      ctx.fillStyle = "rgba(24, 15, 8, 0.85)";
-      ctx.fillRect(x, 0, 3, canvas.height);
+  float hash(float n) { return fract(sin(n) * 43758.5453123); }
+  float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+  float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(
+      mix(hash2(i), hash2(i + vec2(1.0, 0.0)), f.x),
+      mix(hash2(i + vec2(0.0, 1.0)), hash2(i + vec2(1.0, 1.0)), f.x),
+      f.y
+    );
+  }
+  float fbm(vec2 p) {
+    float v = 0.0;
+    float a = 0.5;
+    for (int i = 0; i < 5; i++) { v += a * noise(p); p *= 2.02; a *= 0.5; }
+    return v;
+  }
 
-      // staggered butt joint + nail heads
-      const jointY = (i * 199 + 96) % canvas.height;
-      ctx.fillRect(x, jointY, plankW, 3);
-      ctx.fillStyle = "rgba(30, 22, 14, 0.9)";
-      for (const ny of [jointY + 12, jointY - 10]) {
-        ctx.beginPath();
-        ctx.arc(x + 12, ((ny % 512) + 512) % 512, 2.2, 0, Math.PI * 2);
-        ctx.arc(x + plankW - 12, ((ny % 512) + 512) % 512, 2.2, 0, Math.PI * 2);
-        ctx.fill();
+  void main() {
+    float wx = vWorldPos.x;
+    float wz = vWorldPos.z;
+
+    // --- planks across x -----------------------------------------------------
+    float plankW = 0.42;
+    float pf = wx / plankW;
+    float pid = floor(pf);
+    float pu = fract(pf);           // 0..1 across the plank
+    float rp = hash(pid * 1.7);
+
+    // --- boards along z (staggered butt joints per plank) --------------------
+    float boardLen = mix(3.4, 6.2, hash(pid * 2.3 + 5.0));
+    float zoff = rp * 11.0;
+    float bf = (wz + zoff) / boardLen;
+    float bid = floor(bf);
+    float bu = fract(bf);           // 0..1 along the board
+    float seed = hash2(vec2(pid, bid));
+
+    // --- base tone: dark, warm, weathered; varies per board ------------------
+    vec3 dark = vec3(0.115, 0.070, 0.038);
+    vec3 mid = vec3(0.260, 0.160, 0.086);
+    vec3 base = mix(dark, mid, 0.35 + 0.5 * seed);
+
+    // long grain fibres running the board's length
+    float fibre = fbm(vec2(pu * 26.0 + seed * 40.0, (wz + zoff) * 1.1));
+    base *= mix(0.82, 1.12, fibre);
+
+    // growth rings: warped bands along the plank width
+    float warp = fbm(vec2(pu * 3.0 + seed * 10.0, (wz + zoff) * 0.35)) * 2.2;
+    float rings = abs(sin((pu * 7.5 + warp + (wz + zoff) * 0.05) * 3.14159));
+    base = mix(base, base * 0.55, pow(rings, 3.0) * 0.6);
+
+    // an occasional dark knot
+    float kn = fbm(vec2(pid * 3.1, floor((wz + zoff) * 0.5)) * 1.3);
+    if (kn > 0.83) {
+      vec2 kc = vec2((hash(pid) - 0.5) * 0.4 + 0.5, 0.5);
+      float kd = length((vec2(pu, bu) - kc) * vec2(1.0, 0.5));
+      base = mix(base * 0.4, base, smoothstep(0.02, 0.09, kd));
+    }
+
+    // weathering blotches, low frequency
+    base *= mix(0.86, 1.06, fbm(vec2(wx * 0.5, wz * 0.5)));
+
+    // --- carpentry: seams, joints, chamfered edges, nails --------------------
+    // dark groove between planks, with a lit chamfer just inside each edge
+    float seam = smoothstep(0.0, 0.05, pu) * smoothstep(1.0, 0.95, pu);
+    base *= mix(0.28, 1.0, seam);
+    float chamfer = smoothstep(0.05, 0.12, pu) * smoothstep(0.95, 0.88, pu);
+    base *= mix(1.0, 1.08, chamfer);
+
+    // butt joint groove across the board ends
+    float joint = smoothstep(0.0, 0.02, bu) * smoothstep(1.0, 0.982, bu);
+    base *= mix(0.32, 1.0, joint);
+
+    // two iron nail heads near each board end
+    float nail = 1.0;
+    for (int e = 0; e < 2; e++) {
+      float bz = e == 0 ? 0.06 : 0.94;
+      for (int s = 0; s < 2; s++) {
+        float bx = s == 0 ? 0.28 : 0.72;
+        float nd = length((vec2(pu, bu) - vec2(bx, bz)) * vec2(1.0, 2.2));
+        nail *= mix(0.45, 1.0, smoothstep(0.018, 0.03, nd));
+        // tiny specular pip on the nail head
+        if (nd < 0.02) base += uSunGlow * 0.10;
       }
     }
+    base *= nail;
+
+    // --- faint central runner (the pier's "road") ----------------------------
+    float runner = (1.0 - smoothstep(uRunnerHalf - 2.0, uRunnerHalf, abs(wx)))
+                 * step(uRunnerZ, wz);
+    base *= mix(1.0, 0.72, runner * 0.6);
+
+    // --- dusk sheen + fog ----------------------------------------------------
+    vec3 V = normalize(cameraPosition - vWorldPos);
+    float graze = pow(1.0 - clamp(V.y, 0.0, 1.0), 4.0);   // low angles catch sky
+    base += uSunGlow * graze * 0.06;
+    base *= 0.5 + 0.5 * clamp(uSunDir.y + 0.85, 0.0, 1.0); // ambient day amount
+
+    float dist = length(cameraPosition - vWorldPos);
+    float fogF = clamp((uFogFar - dist) / (uFogFar - uFogNear), 0.0, 1.0);
+    vec3 col = mix(uFogColor, base, fogF);
+
+    gl_FragColor = vec4(col, 1.0);
   }
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.wrapS = THREE.RepeatWrapping;
-  texture.wrapT = THREE.RepeatWrapping;
-  return texture;
-}
+`;
 
 // --- Device-orientation camera quaternion (AR-style look) -------------------
 
@@ -882,19 +967,24 @@ export default function ConstructGame() {
     const PLAZA_START_Z = -114; // where the walk widens
     const PIER_END_Z = -204; // far end, past the dome
 
-    const plankTex = makePlankTexture();
-    plankTex.anisotropy = 8;
-    disposables.push(plankTex);
-    // One tile covers 8 planks (3.2m) across × 8m along.
-    const plankRepeat = (w: number, l: number) => {
-      const tex = plankTex.clone();
-      tex.needsUpdate = true;
-      tex.repeat.set(w / 3.2, l / 8);
-      disposables.push(tex);
-      return tex;
-    };
+    // The procedural wood shader, shared across every deck surface so the
+    // grain runs continuously from the walk out onto the plaza.
+    const woodMat = new THREE.ShaderMaterial({
+      vertexShader: WOOD_VERTEX,
+      fragmentShader: WOOD_FRAGMENT,
+      uniforms: {
+        uSunDir: { value: SUN_DIR },
+        uSunGlow: { value: DUSK.sunGlow },
+        uFogColor: { value: new THREE.Color(DUSK.fog) },
+        uFogNear: { value: 90 },
+        uFogFar: { value: 850 },
+        uRunnerHalf: { value: 9 },
+        uRunnerZ: { value: PLAZA_START_Z },
+      },
+    });
+    disposables.push(woodMat);
 
-    const deckSlabMat = new THREE.MeshBasicMaterial({ color: 0x3a2c1e });
+    const deckSlabMat = new THREE.MeshBasicMaterial({ color: 0x1c1409 });
     disposables.push(deckSlabMat);
 
     const walkLen = PIER_START_Z - PLAZA_START_Z;
@@ -911,51 +1001,18 @@ export default function ConstructGame() {
     scene.add(plazaSlab);
     disposables.push(plazaSlabGeo);
 
-    // Plank surfaces laid over the slabs; the central strip is tinted a shade
-    // darker so the "main road" of the pier still reads as a road.
-    const addDeckTop = (
-      w: number,
-      l: number,
-      x: number,
-      z: number,
-      y: number,
-      tint: number,
-    ) => {
+    // Plank decking laid over each slab, all sharing the one wood shader so the
+    // grain, seams, and center runner are continuous across the whole pier.
+    const addDeckTop = (w: number, l: number, z: number) => {
       const geo = new THREE.PlaneGeometry(w, l);
-      const mat = new THREE.MeshBasicMaterial({
-        map: plankRepeat(w, l),
-        color: tint,
-      });
-      const mesh = new THREE.Mesh(geo, mat);
+      const mesh = new THREE.Mesh(geo, woodMat);
       mesh.rotation.x = -Math.PI / 2;
-      mesh.position.set(x, y, z);
+      mesh.position.set(0, 0.01, z);
       scene.add(mesh);
-      disposables.push(geo, mat);
+      disposables.push(geo);
     };
-    addDeckTop(
-      PIER_HALF_W * 2,
-      walkLen,
-      0,
-      (PIER_START_Z + PLAZA_START_Z) / 2,
-      0.005,
-      0xd9c2a6,
-    );
-    addDeckTop(
-      PLAZA_HALF_W * 2,
-      plazaLen,
-      0,
-      (PLAZA_START_Z + PIER_END_Z) / 2,
-      0.005,
-      0xd9c2a6,
-    );
-    addDeckTop(
-      18,
-      walkLen,
-      0,
-      (PIER_START_Z + PLAZA_START_Z) / 2,
-      0.012,
-      0xb0906c,
-    );
+    addDeckTop(PIER_HALF_W * 2, walkLen, (PIER_START_Z + PLAZA_START_Z) / 2);
+    addDeckTop(PLAZA_HALF_W * 2, plazaLen, (PLAZA_START_Z + PIER_END_Z) / 2);
 
     // Pilings marching down into the water along every deck edge.
     const pilingGeo = new THREE.CylinderGeometry(0.5, 0.5, 9.5, 10);
