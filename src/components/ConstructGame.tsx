@@ -739,6 +739,148 @@ const WOOD_FRAGMENT = /* glsl */ `
   }
 `;
 
+// --- Weathered patchwork walls ---------------------------------------------
+// The shop shells get a rustic, mismatched-panel skin: a jittered grid of
+// patches, each randomly old wood boards or a rusted metal sheet, with
+// staggered seams, rust and water streaks bleeding downward, grime pooling
+// low and sun-bleach up high, and scattered nail heads. World-space and
+// normal-aware, so it wraps every wall of every unit without repeating, and
+// it shares the day/night lighting, lantern wash, and fog with the deck.
+const WALL_VERTEX = /* glsl */ `
+  varying vec3 vWorldPos;
+  varying vec3 vWorldNormal;
+  void main() {
+    vec4 wp = modelMatrix * vec4(position, 1.0);
+    vWorldPos = wp.xyz;
+    vWorldNormal = mat3(modelMatrix) * normal;
+    gl_Position = projectionMatrix * viewMatrix * wp;
+  }
+`;
+
+const WALL_FRAGMENT = /* glsl */ `
+  precision highp float;
+  varying vec3 vWorldPos;
+  varying vec3 vWorldNormal;
+  uniform vec3 uSunDir;
+  uniform vec3 uSunGlow;
+  uniform vec3 uFogColor;
+  uniform float uFogNear;
+  uniform float uFogFar;
+  uniform float uNight;
+  uniform vec2 uLampPos[12];
+  uniform float uLampGlow;
+
+  float hash(float n) { return fract(sin(n) * 43758.5453123); }
+  float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+  float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(
+      mix(hash2(i), hash2(i + vec2(1.0, 0.0)), f.x),
+      mix(hash2(i + vec2(0.0, 1.0)), hash2(i + vec2(1.0, 1.0)), f.x),
+      f.y
+    );
+  }
+  float fbm(vec2 p) {
+    float v = 0.0;
+    float a = 0.5;
+    for (int i = 0; i < 5; i++) { v += a * noise(p); p *= 2.02; a *= 0.5; }
+    return v;
+  }
+
+  // The rustic material a patch is made of, chosen by its random id.
+  vec3 patchTone(float r) {
+    if (r < 0.34) return vec3(0.17, 0.115, 0.072);      // weathered brown board
+    if (r < 0.60) return vec3(0.135, 0.145, 0.155);     // grey driftwood plank
+    if (r < 0.80) return vec3(0.205, 0.120, 0.075);     // rusted iron sheet
+    return vec3(0.095, 0.140, 0.150);                   // faded painted panel
+  }
+
+  void main() {
+    vec3 n = normalize(vWorldNormal);
+    // Parameterize the wall surface: vertical is world y, horizontal is
+    // whichever ground axis runs along this face.
+    float horiz = abs(n.x) > abs(n.z) ? vWorldPos.z : vWorldPos.x;
+    float vert = vWorldPos.y;
+
+    // Jittered patch grid: rows of varying height, columns of varying width,
+    // offset per row so the seams never line up.
+    float row = floor(vert / 2.15);
+    float hoff = hash(row * 1.3) * 3.4;
+    float colW = mix(1.5, 3.6, hash(row * 2.1 + 0.5));
+    float col = floor((horiz + hoff) / colW);
+    vec2 pid = vec2(col, row);
+    float pr = hash2(pid);
+
+    vec3 base = patchTone(hash(pr * 7.0));
+    base *= mix(0.72, 1.22, hash2(pid + 3.3)); // per-patch brightness variance
+
+    float pu = fract((horiz + hoff) / colW); // 0..1 across the patch
+    float pv = fract(vert / 2.15);           // 0..1 up the patch
+
+    // Wood patches get horizontal boards + grain; metal patches get vertical
+    // streaks and a rivet line down each side.
+    float ptype = hash2(pid + 9.1);
+    if (ptype < 0.55) {
+      float pitch = mix(0.22, 0.4, hash2(pid + 1.1));
+      float board = fract(vert / pitch);
+      base *= mix(0.62, 1.06,
+        smoothstep(0.0, 0.09, board) * smoothstep(1.0, 0.9, board));
+      base *= mix(0.82, 1.12, fbm(vec2(horiz * 3.5, vert * 22.0)));
+    } else {
+      base *= mix(0.8, 1.08, fbm(vec2(horiz * 7.0, vert * 0.7)));
+      // rivets: two vertical rows near the patch edges
+      float rr = min(
+        smoothstep(0.04, 0.02, abs(pu - 0.1)),
+        1.0) + smoothstep(0.04, 0.02, abs(pu - 0.9));
+      float rivetY = smoothstep(0.14, 0.0, abs(fract(vert / 0.45) - 0.5));
+      base *= 1.0 - 0.5 * rr * rivetY;
+    }
+
+    // Dark seams / gaps between patches.
+    float seam = smoothstep(0.0, 0.028, pu) * smoothstep(1.0, 0.972, pu)
+               * smoothstep(0.0, 0.03, pv) * smoothstep(1.0, 0.965, pv);
+    base *= mix(0.34, 1.0, seam);
+
+    // Rust and water streaks bleeding down the face, heavier lower.
+    float streak = fbm(vec2(horiz * 2.6, vert * 0.14));
+    float streakMask = smoothstep(0.55, 0.82, streak)
+      * (0.35 + 0.65 * (1.0 - clamp(vert / 7.0, 0.0, 1.0)));
+    base = mix(base, vec3(0.16, 0.075, 0.04), streakMask * 0.4);
+
+    // Grime pooling near the deck, sun-bleaching toward the top.
+    base *= mix(0.66, 1.1, clamp(vert / 7.0, 0.0, 1.0));
+    base *= mix(0.9, 1.06, fbm(vec2(horiz * 0.6, vert * 0.6))); // blotchy age
+
+    // A nail head near each patch corner.
+    vec2 cc = (vec2(pu, pv) - 0.5);
+    float nd = length(vec2(abs(cc.x) - 0.42, abs(cc.y) - 0.42) * vec2(1.0, 1.6));
+    base *= mix(0.5, 1.0, smoothstep(0.02, 0.04, nd));
+
+    // --- shared day/night lighting, lantern wash, and fog --------------------
+    float daylight = clamp(uSunDir.y + 0.85, 0.0, 1.0);
+    float ndl = max(dot(n, uSunDir), 0.0);
+    base *= 0.72 + 0.4 * ndl * daylight; // faces toward the sun read brighter
+    base *= mix(0.14, 1.0, daylight);
+
+    if (uLampGlow > 0.001) {
+      vec3 warm = vec3(1.0, 0.72, 0.38);
+      float pool = 0.0;
+      for (int i = 0; i < 12; i++) {
+        vec2 dp = vWorldPos.xz - uLampPos[i];
+        float d2 = dot(dp, dp) + (vert - 3.2) * (vert - 3.2);
+        pool += exp(-d2 * 0.07);
+      }
+      base += warm * pool * uLampGlow * 0.6;
+    }
+
+    float dist = length(cameraPosition - vWorldPos);
+    float fogF = clamp((uFogFar - dist) / (uFogFar - uFogNear), 0.0, 1.0);
+    gl_FragColor = vec4(mix(uFogColor, base, fogF), 1.0);
+  }
+`;
+
 // --- Device-orientation camera quaternion (AR-style look) -------------------
 
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
@@ -1208,6 +1350,23 @@ export default function ConstructGame() {
     });
     disposables.push(woodMat);
 
+    // Weathered patchwork skin shared by every shop wall (see WALL_FRAGMENT).
+    const wallMat = new THREE.ShaderMaterial({
+      vertexShader: WALL_VERTEX,
+      fragmentShader: WALL_FRAGMENT,
+      uniforms: {
+        uSunDir: { value: SUN_DIR },
+        uSunGlow: { value: initialState.sunGlow.clone() },
+        uFogColor: { value: initialState.fog.clone() },
+        uFogNear: { value: 90 },
+        uFogFar: { value: 850 },
+        uNight: { value: initialState.night },
+        uLampPos: { value: LAMP_XZ.map(([x, z]) => new THREE.Vector2(x, z)) },
+        uLampGlow: { value: 0 },
+      },
+    });
+    disposables.push(wallMat);
+
     const deckSlabMat = new THREE.MeshBasicMaterial({ color: 0x1c1409 });
     disposables.push(deckSlabMat);
 
@@ -1381,10 +1540,12 @@ export default function ConstructGame() {
       scene.fog!.color.copy(s.fog);
       (scene.background as THREE.Color).copy(s.horizon).lerp(s.zenith, 0.5);
 
-      // Deck
-      woodMat.uniforms.uSunGlow.value.copy(s.sunGlow);
-      woodMat.uniforms.uFogColor.value.copy(s.fog);
-      woodMat.uniforms.uNight.value = s.night;
+      // Deck + shop walls share the palette's glow/fog/night.
+      for (const m of [woodMat, wallMat]) {
+        m.uniforms.uSunGlow.value.copy(s.sunGlow);
+        m.uniforms.uFogColor.value.copy(s.fog);
+        m.uniforms.uNight.value = s.night;
+      }
 
       // Lanterns fade up as the sun sinks past ~10°, full once it's down.
       const lampOn = THREE.MathUtils.clamp(
@@ -1393,6 +1554,7 @@ export default function ConstructGame() {
         1,
       );
       woodMat.uniforms.uLampGlow.value = lampOn * 0.5;
+      wallMat.uniforms.uLampGlow.value = lampOn * 0.5;
       for (const g of lampGlows) g.opacity = THREE.MathUtils.lerp(0.14, 0.95, lampOn);
       lampGlobeMat.color
         .set(0x6a5836)
@@ -1441,8 +1603,6 @@ export default function ConstructGame() {
       transparent: true,
       depthWrite: false,
     });
-    const backMat = new THREE.MeshBasicMaterial({ color: 0x161d2b });
-    const sideMat = new THREE.MeshBasicMaterial({ color: 0x121826 });
     const ceilMat = new THREE.MeshBasicMaterial({ color: 0x0d121b });
     const unitFloorMat = new THREE.MeshBasicMaterial({ color: 0x0e131d });
     const edgeMat = new THREE.LineBasicMaterial({
@@ -1464,8 +1624,6 @@ export default function ConstructGame() {
       posterFrameGeo,
       badgeGeo,
       sillGeo,
-      backMat,
-      sideMat,
       ceilMat,
       unitFloorMat,
       edgeMat,
@@ -1595,8 +1753,8 @@ export default function ConstructGame() {
       const accentMat = new THREE.MeshBasicMaterial({ color: accent });
       disposables.push(accentMat);
 
-      // Shell
-      const back = new THREE.Mesh(backWallGeo, backMat);
+      // Shell — weathered patchwork walls, dark edge lines picking out corners
+      const back = new THREE.Mesh(backWallGeo, wallMat);
       back.position.set(-STORE_D / 2, STORE_H / 2, 0);
       group.add(back);
       const backLine = new THREE.LineSegments(backEdges, edgeMat);
@@ -1604,7 +1762,7 @@ export default function ConstructGame() {
       group.add(backLine);
 
       for (const sz of [-STORE_W / 2, STORE_W / 2]) {
-        const side = new THREE.Mesh(sideWallGeo, sideMat);
+        const side = new THREE.Mesh(sideWallGeo, wallMat);
         side.position.set(0, STORE_H / 2, sz);
         group.add(side);
         const sideLine = new THREE.LineSegments(sideEdges, edgeMat);
