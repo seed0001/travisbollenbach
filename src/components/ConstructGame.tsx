@@ -333,15 +333,157 @@ function makeGlowTexture() {
 // the water, and the key light on uploaded avatars. Low over the water,
 // slightly left of the pier's axis so it hangs beside the Colossus.
 const SUN_DIR = new THREE.Vector3(-0.45, 0.1, -0.85).normalize();
-const DUSK = {
-  zenith: new THREE.Color(0x24457c),
-  horizon: new THREE.Color(0xff9d5c),
-  sunCore: new THREE.Color(0xfff4d8),
-  sunGlow: new THREE.Color(0xffb36b),
-  fog: 0xef9c62,
-  sunColor: 0xffdca8, // warm glare the Water shader throws back at you
-  waterColor: 0x0b3a4a, // deep teal base under the sky's reflection
+// The sky, water, fog, lights, and lanterns are all driven by the sun's height
+// above the horizon, which in turn comes from the real local time in Alabama
+// (US Central). These palette stops are keyed on that elevation, in degrees:
+// deep night through the warm horizon of sunrise/sunset up to bright noon.
+// Everything in between is linearly interpolated, so the world eases through
+// dawn, day, golden hour, dusk, and a starry night over the course of a day.
+type SkyStop = {
+  elev: number;
+  zenith: number;
+  horizon: number;
+  sunCore: number;
+  sunGlow: number;
+  fog: number;
+  water: number;
+  waterSun: number;
+  cloud: number; // cloud body tint at this time
+  night: number; // 0 = full day, 1 = full night (stars, lit lanterns)
 };
+
+const SKY_STOPS: SkyStop[] = [
+  // midnight — deep blue dark, faint moon-side glow, stars out
+  { elev: -90, zenith: 0x030612, horizon: 0x0a1430, sunCore: 0x000000,
+    sunGlow: 0x1b2b52, fog: 0x0a1226, water: 0x030910, waterSun: 0x2b3f6b,
+    cloud: 0x141d33, night: 1 },
+  // astronomical twilight
+  { elev: -10, zenith: 0x0a1a3e, horizon: 0x2c2a54, sunCore: 0x000000,
+    sunGlow: 0x54406e, fog: 0x1a1e3a, water: 0x081426, waterSun: 0x6a4f7a,
+    cloud: 0x2a2740, night: 0.8 },
+  // sun on the horizon — the warm sunrise/sunset band
+  { elev: 0, zenith: 0x214f8f, horizon: 0xff8a4d, sunCore: 0xfff2d6,
+    sunGlow: 0xff9a55, fog: 0xe0915f, water: 0x123246, waterSun: 0xffb066,
+    cloud: 0x9a6a63, night: 0.28 },
+  // golden hour
+  { elev: 8, zenith: 0x2b63b0, horizon: 0xffd9a0, sunCore: 0xfff6e2,
+    sunGlow: 0xffcaa0, fog: 0xd9b48c, water: 0x16506e, waterSun: 0xffdca8,
+    cloud: 0xc79a86, night: 0 },
+  // full daylight — pretty blues
+  { elev: 30, zenith: 0x1f6fd8, horizon: 0xbcd8f2, sunCore: 0xfffdf5,
+    sunGlow: 0xffe9c0, fog: 0xcfe0f0, water: 0x135a86, waterSun: 0xfff0d0,
+    cloud: 0xeaf1fb, night: 0 },
+  // high noon — deepest sky blue overhead
+  { elev: 70, zenith: 0x1663d6, horizon: 0xcfe6fb, sunCore: 0xffffff,
+    sunGlow: 0xfff0d0, fog: 0xd6e8f6, water: 0x106ea0, waterSun: 0xffffff,
+    cloud: 0xffffff, night: 0 },
+];
+
+type SkyState = {
+  zenith: THREE.Color;
+  horizon: THREE.Color;
+  sunCore: THREE.Color;
+  sunGlow: THREE.Color;
+  fog: THREE.Color;
+  water: THREE.Color;
+  waterSun: THREE.Color;
+  cloud: THREE.Color;
+  night: number;
+};
+
+// Interpolate the palette for a given sun elevation (degrees).
+function sampleSky(elevDeg: number): SkyState {
+  let lo = SKY_STOPS[0];
+  let hi = SKY_STOPS[SKY_STOPS.length - 1];
+  for (let i = 0; i < SKY_STOPS.length - 1; i += 1) {
+    if (elevDeg >= SKY_STOPS[i].elev && elevDeg <= SKY_STOPS[i + 1].elev) {
+      lo = SKY_STOPS[i];
+      hi = SKY_STOPS[i + 1];
+      break;
+    }
+  }
+  const span = hi.elev - lo.elev;
+  const t = span > 0 ? THREE.MathUtils.clamp((elevDeg - lo.elev) / span, 0, 1) : 0;
+  const mix = (a: number, b: number) =>
+    new THREE.Color(a).lerp(new THREE.Color(b), t);
+  return {
+    zenith: mix(lo.zenith, hi.zenith),
+    horizon: mix(lo.horizon, hi.horizon),
+    sunCore: mix(lo.sunCore, hi.sunCore),
+    sunGlow: mix(lo.sunGlow, hi.sunGlow),
+    fog: mix(lo.fog, hi.fog),
+    water: mix(lo.water, hi.water),
+    waterSun: mix(lo.waterSun, hi.waterSun),
+    cloud: mix(lo.cloud, hi.cloud),
+    night: THREE.MathUtils.lerp(lo.night, hi.night, t),
+  };
+}
+
+// A real-ish solar model for Montgomery, Alabama: given the local hour and the
+// day of the year, it returns the sun's elevation and azimuth, so sunrise and
+// sunset track the season (long summer evenings, short winter days) the way
+// they actually do there. Close enough to read as "the actual time of day"
+// without pulling in a full ephemeris library.
+const MONTGOMERY_LAT = THREE.MathUtils.degToRad(32.36);
+
+type SolarPos = { elevDeg: number; azimuth: number };
+function solarPosition(hour: number, dayOfYear: number): SolarPos {
+  const decl =
+    THREE.MathUtils.degToRad(23.44) *
+    Math.sin((2 * Math.PI * (dayOfYear + 284)) / 365); // solar declination
+  const H = THREE.MathUtils.degToRad(15 * (hour - 12)); // hour angle from noon
+  const sinE =
+    Math.sin(MONTGOMERY_LAT) * Math.sin(decl) +
+    Math.cos(MONTGOMERY_LAT) * Math.cos(decl) * Math.cos(H);
+  const e = Math.asin(THREE.MathUtils.clamp(sinE, -1, 1));
+  const cosA =
+    (Math.sin(decl) - Math.sin(MONTGOMERY_LAT) * Math.sin(e)) /
+    (Math.cos(MONTGOMERY_LAT) * Math.cos(e) + 1e-6);
+  let A = Math.acos(THREE.MathUtils.clamp(cosA, -1, 1)); // azimuth from north
+  if (Math.sin(H) > 0) A = 2 * Math.PI - A; // afternoon → swing west
+  return { elevDeg: THREE.MathUtils.radToDeg(e), azimuth: A };
+}
+
+// World layout: +x is east, -z is south (toward the Colossus), so the sun
+// rises over one railing, crosses high above the pier, and sets over the other.
+function sunDirFromSolar(
+  elevDeg: number,
+  azimuth: number,
+  out: THREE.Vector3,
+): THREE.Vector3 {
+  const e = THREE.MathUtils.degToRad(elevDeg);
+  const ce = Math.cos(e);
+  return out
+    .set(ce * Math.sin(azimuth), Math.sin(e), ce * Math.cos(azimuth))
+    .normalize();
+}
+
+function dayOfYear(year: number, month: number, day: number): number {
+  const days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  const leap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+  let n = day;
+  for (let m = 0; m < month - 1; m += 1) n += m === 1 && leap ? 29 : days[m];
+  return n;
+}
+
+// The current local hour (0–24) and day-of-year in Alabama's zone (US Central).
+function alabamaNow(): { hour: number; doy: number } {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Chicago",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date());
+  const get = (type: string) =>
+    Number(parts.find((p) => p.type === type)?.value ?? "0");
+  const hour =
+    (get("hour") % 24) + get("minute") / 60 + get("second") / 3600;
+  return { hour, doy: dayOfYear(get("year"), get("month"), get("day")) };
+}
 
 // Gradient sky dome with the sun disc, its glow, and drifting fbm clouds all
 // computed per-pixel, so the sun stays aligned with the water's reflection.
@@ -358,10 +500,13 @@ const SKY_FRAGMENT = /* glsl */ `
   precision highp float;
   varying vec3 vDir;
   uniform vec3 uSunDir;
+  uniform vec3 uMoonDir;
   uniform vec3 uZenith;
   uniform vec3 uHorizon;
   uniform vec3 uSunCore;
   uniform vec3 uSunGlow;
+  uniform vec3 uCloud;
+  uniform float uNight;
   uniform float uTime;
 
   float hash(vec2 p) {
@@ -388,26 +533,54 @@ const SKY_FRAGMENT = /* glsl */ `
     return v;
   }
 
+  // A twinkling star field: bin the view direction into cells, drop a bright
+  // star into the sparse ones, and pulse each at its own rate.
+  float stars(vec3 dir) {
+    vec2 uv = vec2(atan(dir.z, dir.x), asin(clamp(dir.y, -1.0, 1.0)));
+    uv *= vec2(28.0, 34.0);
+    vec2 cell = floor(uv);
+    vec2 f = fract(uv) - 0.5;
+    float rnd = hash(cell);
+    float present = step(0.93, rnd);
+    vec2 pos = (vec2(hash(cell + 1.7), hash(cell + 4.3)) - 0.5) * 0.7;
+    float d = length(f - pos);
+    float star = present * smoothstep(0.09, 0.0, d);
+    float twinkle = 0.55 + 0.45 * sin(uTime * (1.5 + 3.5 * hash(cell + 9.1)) + rnd * 40.0);
+    return star * twinkle * smoothstep(0.02, 0.2, dir.y); // fade near horizon
+  }
+
   void main() {
     vec3 dir = normalize(vDir);
     float h = dir.y;
     float t = pow(clamp((h + 0.04) / 0.65, 0.0, 1.0), 0.75);
     vec3 col = mix(uHorizon, uZenith, t);
 
-    // Warm wash and halo around the sun, then the disc itself.
+    // Stars first, so clouds and the moon can sit in front of them.
+    col += vec3(0.85, 0.9, 1.0) * stars(dir) * uNight;
+
+    // Moon: a soft disc with a cool halo, only out at night.
+    if (uNight > 0.01) {
+      float m = clamp(dot(dir, uMoonDir), 0.0, 1.0);
+      col += vec3(0.5, 0.6, 0.85) * pow(m, 180.0) * 0.5 * uNight;
+      col = mix(col, vec3(0.92, 0.94, 1.0),
+        smoothstep(0.9994, 0.99965, m) * uNight);
+    }
+
+    // Warm wash and halo around the sun, then the disc itself (daytime only —
+    // the palette's sunGlow already goes dark once the sun is down).
     float d = clamp(dot(dir, uSunDir), 0.0, 1.0);
     col = mix(col, uSunGlow, pow(d, 6.0) * 0.5);
     col += uSunGlow * pow(d, 64.0) * 0.6;
-    col = mix(col, uSunCore, smoothstep(0.99935, 0.99965, d));
+    col = mix(col, uSunCore, smoothstep(0.99935, 0.99965, d) * (1.0 - uNight));
 
-    // A slow-drifting cloud deck, lit warm on the sun side.
+    // A slow-drifting cloud deck, tinted by the time of day.
     if (h > 0.015) {
       vec2 p = dir.xz / (h + 0.18) * 1.6 + vec2(uTime * 0.006, uTime * 0.0015);
       float cov = fbm(p);
       float cl = smoothstep(0.52, 0.8, cov) * smoothstep(0.015, 0.09, h);
-      vec3 cloud = mix(vec3(0.98, 0.85, 0.72), vec3(0.45, 0.4, 0.5), smoothstep(0.5, 0.95, cov));
-      cloud += uSunGlow * pow(d, 3.0) * 0.35;
-      col = mix(col, cloud, cl * 0.8);
+      vec3 cloud = mix(uCloud, uCloud * 0.55, smoothstep(0.5, 0.95, cov));
+      cloud += uSunGlow * pow(d, 3.0) * 0.35 * (1.0 - uNight);
+      col = mix(col, cloud, cl * 0.8 * (1.0 - 0.35 * uNight));
     }
 
     gl_FragColor = vec4(col, 1.0);
@@ -438,8 +611,11 @@ const WOOD_FRAGMENT = /* glsl */ `
   uniform vec3 uFogColor;
   uniform float uFogNear;
   uniform float uFogFar;
-  uniform float uRunnerHalf; // center runner half-width, in metres
-  uniform float uRunnerZ;    // runner only ahead of this z (down the walk)
+  uniform float uRunnerHalf;    // center runner half-width, in metres
+  uniform float uRunnerZ;       // runner only ahead of this z (down the walk)
+  uniform float uNight;         // 0 = day, 1 = night (darker deck, lit lamps)
+  uniform vec2 uLampPos[12];    // lantern xz positions on the walk
+  uniform float uLampGlow;      // how strongly the lanterns pool light (night)
 
   float hash(float n) { return fract(sin(n) * 43758.5453123); }
   float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -534,11 +710,26 @@ const WOOD_FRAGMENT = /* glsl */ `
                  * step(uRunnerZ, wz);
     base *= mix(1.0, 0.72, runner * 0.6);
 
-    // --- dusk sheen + fog ----------------------------------------------------
+    // --- daylight, sheen, lantern pools, and fog -----------------------------
     vec3 V = normalize(cameraPosition - vWorldPos);
     float graze = pow(1.0 - clamp(V.y, 0.0, 1.0), 4.0);   // low angles catch sky
-    base += uSunGlow * graze * 0.06;
-    base *= 0.5 + 0.5 * clamp(uSunDir.y + 0.85, 0.0, 1.0); // ambient day amount
+    base += uSunGlow * graze * 0.06 * (1.0 - uNight);
+
+    // Sky-driven brightness: bright by day, sinking to a dim moonlit floor at
+    // night so the lanterns and neon do the lighting instead.
+    float daylight = clamp(uSunDir.y + 0.85, 0.0, 1.0);
+    base *= mix(0.16, 1.0, daylight);
+
+    // Warm pools of light spilling onto the deck under each lit lantern.
+    if (uLampGlow > 0.001) {
+      vec3 warm = vec3(1.0, 0.72, 0.38);
+      float pool = 0.0;
+      for (int i = 0; i < 12; i++) {
+        float d2 = dot(vWorldPos.xz - uLampPos[i], vWorldPos.xz - uLampPos[i]);
+        pool += exp(-d2 * 0.11);
+      }
+      base += warm * pool * uLampGlow * (0.7 + 0.3 * fibre);
+    }
 
     float dist = length(cameraPosition - vWorldPos);
     float fogF = clamp((uFogFar - dist) / (uFogFar - uFogNear), 0.0, 1.0);
@@ -875,13 +1066,32 @@ export default function ConstructGame() {
     if (!host) return;
 
     // --- Scene -------------------------------------------------------------
+    // The initial hour comes from Alabama's clock, unless a ?t=HH override is
+    // present (handy for previewing night, sunrise, etc. without waiting).
+    const timeParam = new URLSearchParams(window.location.search).get("t");
+    const overrideHour =
+      timeParam !== null && timeParam !== "" && Number.isFinite(Number(timeParam))
+        ? ((Number(timeParam) % 24) + 24) % 24
+        : null;
+    // ?cycle=SECONDS runs a whole day in that many seconds, for a quick preview.
+    const cycleParam = Number(
+      new URLSearchParams(window.location.search).get("cycle"),
+    );
+    const cycleSeconds = Number.isFinite(cycleParam) && cycleParam > 0 ? cycleParam : 0;
+
+    const startNow = alabamaNow();
+    const startDoy = startNow.doy;
+    const initialState = sampleSky(
+      solarPosition(overrideHour ?? startNow.hour, startDoy).elevDeg,
+    );
+
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x101a2c);
-    // Warm dusk haze pushes the far end of the pier toward the horizon color.
-    scene.fog = new THREE.Fog(DUSK.fog, 90, 850);
+    scene.background = initialState.horizon.clone();
+    scene.fog = new THREE.Fog(initialState.fog.clone(), 90, 850);
 
     // The world's own surfaces are unlit (MeshBasicMaterial), but uploaded VRM
-    // avatars use lit materials — light them to match the low sun.
+    // avatars use lit materials — light them to match the sky. Colors and
+    // intensities are re-tuned by applyTimeOfDay as the sun moves.
     const ambientLight = new THREE.AmbientLight(0xffe8d0, 1.05);
     scene.add(ambientLight);
     const keyLight = new THREE.DirectionalLight(0xffc088, 1.5);
@@ -912,16 +1122,20 @@ export default function ConstructGame() {
     // --- The ocean, the sky, and the sun --------------------------------------
     const WATER_Y = -5; // sea level; the deck rides ~5m above it on pilings
 
+    const moonDir = new THREE.Vector3(0.3, 0.5, 0.4).normalize();
     const skyGeo = new THREE.SphereGeometry(1600, 32, 16);
     const skyMat = new THREE.ShaderMaterial({
       vertexShader: SKY_VERTEX,
       fragmentShader: SKY_FRAGMENT,
       uniforms: {
         uSunDir: { value: SUN_DIR },
-        uZenith: { value: DUSK.zenith },
-        uHorizon: { value: DUSK.horizon },
-        uSunCore: { value: DUSK.sunCore },
-        uSunGlow: { value: DUSK.sunGlow },
+        uMoonDir: { value: moonDir },
+        uZenith: { value: initialState.zenith.clone() },
+        uHorizon: { value: initialState.horizon.clone() },
+        uSunCore: { value: initialState.sunCore.clone() },
+        uSunGlow: { value: initialState.sunGlow.clone() },
+        uCloud: { value: initialState.cloud.clone() },
+        uNight: { value: initialState.night },
         uTime: { value: 0 },
       },
       side: THREE.BackSide,
@@ -947,8 +1161,8 @@ export default function ConstructGame() {
       textureHeight: 512,
       waterNormals,
       sunDirection: SUN_DIR.clone(),
-      sunColor: DUSK.sunColor,
-      waterColor: DUSK.waterColor,
+      sunColor: initialState.waterSun.getHex(),
+      waterColor: initialState.water.getHex(),
       distortionScale: 3.7,
       fog: scene.fog !== undefined,
     });
@@ -969,17 +1183,27 @@ export default function ConstructGame() {
 
     // The procedural wood shader, shared across every deck surface so the
     // grain runs continuously from the walk out onto the plaza.
+    // Lantern positions on the walk (gaps between shopfronts), shared by the
+    // lamp meshes below and the deck shader's warm light pools.
+    const LAMP_XZ: [number, number][] = [];
+    for (const lz of [4, -24, -44, -64, -84, -104]) {
+      for (const lx of [-8.4, 8.4]) LAMP_XZ.push([lx, lz]);
+    }
+
     const woodMat = new THREE.ShaderMaterial({
       vertexShader: WOOD_VERTEX,
       fragmentShader: WOOD_FRAGMENT,
       uniforms: {
         uSunDir: { value: SUN_DIR },
-        uSunGlow: { value: DUSK.sunGlow },
-        uFogColor: { value: new THREE.Color(DUSK.fog) },
+        uSunGlow: { value: initialState.sunGlow.clone() },
+        uFogColor: { value: initialState.fog.clone() },
         uFogNear: { value: 90 },
         uFogFar: { value: 850 },
         uRunnerHalf: { value: 9 },
         uRunnerZ: { value: PLAZA_START_Z },
+        uNight: { value: initialState.night },
+        uLampPos: { value: LAMP_XZ.map(([x, z]) => new THREE.Vector2(x, z)) },
+        uLampGlow: { value: 0 },
       },
     });
     disposables.push(woodMat);
@@ -1088,45 +1312,107 @@ export default function ConstructGame() {
     postPoses.forEach((m, i) => railPosts.setMatrixAt(i, m));
     scene.add(railPosts);
 
-    // Boardwalk lamps in the gaps between shopfronts, glowing warm for dusk.
+    // Boardwalk lamps in the gaps between shopfronts. The globe and its glow
+    // sprite are toggled from cold/dim by day to warm/bright at night by
+    // applyTimeOfDay; the deck shader pools matching light beneath them.
     const lampPostGeo = new THREE.CylinderGeometry(0.07, 0.11, 3.6, 8);
     const lampPostMat = new THREE.MeshBasicMaterial({ color: 0x232833 });
     const lampGlobeGeo = new THREE.SphereGeometry(0.28, 16, 12);
+    // Each lamp gets its own globe + glow material so we can animate them.
     const lampGlobeMat = new THREE.MeshBasicMaterial({ color: 0xffdba4 });
     const lampGlowTex = makeGlowTexture();
-    const lampGlowMat = new THREE.SpriteMaterial({
-      map: lampGlowTex,
-      color: 0xffc27a,
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      opacity: 0.75,
-    });
-    disposables.push(
-      lampPostGeo,
-      lampPostMat,
-      lampGlobeGeo,
-      lampGlobeMat,
-      lampGlowTex,
-      lampGlowMat,
-    );
-    for (const lz of [4, -24, -44, -64, -84, -104]) {
-      for (const lx of [-8.4, 8.4]) {
-        const lamp = new THREE.Group();
-        lamp.position.set(lx, 0, lz);
-        const pole = new THREE.Mesh(lampPostGeo, lampPostMat);
-        pole.position.y = 1.8;
-        lamp.add(pole);
-        const globe = new THREE.Mesh(lampGlobeGeo, lampGlobeMat);
-        globe.position.y = 3.75;
-        lamp.add(globe);
-        const glow = new THREE.Sprite(lampGlowMat);
-        glow.scale.set(2.6, 2.6, 1);
-        glow.position.y = 3.75;
-        lamp.add(glow);
-        scene.add(lamp);
-      }
+    disposables.push(lampPostGeo, lampPostMat, lampGlobeGeo, lampGlobeMat, lampGlowTex);
+    const lampGlows: THREE.SpriteMaterial[] = [];
+    for (const [lx, lz] of LAMP_XZ) {
+      const lamp = new THREE.Group();
+      lamp.position.set(lx, 0, lz);
+      const pole = new THREE.Mesh(lampPostGeo, lampPostMat);
+      pole.position.y = 1.8;
+      lamp.add(pole);
+      const globe = new THREE.Mesh(lampGlobeGeo, lampGlobeMat);
+      globe.position.y = 3.75;
+      lamp.add(globe);
+      const glowMat = new THREE.SpriteMaterial({
+        map: lampGlowTex,
+        color: 0xffc27a,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        opacity: 0.2,
+      });
+      const glow = new THREE.Sprite(glowMat);
+      glow.scale.set(2.6, 2.6, 1);
+      glow.position.y = 3.75;
+      lamp.add(glow);
+      lampGlows.push(glowMat);
+      disposables.push(glowMat);
+      scene.add(lamp);
     }
+
+    // --- Time of day: push the sun to its hour and retune the whole world -----
+    const dayKey = new THREE.Color(0xffc088);
+    const nightKey = new THREE.Color(0x3a4d78);
+    const dayAmbient = new THREE.Color(0xffe8d0);
+    const nightAmbient = new THREE.Color(0x2a3a5c);
+    const applyTimeOfDay = (hour: number, doy: number) => {
+      const sp = solarPosition(hour, doy);
+      const elev = sp.elevDeg;
+      sunDirFromSolar(elev, sp.azimuth, SUN_DIR); // mutated; sky & wood read it live
+      const s = sampleSky(elev);
+
+      // The moon rides opposite the sun, kept above the horizon.
+      moonDir
+        .set(-SUN_DIR.x, Math.abs(SUN_DIR.y) * 0.5 + 0.4, -SUN_DIR.z)
+        .normalize();
+
+      // Sky
+      skyMat.uniforms.uZenith.value.copy(s.zenith);
+      skyMat.uniforms.uHorizon.value.copy(s.horizon);
+      skyMat.uniforms.uSunCore.value.copy(s.sunCore);
+      skyMat.uniforms.uSunGlow.value.copy(s.sunGlow);
+      skyMat.uniforms.uCloud.value.copy(s.cloud);
+      skyMat.uniforms.uNight.value = s.night;
+
+      // Ocean + fog + background
+      const wu = (water.material as THREE.ShaderMaterial).uniforms;
+      wu.sunDirection.value.copy(SUN_DIR);
+      wu.waterColor.value.copy(s.water);
+      wu.sunColor.value.copy(s.waterSun);
+      scene.fog!.color.copy(s.fog);
+      (scene.background as THREE.Color).copy(s.horizon).lerp(s.zenith, 0.5);
+
+      // Deck
+      woodMat.uniforms.uSunGlow.value.copy(s.sunGlow);
+      woodMat.uniforms.uFogColor.value.copy(s.fog);
+      woodMat.uniforms.uNight.value = s.night;
+
+      // Lanterns fade up as the sun sinks past ~10°, full once it's down.
+      const lampOn = THREE.MathUtils.clamp(
+        1 - THREE.MathUtils.smoothstep(elev, 2, 12),
+        0,
+        1,
+      );
+      woodMat.uniforms.uLampGlow.value = lampOn * 0.5;
+      for (const g of lampGlows) g.opacity = THREE.MathUtils.lerp(0.14, 0.95, lampOn);
+      lampGlobeMat.color
+        .set(0x6a5836)
+        .lerp(new THREE.Color(0xfff0c8), lampOn);
+
+      // Scene lights for the (lit) avatars
+      const dayAmt = THREE.MathUtils.clamp(
+        THREE.MathUtils.smoothstep(elev, -6, 12),
+        0,
+        1,
+      );
+      keyLight.position.copy(SUN_DIR).multiplyScalar(90);
+      keyLight.position.y = Math.max(12, keyLight.position.y);
+      keyLight.color.copy(dayKey).lerp(nightKey, 1 - dayAmt);
+      keyLight.intensity = THREE.MathUtils.lerp(0.15, 1.6, dayAmt);
+      ambientLight.color.copy(nightAmbient).lerp(dayAmbient, dayAmt);
+      ambientLight.intensity = THREE.MathUtils.lerp(0.5, 1.15, dayAmt);
+      hemiLight.intensity = THREE.MathUtils.lerp(0.3, 0.8, dayAmt);
+    };
+    applyTimeOfDay(overrideHour ?? startNow.hour, startDoy);
 
     // --- The block itself: rentable storefronts along the pier's walk --------
     const STREET_HALF = 9; // half the walk width between the two rows
@@ -2119,17 +2405,29 @@ export default function ConstructGame() {
     const SCREEN_CENTER = new THREE.Vector2(0, 0);
     let focusKey: string | null = null;
     let focusFrame = 0;
+    let lastTodSync = -999; // throttle real-clock time-of-day resyncs
 
     const animate = () => {
       animationFrame = window.requestAnimationFrame(animate);
       const delta = Math.min(clock.getDelta(), 0.05);
       const elapsed = clock.elapsedTime;
 
-      // the ocean ripples and the clouds drift
+      // the ocean ripples and the clouds drift; stars twinkle off uTime
       (
         water.material as THREE.ShaderMaterial
       ).uniforms.time.value += delta;
       skyMat.uniforms.uTime.value = elapsed;
+
+      // ?cycle=SECONDS spins a full day in that time so the whole day↔night
+      // arc previews at a glance; otherwise re-read Alabama's real clock about
+      // once a second so the world tracks the actual time of day as it drifts.
+      if (cycleSeconds > 0) {
+        applyTimeOfDay((elapsed / cycleSeconds) * 24, startDoy);
+      } else if (overrideHour === null && elapsed - lastTodSync > 1) {
+        lastTodSync = elapsed;
+        const n = alabamaNow();
+        applyTimeOfDay(n.hour, n.doy);
+      }
 
       // orientation: AR-style from device sensors, or yaw/pitch from input
       if (modeRef.current === "gyro" && gyro.has) {
