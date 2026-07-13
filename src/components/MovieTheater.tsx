@@ -3,15 +3,20 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import * as THREE from "three";
+import {
+  CSS3DRenderer,
+  CSS3DObject,
+} from "three/examples/jsm/renderers/CSS3DRenderer.js";
 
 // ============================================================================
 // The Movie Theater — the third room in The Colossus.
 //
 // A single-screen cinema: a giant screen flanked by curtains at the front,
 // stepped rows of seats climbing toward the back, a center aisle with strip
-// lights, and a starfield ceiling. The screen is a real video surface — pick
-// a local video file or paste a direct video URL at the screen menu and it
-// plays on the big screen (house trim lights dim while the film runs).
+// lights, and a starfield ceiling. The big screen streams YouTube — paste a
+// link or pick a saved bookmark, and a real YouTube player is mounted onto the
+// screen in 3D (via CSS3DRenderer) so it plays right there in the room, house
+// trim lights dimming while the film runs.
 //
 // Everything uses the site's unlit neon material language (MeshBasicMaterial)
 // so it matches the Arena and the Concert Hall next door.
@@ -37,6 +42,49 @@ const ROWS_START_Z = -6; // first step begins here
 const SCREEN_W = 30;
 const SCREEN_H = 12.5;
 const SCREEN_Y = 7.6; // screen center height
+
+// The YouTube player is a real iframe mounted in 3D. It's authored at this
+// pixel size (16:9) and scaled down into world units to fit the screen.
+const PLAYER_PX_W = 1280;
+const PLAYER_PX_H = 720;
+const PLAYER_WORLD_H = 12.0; // a touch inside the screen frame
+const PLAYER_SCALE = PLAYER_WORLD_H / PLAYER_PX_H;
+
+type Bookmark = { id: string; url: string };
+
+// Seed bookmarks — offered on first visit so there's always something to play.
+const DEFAULT_BOOKMARKS: Bookmark[] = [
+  { id: "velDW1330Zc", url: "https://www.youtube.com/watch?v=velDW1330Zc" },
+  { id: "inVXK6gFX-U", url: "https://www.youtube.com/watch?v=inVXK6gFX-U" },
+  { id: "tK1w3VYkPjw", url: "https://www.youtube.com/watch?v=tK1w3VYkPjw" },
+];
+
+const BOOKMARKS_KEY = "theater-bookmarks";
+
+// Pull the 11-char video id out of any common YouTube link (or a bare id).
+function parseYouTubeId(input: string): string | null {
+  const s = (input ?? "").trim();
+  if (/^[a-zA-Z0-9_-]{11}$/.test(s)) return s;
+  try {
+    const u = new URL(s);
+    if (u.hostname.includes("youtu.be")) {
+      const id = u.pathname.slice(1, 12);
+      return /^[a-zA-Z0-9_-]{11}$/.test(id) ? id : null;
+    }
+    const v = u.searchParams.get("v");
+    if (v && /^[a-zA-Z0-9_-]{11}$/.test(v)) return v;
+    const m = u.pathname.match(/\/(?:embed|shorts|live)\/([a-zA-Z0-9_-]{11})/);
+    if (m) return m[1];
+  } catch {
+    /* not a url */
+  }
+  return null;
+}
+
+const embedUrl = (id: string) =>
+  `https://www.youtube.com/embed/${id}?autoplay=1&rel=0&enablejsapi=1&playsinline=1&modestbranding=1`;
+const thumbUrl = (id: string) =>
+  `https://img.youtube.com/vi/${id}/hqdefault.jpg`;
 
 function floorHeightAt(z: number): number {
   if (z < ROWS_START_Z) return 0;
@@ -79,8 +127,9 @@ function makeTextTexture(
 }
 
 type TheaterApi = {
-  loadSource: (source: File | string, title: string) => void;
-  togglePlay: () => Promise<void>;
+  play: (id: string, title: string) => void;
+  stop: () => void;
+  togglePlay: () => void;
   isPlaying: () => boolean;
 };
 
@@ -95,7 +144,13 @@ export default function MovieTheater() {
   const [locked, setLocked] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [screenStatus, setScreenStatus] = useState("No film loaded — open the screen menu.");
+  const [hasFilm, setHasFilm] = useState(false);
+  const [screenStatus, setScreenStatus] = useState(
+    "No film loaded — open the screen menu.",
+  );
+  const [bookmarks, setBookmarks] = useState<Bookmark[]>(DEFAULT_BOOKMARKS);
+  const [linkInput, setLinkInput] = useState("");
+  const [linkError, setLinkError] = useState("");
   const isTouch = useSyncExternalStore(
     subscribeToPointerType,
     () => window.matchMedia("(pointer: coarse)").matches,
@@ -108,6 +163,32 @@ export default function MovieTheater() {
   useEffect(() => {
     overlayOpenRef.current = !entered || menuOpen;
   }, [entered, menuOpen]);
+
+  // Load saved bookmarks (localStorage is client-only, so this can't be an
+  // initializer); fall back to the seed list on first visit.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(BOOKMARKS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Bookmark[];
+        if (Array.isArray(parsed) && parsed.length) {
+          /* eslint-disable-next-line react-hooks/set-state-in-effect */
+          setBookmarks(parsed.filter((b) => b && typeof b.id === "string"));
+        }
+      }
+    } catch {
+      /* keep defaults */
+    }
+  }, []);
+
+  const persistBookmarks = useCallback((next: Bookmark[]) => {
+    setBookmarks(next);
+    try {
+      localStorage.setItem(BOOKMARKS_KEY, JSON.stringify(next));
+    } catch {
+      /* private mode — keep in memory */
+    }
+  }, []);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -129,6 +210,18 @@ export default function MovieTheater() {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(window.innerWidth, window.innerHeight);
     host.appendChild(renderer.domElement);
+
+    // A second, transparent layer for the CSS3D YouTube player, mounted over
+    // the WebGL canvas and driven by the same camera so the iframe tracks the
+    // screen as you look around the room.
+    const css3d = new CSS3DRenderer();
+    css3d.setSize(window.innerWidth, window.innerHeight);
+    css3d.domElement.style.position = "absolute";
+    css3d.domElement.style.inset = "0";
+    css3d.domElement.style.pointerEvents = "none"; // clicks fall through to canvas
+    css3d.domElement.style.zIndex = "5"; // above canvas, below the HUD (z-10)
+    host.appendChild(css3d.domElement);
+    const css3dScene = new THREE.Scene();
 
     const disposables: { dispose: () => void }[] = [];
     const track = <T extends { dispose: () => void }>(d: T): T => {
@@ -219,8 +312,6 @@ export default function MovieTheater() {
     for (const sx of [-1.9, 1.9]) {
       const strip = new THREE.Mesh(stripGeo, house(ACCENT));
       strip.position.set(sx, floorHeightAt(roomCenterZ) * 0 + 0.03, roomCenterZ + 1);
-      // The strip is flat, so let it hug the average slope instead: cheat with
-      // a slight tilt from front floor to back row height.
       strip.rotation.x = -Math.atan2(ROWS * ROW_RISE, roomDepth - 4);
       strip.position.y = (ROWS * ROW_RISE) / 2 + 0.03;
       scene.add(strip);
@@ -257,8 +348,8 @@ export default function MovieTheater() {
     // --- The screen ----------------------------------------------------------
     const idleTexture = track(
       makeTextTexture([
-        { text: "COLOSSUS CINEMA", size: 96, color: ACCENT },
-        { text: "open the screen menu to start a film", size: 40, color: "#8fa3c8" },
+        { text: "COLOSSUS CINEMA", size: 92, color: ACCENT },
+        { text: "open the screen menu to pick a YouTube video", size: 36, color: "#8fa3c8" },
       ]),
     );
     const screenMat = track(
@@ -305,77 +396,69 @@ export default function MovieTheater() {
     marquee.position.set(0, SCREEN_Y + SCREEN_H / 2 + 2.4, WALL_FRONT + 0.4);
     scene.add(marquee);
 
-    // --- Video playback ------------------------------------------------------
-    const video = document.createElement("video");
-    video.playsInline = true;
-    video.crossOrigin = "anonymous";
-    video.preload = "auto";
-    let objectUrl: string | null = null;
-    let videoTexture: THREE.VideoTexture | null = null;
-    let sceneDisposed = false;
+    // --- The YouTube player, mounted onto the screen in 3D -------------------
+    const iframe = document.createElement("iframe");
+    iframe.width = String(PLAYER_PX_W);
+    iframe.height = String(PLAYER_PX_H);
+    iframe.style.border = "0";
+    iframe.style.background = "#000";
+    iframe.style.pointerEvents = "auto"; // the player itself stays clickable
+    iframe.allow =
+      "autoplay; encrypted-media; picture-in-picture; fullscreen";
+    iframe.setAttribute("allowfullscreen", "true");
+    iframe.title = "Theater screen";
 
+    const screenObject = new CSS3DObject(iframe);
+    screenObject.position.set(0, SCREEN_Y, WALL_FRONT + 0.4);
+    screenObject.scale.setScalar(PLAYER_SCALE); // px → world units
+    // Front face points +z toward the audience by default; no rotation needed.
+
+    let sceneDisposed = false;
+    let playing = false;
+    let currentTitle = "";
     const setStatus = (s: string) => {
       if (!sceneDisposed) setScreenStatus(s);
     };
+    const post = (func: string) =>
+      iframe.contentWindow?.postMessage(
+        JSON.stringify({ event: "command", func, args: [] }),
+        "*",
+      );
 
-    video.addEventListener("playing", () => {
-      setHouseLights(true);
-      if (!sceneDisposed) setIsPlaying(true);
-    });
-    video.addEventListener("pause", () => {
-      setHouseLights(false);
-      if (!sceneDisposed) setIsPlaying(false);
-    });
-    video.addEventListener("ended", () => {
-      setHouseLights(false);
-      if (!sceneDisposed) setIsPlaying(false);
-      setStatus("The credits rolled — pick another film.");
-    });
-    video.addEventListener("error", () => {
-      setHouseLights(false);
-      if (!sceneDisposed) setIsPlaying(false);
-      setStatus("That video failed to load — try a file or a direct .mp4 / .webm URL.");
-    });
-
-    let currentTitle = "";
     apiRef.current = {
-      loadSource: (source, title) => {
-        if (objectUrl) {
-          URL.revokeObjectURL(objectUrl);
-          objectUrl = null;
-        }
-        if (typeof source === "string") {
-          video.src = source;
-        } else {
-          objectUrl = URL.createObjectURL(source);
-          video.src = objectUrl;
-        }
+      play: (id, title) => {
+        iframe.src = embedUrl(id);
+        if (!screenObject.parent) css3dScene.add(screenObject);
+        screen.visible = false; // hide the idle plate behind the player
+        setHouseLights(true);
+        playing = true;
         currentTitle = title;
-        if (!videoTexture) {
-          videoTexture = track(new THREE.VideoTexture(video));
-          videoTexture.colorSpace = THREE.SRGBColorSpace;
+        if (!sceneDisposed) {
+          setIsPlaying(true);
+          setHasFilm(true);
         }
-        screenMat.map = videoTexture;
-        screenMat.needsUpdate = true;
-        setStatus(`Loaded · ${title} — hit play film.`);
-        void video.play().then(
-          () => setStatus(`Now showing · ${title}`),
-          () => {
-            // Autoplay can be blocked until the next tap — the play button covers it.
-          },
-        );
+        setStatus(`Now showing · ${title}`);
       },
-      togglePlay: async () => {
-        if (!video.src) return;
-        if (video.paused || video.ended) {
-          await video.play();
-          setStatus(`Now showing · ${currentTitle}`);
-        } else {
-          video.pause();
-          setStatus(`Intermission · ${currentTitle}`);
+      stop: () => {
+        iframe.src = "about:blank";
+        if (screenObject.parent) css3dScene.remove(screenObject);
+        screen.visible = true;
+        setHouseLights(false);
+        playing = false;
+        if (!sceneDisposed) {
+          setIsPlaying(false);
+          setHasFilm(false);
         }
+        setStatus("Screen cleared — pick a video.");
       },
-      isPlaying: () => Boolean(video.src) && !video.paused && !video.ended,
+      togglePlay: () => {
+        if (!screenObject.parent) return;
+        playing = !playing;
+        post(playing ? "playVideo" : "pauseVideo");
+        if (!sceneDisposed) setIsPlaying(playing);
+        setStatus(playing ? `Now showing · ${currentTitle}` : `Intermission · ${currentTitle}`);
+      },
+      isPlaying: () => playing,
     };
 
     // --- Controls — pointer-lock + WASD, or dual-thumb touch ------------------
@@ -468,6 +551,7 @@ export default function MovieTheater() {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
+      css3d.setSize(window.innerWidth, window.innerHeight);
     };
     window.addEventListener("resize", onResize);
 
@@ -507,8 +591,8 @@ export default function MovieTheater() {
       camera.rotateY(yaw);
       camera.rotateX(pitch);
 
-      if (videoTexture) videoTexture.needsUpdate = true;
       renderer.render(scene, camera);
+      css3d.render(css3dScene, camera); // keep the player glued to the screen
     };
     loop();
 
@@ -516,10 +600,7 @@ export default function MovieTheater() {
       sceneDisposed = true;
       cancelAnimationFrame(raf);
       apiRef.current = null;
-      video.pause();
-      video.removeAttribute("src");
-      video.load();
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      iframe.src = "about:blank";
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("mousemove", onMouseMove);
@@ -535,14 +616,45 @@ export default function MovieTheater() {
       disposables.forEach((d) => d.dispose());
       renderer.dispose();
       renderer.domElement.remove();
+      css3d.domElement.remove();
     };
   }, []);
 
   const enter = useCallback(() => {
     enteredRef.current = true;
     setEntered(true);
-    if (!isTouch) lockFnRef.current?.();
-  }, [isTouch]);
+    // Open the picker straight away so there's always something to start with.
+    setMenuOpen(true);
+  }, []);
+
+  const playId = useCallback((id: string, title: string) => {
+    apiRef.current?.play(id, title);
+    setMenuOpen(false);
+  }, []);
+
+  const submitLink = useCallback(
+    (alsoSave: boolean) => {
+      const id = parseYouTubeId(linkInput);
+      if (!id) {
+        setLinkError("That doesn't look like a YouTube link.");
+        return;
+      }
+      setLinkError("");
+      if (alsoSave && !bookmarks.some((b) => b.id === id)) {
+        persistBookmarks([{ id, url: linkInput.trim() }, ...bookmarks]);
+      }
+      if (!alsoSave) {
+        playId(id, id);
+        setLinkInput("");
+      }
+    },
+    [linkInput, bookmarks, persistBookmarks, playId],
+  );
+
+  const removeBookmark = useCallback(
+    (id: string) => persistBookmarks(bookmarks.filter((b) => b.id !== id)),
+    [bookmarks, persistBookmarks],
+  );
 
   const showOverlay = !entered;
 
@@ -568,7 +680,7 @@ export default function MovieTheater() {
                   Screen menu
                 </p>
                 <p className="mt-1 text-sm text-ink-soft">
-                  Put a film on the big screen.
+                  Stream a YouTube video on the big screen.
                 </p>
               </div>
               <button
@@ -582,58 +694,92 @@ export default function MovieTheater() {
 
             <section className="mb-5 space-y-2">
               <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-ink-dim">
-                Play a video file
-              </p>
-              <input
-                type="file"
-                accept="video/*"
-                onChange={(e) => {
-                  const file = e.currentTarget.files?.[0];
-                  e.currentTarget.value = "";
-                  if (!file) return;
-                  apiRef.current?.loadSource(file, file.name.replace(/\.[^.]+$/, ""));
-                  setMenuOpen(false);
-                }}
-                className="block w-full text-xs text-ink-soft"
-              />
-            </section>
-
-            <section className="space-y-2">
-              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-ink-dim">
-                Or stream a direct video URL
-              </p>
-              <p className="text-[10px] leading-relaxed text-ink-dim">
-                A direct link to a .mp4 / .webm file (not a YouTube page — the
-                host has to allow playback from other sites).
+                Paste a YouTube link
               </p>
               <form
                 className="flex gap-2"
                 onSubmit={(e) => {
                   e.preventDefault();
-                  const fd = new FormData(e.currentTarget);
-                  const url = String(fd.get("url") ?? "").trim();
-                  if (!url) return;
-                  const title =
-                    url.split("/").pop()?.replace(/\.[^.]+$/, "") || "streamed film";
-                  apiRef.current?.loadSource(url, title);
-                  e.currentTarget.reset();
-                  setMenuOpen(false);
+                  submitLink(false);
                 }}
               >
                 <input
-                  name="url"
-                  type="url"
-                  placeholder="https://…/film.mp4"
+                  value={linkInput}
+                  onChange={(e) => {
+                    setLinkInput(e.target.value);
+                    if (linkError) setLinkError("");
+                  }}
+                  type="text"
+                  inputMode="url"
+                  placeholder="https://www.youtube.com/watch?v=…"
                   className="w-full rounded-md border border-white/15 bg-black/40 px-3 py-2 text-sm text-[#dbe5ff] outline-none focus:border-[#f43f5e]"
                 />
                 <button
                   type="submit"
-                  className="rounded-md border px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-[#dbe5ff] transition-colors hover:bg-[#dbe5ff] hover:text-[#0b1020]"
+                  className="shrink-0 rounded-md border px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-[#dbe5ff] transition-colors hover:bg-[#dbe5ff] hover:text-[#0b1020]"
                   style={{ borderColor: `${ACCENT}99` }}
                 >
-                  roll it
+                  play
+                </button>
+                <button
+                  type="button"
+                  onClick={() => submitLink(true)}
+                  className="shrink-0 rounded-md border border-white/25 px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-ink-soft transition-colors hover:bg-white/10"
+                >
+                  save
                 </button>
               </form>
+              {linkError && (
+                <p className="text-[11px] text-[#f43f5e]">{linkError}</p>
+              )}
+            </section>
+
+            <section className="space-y-2">
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-ink-dim">
+                Bookmarks
+              </p>
+              {bookmarks.length === 0 ? (
+                <p className="text-[11px] text-ink-dim">
+                  No bookmarks yet — save a link above to keep it here.
+                </p>
+              ) : (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  {bookmarks.map((b) => (
+                    <div key={b.id} className="group relative">
+                      <button
+                        type="button"
+                        onClick={() => playId(b.id, b.id)}
+                        className="relative block aspect-video w-full overflow-hidden rounded-md border border-white/15 bg-[#05070d] transition-colors hover:border-[#f43f5e]"
+                      >
+                        {/* play glyph shows through if the thumbnail can't load */}
+                        <span
+                          className="absolute inset-0 flex items-center justify-center text-2xl"
+                          style={{ color: ACCENT }}
+                        >
+                          ▶
+                        </span>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={thumbUrl(b.id)}
+                          alt=""
+                          className="absolute inset-0 h-full w-full object-cover"
+                          onError={(e) => {
+                            e.currentTarget.style.display = "none";
+                          }}
+                        />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeBookmark(b.id)}
+                        aria-label="Remove bookmark"
+                        className="absolute right-1 top-1 rounded bg-black/70 px-1.5 py-0.5 text-[11px] leading-none text-ink-soft opacity-0 transition-opacity hover:text-[#f43f5e] group-hover:opacity-100"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </section>
 
             <p className="mt-4 text-center text-[10px] uppercase tracking-[0.18em] text-ink-dim">
@@ -665,10 +811,10 @@ export default function MovieTheater() {
                 screen menu
               </button>
             )}
-            {entered && (
+            {entered && hasFilm && (
               <button
                 type="button"
-                onClick={() => void apiRef.current?.togglePlay()}
+                onClick={() => apiRef.current?.togglePlay()}
                 className="rounded-md border border-white/18 bg-white/[0.055] px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-[#dbe5ff] transition-colors hover:bg-[#dbe5ff] hover:text-[#0b1020]"
                 style={{ borderColor: `${ACCENT}66` }}
               >
@@ -696,8 +842,8 @@ export default function MovieTheater() {
           {isTouch
             ? "left thumb: walk — right thumb: look — leave the theater up top"
             : locked
-              ? "wasd / arrows: move — mouse: look — esc: free the cursor for the buttons"
-              : "cursor released — click the scene to look around, or leave the theater up top"}
+              ? "wasd / arrows: move — mouse: look — esc: free the cursor for the screen & buttons"
+              : "cursor released — click the scene to look around, or use the screen & buttons"}
         </p>
       </div>
 
@@ -713,8 +859,8 @@ export default function MovieTheater() {
           <p className="max-w-sm text-sm leading-relaxed text-ink-soft">
             A single-screen cinema inside The Colossus: stepped rows under a
             starfield ceiling, curtains framing a giant screen. Take any seat —
-            then open the screen menu to put a film on (a video file from your
-            device, or a direct video URL). House lights dim when it rolls.
+            then stream a YouTube video on the big screen. Paste a link or pick
+            a saved bookmark; house lights dim when it rolls.
           </p>
           <button
             type="button"
