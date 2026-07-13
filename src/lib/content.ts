@@ -164,7 +164,7 @@ export const rabbitHole = {
 };
 
 // ---------------------------------------------------------------------------
-// The Construct — a virtual city block of rentable storefronts
+// The Construct — a boardwalk pier of rentable storefronts over open water
 // ---------------------------------------------------------------------------
 
 export type Storefront = {
@@ -288,7 +288,7 @@ export const arena = {
   entrance: {
     name: "The Colossus",
     blurb:
-      "The monolith at the end of the block — a game arena and a concert hall under one dome. Step inside to choose your room.",
+      "The monolith at the end of the pier — a game arena and a concert hall under one dome. Step inside to choose your room.",
     cta: "Step inside",
   },
   // Shown in the lobby overlay before you walk in.

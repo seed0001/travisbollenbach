@@ -28,7 +28,8 @@ import {
 
 const EYE_HEIGHT = 2.2;
 const MOVE_SPEED = 12;
-const BOUNDS = { x: 70, zMin: -108, zMax: 20 };
+// The walkable deck of the pier — past these edges is railing, then ocean.
+const BOUNDS = { x: 24, zMin: -108, zMax: 20 };
 const REVEAL_RADIUS = 13;
 // The Superdome closes off the far end of the street. Walking into this
 // forecourt zone (centered on the entrance) lets the visitor press E to enter.
@@ -323,6 +324,213 @@ function makeGlowTexture() {
     ctx.fillRect(0, 0, 128, 128);
   }
   return new THREE.CanvasTexture(canvas);
+}
+
+// --- The pier over the ocean: sun, sky, water, and weathered planks ---------
+
+// One sun drives everything: the disc in the sky shader, the glitter path on
+// the water, and the key light on uploaded avatars. Low over the water,
+// slightly left of the pier's axis so it hangs beside the Colossus.
+const SUN_DIR = new THREE.Vector3(-0.45, 0.1, -0.85).normalize();
+const DUSK = {
+  zenith: new THREE.Color(0x24457c),
+  horizon: new THREE.Color(0xff9d5c),
+  sunCore: new THREE.Color(0xfff4d8),
+  sunGlow: new THREE.Color(0xffb36b),
+  fog: 0xef9c62,
+  waterDeep: new THREE.Color(0x0b2e47),
+  waterShallow: new THREE.Color(0x155a76),
+};
+
+// Gradient sky dome with the sun disc, its glow, and drifting fbm clouds all
+// computed per-pixel, so the sun stays aligned with the water's reflection.
+const SKY_VERTEX = /* glsl */ `
+  varying vec3 vDir;
+  void main() {
+    vec4 wp = modelMatrix * vec4(position, 1.0);
+    vDir = wp.xyz - cameraPosition;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const SKY_FRAGMENT = /* glsl */ `
+  precision highp float;
+  varying vec3 vDir;
+  uniform vec3 uSunDir;
+  uniform vec3 uZenith;
+  uniform vec3 uHorizon;
+  uniform vec3 uSunCore;
+  uniform vec3 uSunGlow;
+  uniform float uTime;
+
+  float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+  }
+  float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(
+      mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+      mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x),
+      f.y
+    );
+  }
+  float fbm(vec2 p) {
+    float v = 0.0;
+    float a = 0.5;
+    for (int i = 0; i < 5; i++) {
+      v += a * noise(p);
+      p *= 2.03;
+      a *= 0.5;
+    }
+    return v;
+  }
+
+  void main() {
+    vec3 dir = normalize(vDir);
+    float h = dir.y;
+    float t = pow(clamp((h + 0.04) / 0.65, 0.0, 1.0), 0.75);
+    vec3 col = mix(uHorizon, uZenith, t);
+
+    // Warm wash and halo around the sun, then the disc itself.
+    float d = clamp(dot(dir, uSunDir), 0.0, 1.0);
+    col = mix(col, uSunGlow, pow(d, 6.0) * 0.5);
+    col += uSunGlow * pow(d, 64.0) * 0.6;
+    col = mix(col, uSunCore, smoothstep(0.99935, 0.99965, d));
+
+    // A slow-drifting cloud deck, lit warm on the sun side.
+    if (h > 0.015) {
+      vec2 p = dir.xz / (h + 0.18) * 1.6 + vec2(uTime * 0.006, uTime * 0.0015);
+      float cov = fbm(p);
+      float cl = smoothstep(0.52, 0.8, cov) * smoothstep(0.015, 0.09, h);
+      vec3 cloud = mix(vec3(0.98, 0.85, 0.72), vec3(0.45, 0.4, 0.5), smoothstep(0.5, 0.95, cov));
+      cloud += uSunGlow * pow(d, 3.0) * 0.35;
+      col = mix(col, cloud, cl * 0.8);
+    }
+
+    gl_FragColor = vec4(col, 1.0);
+  }
+`;
+
+// Open-ocean water: gentle swells displace the mesh, while a finer analytic
+// wave field perturbs the normal per-pixel for fresnel sky reflection and the
+// sun's glitter path. Distance haze fades it into the horizon.
+const WATER_VERTEX = /* glsl */ `
+  uniform float uTime;
+  varying vec3 vWorldPos;
+  void main() {
+    vec4 wp = modelMatrix * vec4(position, 1.0);
+    float t = uTime;
+    wp.y += sin(dot(wp.xz, vec2(0.055, 0.033)) + t * 0.9) * 0.32;
+    wp.y += sin(dot(wp.xz, vec2(-0.028, 0.061)) + t * 0.65) * 0.24;
+    wp.y += sin(dot(wp.xz, vec2(0.012, -0.021)) + t * 0.4) * 0.35;
+    vWorldPos = wp.xyz;
+    gl_Position = projectionMatrix * viewMatrix * wp;
+  }
+`;
+
+const WATER_FRAGMENT = /* glsl */ `
+  precision highp float;
+  varying vec3 vWorldPos;
+  uniform float uTime;
+  uniform vec3 uSunDir;
+  uniform vec3 uDeep;
+  uniform vec3 uShallow;
+  uniform vec3 uZenith;
+  uniform vec3 uHorizon;
+  uniform vec3 uSunGlow;
+  uniform vec3 uFog;
+
+  vec3 waveNormal(vec2 p, float t) {
+    float dx = 0.0;
+    float dz = 0.0;
+    vec2 d;
+    float ph;
+    d = normalize(vec2(1.0, 0.6));
+    ph = dot(p, d) * 0.9 + t * 1.2;
+    dx += 0.14 * 0.9 * d.x * cos(ph); dz += 0.14 * 0.9 * d.y * cos(ph);
+    d = normalize(vec2(-0.7, 1.0));
+    ph = dot(p, d) * 1.7 + t * 1.6;
+    dx += 0.09 * 1.7 * d.x * cos(ph); dz += 0.09 * 1.7 * d.y * cos(ph);
+    d = normalize(vec2(0.3, -1.0));
+    ph = dot(p, d) * 3.1 + t * 2.2;
+    dx += 0.05 * 3.1 * d.x * cos(ph); dz += 0.05 * 3.1 * d.y * cos(ph);
+    d = normalize(vec2(-1.0, -0.4));
+    ph = dot(p, d) * 5.9 + t * 2.8;
+    dx += 0.028 * 5.9 * d.x * cos(ph); dz += 0.028 * 5.9 * d.y * cos(ph);
+    return normalize(vec3(-dx, 1.0, -dz));
+  }
+
+  void main() {
+    vec3 V = normalize(cameraPosition - vWorldPos);
+    vec3 N = waveNormal(vWorldPos.xz, uTime);
+    float ndv = max(dot(N, V), 0.0);
+    float fres = 0.04 + 0.96 * pow(1.0 - ndv, 5.0);
+
+    vec3 R = reflect(-V, N);
+    float rt = pow(clamp((R.y + 0.05) / 0.7, 0.0, 1.0), 0.8);
+    vec3 skyRef = mix(uHorizon, uZenith, rt);
+
+    float dR = clamp(dot(R, uSunDir), 0.0, 1.0);
+    float spec = pow(dR, 900.0) * 3.2 + pow(dR, 120.0) * 0.7 + pow(dR, 18.0) * 0.12;
+
+    vec3 base = mix(uDeep, uShallow, 0.5 + 0.5 * N.x);
+    vec3 col = mix(base, skyRef, fres) + uSunGlow * spec;
+
+    float dist = length(cameraPosition.xz - vWorldPos.xz);
+    col = mix(col, uFog, smoothstep(150.0, 1100.0, dist));
+    gl_FragColor = vec4(col, 1.0);
+  }
+`;
+
+// Weathered boardwalk planks: staggered butt joints, grain streaks, and nail
+// heads, tileable in both directions. Planks run along the texture's v axis.
+function makePlankTexture() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 512;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    const plankW = 64; // 8 planks per tile
+    for (let i = 0; i < 8; i += 1) {
+      const x = i * plankW;
+      const light = 88 + ((i * 37) % 5) * 9 + (i % 2) * 6;
+      ctx.fillStyle = `rgb(${light + 42}, ${light + 12}, ${light - 22})`;
+      ctx.fillRect(x, 0, plankW, canvas.height);
+
+      // grain: faint darker streaks running the plank's length
+      for (let g = 0; g < 9; g += 1) {
+        const gx = x + 5 + ((i * 13 + g * 23) % (plankW - 10));
+        ctx.strokeStyle = `rgba(40, 26, 12, ${0.05 + ((g * 7 + i) % 4) * 0.02})`;
+        ctx.lineWidth = 1 + ((g + i) % 2);
+        ctx.beginPath();
+        ctx.moveTo(gx, 0);
+        ctx.bezierCurveTo(gx + 4, 170, gx - 4, 340, gx + 2, 512);
+        ctx.stroke();
+      }
+
+      // seam between planks
+      ctx.fillStyle = "rgba(24, 15, 8, 0.85)";
+      ctx.fillRect(x, 0, 3, canvas.height);
+
+      // staggered butt joint + nail heads
+      const jointY = (i * 199 + 96) % canvas.height;
+      ctx.fillRect(x, jointY, plankW, 3);
+      ctx.fillStyle = "rgba(30, 22, 14, 0.9)";
+      for (const ny of [jointY + 12, jointY - 10]) {
+        ctx.beginPath();
+        ctx.arc(x + 12, ((ny % 512) + 512) % 512, 2.2, 0, Math.PI * 2);
+        ctx.arc(x + plankW - 12, ((ny % 512) + 512) % 512, 2.2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  return texture;
 }
 
 // --- Device-orientation camera quaternion (AR-style look) -------------------
@@ -653,24 +861,26 @@ export default function ConstructGame() {
 
     // --- Scene -------------------------------------------------------------
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x090b10);
-    scene.fog = new THREE.Fog(0x090b10, 24, 145);
+    scene.background = new THREE.Color(0x101a2c);
+    // Warm dusk haze pushes the far end of the pier toward the horizon color.
+    scene.fog = new THREE.Fog(DUSK.fog, 90, 850);
 
     // The world's own surfaces are unlit (MeshBasicMaterial), but uploaded VRM
-    // avatars use lit materials — give them light so they're not black.
-    const ambientLight = new THREE.AmbientLight(0xffffff, 1.4);
+    // avatars use lit materials — light them to match the low sun.
+    const ambientLight = new THREE.AmbientLight(0xffe8d0, 1.05);
     scene.add(ambientLight);
-    const keyLight = new THREE.DirectionalLight(0xdbe5ff, 1.6);
-    keyLight.position.set(6, 14, 8);
+    const keyLight = new THREE.DirectionalLight(0xffc088, 1.5);
+    keyLight.position.copy(SUN_DIR).multiplyScalar(90);
+    keyLight.position.y = 25; // lifted a touch so faces aren't pure rim light
     scene.add(keyLight);
-    const hemiLight = new THREE.HemisphereLight(0xbcd0ff, 0x0b1020, 0.8);
+    const hemiLight = new THREE.HemisphereLight(0x4a6a9c, 0x2b1d12, 0.7);
     scene.add(hemiLight);
 
     const camera = new THREE.PerspectiveCamera(
       70,
       window.innerWidth / window.innerHeight,
       0.1,
-      400,
+      3500,
     );
     camera.position.set(0, EYE_HEIGHT, 10);
 
@@ -684,55 +894,259 @@ export default function ConstructGame() {
 
     const disposables: { dispose(): void }[] = [];
 
-    // --- Floor grid ----------------------------------------------------------
-    const grid = new THREE.GridHelper(400, 200, 0x8fb3ff, 0x26324a);
-    (grid.material as THREE.Material).transparent = true;
-    (grid.material as THREE.Material).opacity = 0.55;
-    scene.add(grid);
-    disposables.push(grid.geometry, grid.material as THREE.Material);
+    // --- The ocean, the sky, and the sun --------------------------------------
+    const WATER_Y = -5; // sea level; the deck rides ~5m above it on pilings
 
-    const floorGeometry = new THREE.PlaneGeometry(400, 400);
-    const floorMaterial = new THREE.MeshBasicMaterial({
-      color: 0x10141d,
-      transparent: true,
-      opacity: 0.9,
+    const skyGeo = new THREE.SphereGeometry(1600, 32, 16);
+    const skyMat = new THREE.ShaderMaterial({
+      vertexShader: SKY_VERTEX,
+      fragmentShader: SKY_FRAGMENT,
+      uniforms: {
+        uSunDir: { value: SUN_DIR },
+        uZenith: { value: DUSK.zenith },
+        uHorizon: { value: DUSK.horizon },
+        uSunCore: { value: DUSK.sunCore },
+        uSunGlow: { value: DUSK.sunGlow },
+        uTime: { value: 0 },
+      },
+      side: THREE.BackSide,
+      depthWrite: false,
+      fog: false,
     });
-    const floor = new THREE.Mesh(floorGeometry, floorMaterial);
-    floor.rotation.x = -Math.PI / 2;
-    floor.position.y = -0.02;
-    scene.add(floor);
-    disposables.push(floorGeometry, floorMaterial);
+    const sky = new THREE.Mesh(skyGeo, skyMat);
+    scene.add(sky);
+    disposables.push(skyGeo, skyMat);
 
-    // --- City block: rentable storefronts along a street ---------------------
-    const STREET_HALF = 9; // half the street width between the two rows
-    const STORE_W = 16; // unit frontage (runs along the street / z axis)
+    // Tessellated so the vertex shader can roll gentle swells through it; the
+    // fragment shader's finer wave field does the sparkle.
+    const waterGeo = new THREE.PlaneGeometry(2200, 2200, 128, 128);
+    waterGeo.rotateX(-Math.PI / 2);
+    const waterMat = new THREE.ShaderMaterial({
+      vertexShader: WATER_VERTEX,
+      fragmentShader: WATER_FRAGMENT,
+      uniforms: {
+        uSunDir: { value: SUN_DIR },
+        uDeep: { value: DUSK.waterDeep },
+        uShallow: { value: DUSK.waterShallow },
+        uZenith: { value: DUSK.zenith },
+        uHorizon: { value: DUSK.horizon },
+        uSunGlow: { value: DUSK.sunGlow },
+        uFog: { value: new THREE.Color(DUSK.fog) },
+        uTime: { value: 0 },
+      },
+      fog: false,
+    });
+    const water = new THREE.Mesh(waterGeo, waterMat);
+    water.position.y = WATER_Y;
+    scene.add(water);
+    disposables.push(waterGeo, waterMat);
+
+    // --- The pier: an elevated boardwalk carrying the whole block -------------
+    // The main walk holds the ten shops; it widens into a plaza under the
+    // Colossus at the far end. Deck top sits at y=0 so the street's original
+    // coordinates all still hold.
+    const PIER_HALF_W = 26; // main walk half-width
+    const PLAZA_HALF_W = 46; // wide platform under the Colossus
+    const PIER_START_Z = 26; // near end, behind the spawn point
+    const PLAZA_START_Z = -114; // where the walk widens
+    const PIER_END_Z = -204; // far end, past the dome
+
+    const plankTex = makePlankTexture();
+    plankTex.anisotropy = 8;
+    disposables.push(plankTex);
+    // One tile covers 8 planks (3.2m) across × 8m along.
+    const plankRepeat = (w: number, l: number) => {
+      const tex = plankTex.clone();
+      tex.needsUpdate = true;
+      tex.repeat.set(w / 3.2, l / 8);
+      disposables.push(tex);
+      return tex;
+    };
+
+    const deckSlabMat = new THREE.MeshBasicMaterial({ color: 0x3a2c1e });
+    disposables.push(deckSlabMat);
+
+    const walkLen = PIER_START_Z - PLAZA_START_Z;
+    const walkSlabGeo = new THREE.BoxGeometry(PIER_HALF_W * 2, 0.9, walkLen);
+    const walkSlab = new THREE.Mesh(walkSlabGeo, deckSlabMat);
+    walkSlab.position.set(0, -0.45, (PIER_START_Z + PLAZA_START_Z) / 2);
+    scene.add(walkSlab);
+    disposables.push(walkSlabGeo);
+
+    const plazaLen = PLAZA_START_Z - PIER_END_Z;
+    const plazaSlabGeo = new THREE.BoxGeometry(PLAZA_HALF_W * 2, 0.9, plazaLen);
+    const plazaSlab = new THREE.Mesh(plazaSlabGeo, deckSlabMat);
+    plazaSlab.position.set(0, -0.45, (PLAZA_START_Z + PIER_END_Z) / 2);
+    scene.add(plazaSlab);
+    disposables.push(plazaSlabGeo);
+
+    // Plank surfaces laid over the slabs; the central strip is tinted a shade
+    // darker so the "main road" of the pier still reads as a road.
+    const addDeckTop = (
+      w: number,
+      l: number,
+      x: number,
+      z: number,
+      y: number,
+      tint: number,
+    ) => {
+      const geo = new THREE.PlaneGeometry(w, l);
+      const mat = new THREE.MeshBasicMaterial({
+        map: plankRepeat(w, l),
+        color: tint,
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.position.set(x, y, z);
+      scene.add(mesh);
+      disposables.push(geo, mat);
+    };
+    addDeckTop(
+      PIER_HALF_W * 2,
+      walkLen,
+      0,
+      (PIER_START_Z + PLAZA_START_Z) / 2,
+      0.005,
+      0xd9c2a6,
+    );
+    addDeckTop(
+      PLAZA_HALF_W * 2,
+      plazaLen,
+      0,
+      (PLAZA_START_Z + PIER_END_Z) / 2,
+      0.005,
+      0xd9c2a6,
+    );
+    addDeckTop(
+      18,
+      walkLen,
+      0,
+      (PIER_START_Z + PLAZA_START_Z) / 2,
+      0.012,
+      0xb0906c,
+    );
+
+    // Pilings marching down into the water along every deck edge.
+    const pilingGeo = new THREE.CylinderGeometry(0.5, 0.5, 9.5, 10);
+    const pilingMat = new THREE.MeshBasicMaterial({ color: 0x2e2318 });
+    disposables.push(pilingGeo, pilingMat);
+    const pilingSpots: [number, number][] = [];
+    for (let z = 24; z >= PLAZA_START_Z; z -= 8) {
+      pilingSpots.push([-25, z], [25, z]);
+    }
+    for (let z = PLAZA_START_Z - 4; z >= PIER_END_Z + 2; z -= 8) {
+      pilingSpots.push([-45, z], [45, z]);
+    }
+    for (let x = -44; x <= 44; x += 10) {
+      pilingSpots.push([x, PLAZA_START_Z - 2], [x, PIER_END_Z + 2]);
+    }
+    const pilings = new THREE.InstancedMesh(
+      pilingGeo,
+      pilingMat,
+      pilingSpots.length,
+    );
+    const pilingPose = new THREE.Matrix4();
+    pilingSpots.forEach(([px, pz], i) => {
+      pilingPose.setPosition(px, -4.75, pz);
+      pilings.setMatrixAt(i, pilingPose);
+    });
+    scene.add(pilings);
+
+    // Wooden railings around every open edge (the deck past BOUNDS).
+    const railMat = new THREE.MeshBasicMaterial({ color: 0x5a4634 });
+    disposables.push(railMat);
+    const postPoses: THREE.Matrix4[] = [];
+    const addRailing = (x1: number, z1: number, x2: number, z2: number) => {
+      const len = Math.hypot(x2 - x1, z2 - z1);
+      const yawAngle = Math.atan2(x2 - x1, z2 - z1);
+      const cx = (x1 + x2) / 2;
+      const cz = (z1 + z2) / 2;
+      for (const [ry, h] of [
+        [1.12, 0.13],
+        [0.64, 0.09],
+      ]) {
+        const geo = new THREE.BoxGeometry(0.12, h, len);
+        const rail = new THREE.Mesh(geo, railMat);
+        rail.position.set(cx, ry, cz);
+        rail.rotation.y = yawAngle;
+        scene.add(rail);
+        disposables.push(geo);
+      }
+      const posts = Math.max(2, Math.round(len / 4) + 1);
+      for (let i = 0; i < posts; i += 1) {
+        const t = i / (posts - 1);
+        const m = new THREE.Matrix4().makeRotationY(yawAngle);
+        m.setPosition(x1 + (x2 - x1) * t, 0.55, z1 + (z2 - z1) * t);
+        postPoses.push(m);
+      }
+    };
+    const railEdge = PIER_HALF_W - 0.3;
+    const plazaEdge = PLAZA_HALF_W - 0.3;
+    addRailing(-railEdge, PIER_START_Z - 0.5, railEdge, PIER_START_Z - 0.5);
+    addRailing(-railEdge, PIER_START_Z - 0.5, -railEdge, PLAZA_START_Z);
+    addRailing(railEdge, PIER_START_Z - 0.5, railEdge, PLAZA_START_Z);
+    addRailing(-plazaEdge, PLAZA_START_Z, -railEdge, PLAZA_START_Z);
+    addRailing(railEdge, PLAZA_START_Z, plazaEdge, PLAZA_START_Z);
+    addRailing(-plazaEdge, PLAZA_START_Z, -plazaEdge, PIER_END_Z + 0.5);
+    addRailing(plazaEdge, PLAZA_START_Z, plazaEdge, PIER_END_Z + 0.5);
+    addRailing(-plazaEdge, PIER_END_Z + 0.5, plazaEdge, PIER_END_Z + 0.5);
+    const postGeoRail = new THREE.BoxGeometry(0.16, 1.2, 0.16);
+    disposables.push(postGeoRail);
+    const railPosts = new THREE.InstancedMesh(
+      postGeoRail,
+      railMat,
+      postPoses.length,
+    );
+    postPoses.forEach((m, i) => railPosts.setMatrixAt(i, m));
+    scene.add(railPosts);
+
+    // Boardwalk lamps in the gaps between shopfronts, glowing warm for dusk.
+    const lampPostGeo = new THREE.CylinderGeometry(0.07, 0.11, 3.6, 8);
+    const lampPostMat = new THREE.MeshBasicMaterial({ color: 0x232833 });
+    const lampGlobeGeo = new THREE.SphereGeometry(0.28, 16, 12);
+    const lampGlobeMat = new THREE.MeshBasicMaterial({ color: 0xffdba4 });
+    const lampGlowTex = makeGlowTexture();
+    const lampGlowMat = new THREE.SpriteMaterial({
+      map: lampGlowTex,
+      color: 0xffc27a,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      opacity: 0.75,
+    });
+    disposables.push(
+      lampPostGeo,
+      lampPostMat,
+      lampGlobeGeo,
+      lampGlobeMat,
+      lampGlowTex,
+      lampGlowMat,
+    );
+    for (const lz of [4, -24, -44, -64, -84, -104]) {
+      for (const lx of [-8.4, 8.4]) {
+        const lamp = new THREE.Group();
+        lamp.position.set(lx, 0, lz);
+        const pole = new THREE.Mesh(lampPostGeo, lampPostMat);
+        pole.position.y = 1.8;
+        lamp.add(pole);
+        const globe = new THREE.Mesh(lampGlobeGeo, lampGlobeMat);
+        globe.position.y = 3.75;
+        lamp.add(globe);
+        const glow = new THREE.Sprite(lampGlowMat);
+        glow.scale.set(2.6, 2.6, 1);
+        glow.position.y = 3.75;
+        lamp.add(glow);
+        scene.add(lamp);
+      }
+    }
+
+    // --- The block itself: rentable storefronts along the pier's walk --------
+    const STREET_HALF = 9; // half the walk width between the two rows
+    const STORE_W = 16; // unit frontage (runs along the walk / z axis)
     const STORE_D = 13; // unit depth (into the building / x axis)
     const STORE_H = 7; // wall height
     const ROW_START_Z = -14; // first unit's center
     const ROW_STEP = STORE_W + 4; // frontage + gap between units
-
-    // A darker roadway down the middle, with a dashed center line.
-    const roadGeometry = new THREE.PlaneGeometry(STREET_HALF * 2, 150);
-    const roadMaterial = new THREE.MeshBasicMaterial({ color: 0x0b0e15 });
-    const road = new THREE.Mesh(roadGeometry, roadMaterial);
-    road.rotation.x = -Math.PI / 2;
-    road.position.set(0, 0.01, -55);
-    scene.add(road);
-    disposables.push(roadGeometry, roadMaterial);
-
-    const dashGeometry = new THREE.PlaneGeometry(0.35, 2.4);
-    const dashMaterial = new THREE.MeshBasicMaterial({
-      color: 0x2a3450,
-      transparent: true,
-      opacity: 0.8,
-    });
-    disposables.push(dashGeometry, dashMaterial);
-    for (let z = 5; z > -115; z -= 6) {
-      const dash = new THREE.Mesh(dashGeometry, dashMaterial);
-      dash.rotation.x = -Math.PI / 2;
-      dash.position.set(0, 0.02, z);
-      scene.add(dash);
-    }
 
     // Shared geometry across all ten units (built with the opening facing +x).
     const backWallGeo = new THREE.BoxGeometry(0.3, STORE_H, STORE_W);
@@ -1723,6 +2137,10 @@ export default function ConstructGame() {
       const delta = Math.min(clock.getDelta(), 0.05);
       const elapsed = clock.elapsedTime;
 
+      // the ocean swells and the clouds drift
+      waterMat.uniforms.uTime.value = elapsed;
+      skyMat.uniforms.uTime.value = elapsed;
+
       // orientation: AR-style from device sensors, or yaw/pitch from input
       if (modeRef.current === "gyro" && gyro.has) {
         setQuaternionFromOrientation(
@@ -2242,9 +2660,9 @@ export default function ConstructGame() {
             the construct
           </p>
           <p className="max-w-sm text-sm leading-relaxed text-ink-soft">
-            A virtual city block. Walk the street, step into the storefronts,
-            and claim a space of your own. Anyone else inside appears as a
-            glowing orb — talk, or type in the group chat.
+            A boardwalk pier over open water. Walk the planks, step into the
+            storefronts, and claim a space of your own. Anyone else out here
+            appears as a glowing orb — talk, or type in the group chat.
           </p>
           {identityControls}
           <button
@@ -2270,9 +2688,9 @@ export default function ConstructGame() {
             the construct
           </p>
           <p className="max-w-sm text-sm leading-relaxed text-ink-soft">
-            A virtual city block of storefronts. Walk in, look around, and claim
-            a space. Anyone else inside appears as a glowing orb — talk, or type
-            in the group chat.
+            A boardwalk pier of storefronts over open water. Walk the planks,
+            look around, and claim a space. Anyone else out here appears as a
+            glowing orb — talk, or type in the group chat.
           </p>
           {identityControls}
           <button
