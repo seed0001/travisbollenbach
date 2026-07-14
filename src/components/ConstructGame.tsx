@@ -977,6 +977,16 @@ export default function ConstructGame() {
   const [wallBusy, setWallBusy] = useState(false);
   const [wallError, setWallError] = useState("");
   const editorFileRef = useRef<HTMLInputElement>(null);
+  // Talk-to-the-dog chat (the site guide living in Unit 01).
+  const [guideOpen, setGuideOpen] = useState(false);
+  const [guideMsgs, setGuideMsgs] = useState<
+    { role: "user" | "assistant"; content: string }[]
+  >([]);
+  const [guideInput, setGuideInput] = useState("");
+  const [guideBusy, setGuideBusy] = useState(false);
+  const [guideSpeak, setGuideSpeak] = useState(true); // read replies aloud
+  const guideAudioRef = useRef<HTMLAudioElement | null>(null);
+  const guideScrollRef = useRef<HTMLDivElement>(null);
   // Reactive copies of the studio data for the HUD (refs feed the scene/effects)
   const [studioMap, setStudioMap] = useState<Map<string, PublicStudio>>(
     new Map(),
@@ -1020,6 +1030,13 @@ export default function ConstructGame() {
     chatScrollRef.current?.scrollTo({ top: 999999 });
   }, [messages]);
 
+  useEffect(() => {
+    guideScrollRef.current?.scrollTo({ top: 999999 });
+  }, [guideMsgs, guideBusy]);
+
+  // Stop the dog's voice if the component unmounts mid-sentence.
+  useEffect(() => () => stopDogVoice(), []);
+
   // Load the studios' wall content once inside, and note which units are ours.
   useEffect(() => {
     if (!entered) return;
@@ -1055,8 +1072,8 @@ export default function ConstructGame() {
   }, [entered]);
 
   useEffect(() => {
-    overlayOpenRef.current = !!(viewer || editor);
-  }, [viewer, editor]);
+    overlayOpenRef.current = !!(viewer || editor || guideOpen);
+  }, [viewer, editor, guideOpen]);
 
   // Press E to interact with the wall under the crosshair: owners edit it,
   // everyone else plays/visits its content. Falls back to a storefront action
@@ -1129,6 +1146,85 @@ export default function ConstructGame() {
     const text = chatText.trim();
     if (text) lobbyRef.current?.sendChat(text);
     setChatText("");
+  };
+
+  // --- Talk to the dog (the site guide) -------------------------------------
+  const stopDogVoice = () => {
+    const a = guideAudioRef.current;
+    if (a) {
+      a.pause();
+      if (a.src) URL.revokeObjectURL(a.src);
+      a.removeAttribute("src");
+    }
+  };
+
+  // Read a reply aloud through Fish Audio TTS. Best-effort — if the voice
+  // backend isn't set up, the text is still shown in the chat.
+  const speakDog = async (text: string) => {
+    try {
+      const res = await fetch("/api/tts/speak", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (!res.ok) return;
+      const blob = await res.blob();
+      stopDogVoice();
+      const audio = guideAudioRef.current ?? new Audio();
+      guideAudioRef.current = audio;
+      audio.src = URL.createObjectURL(blob);
+      void audio.play().catch(() => {});
+    } catch {
+      /* voice is optional */
+    }
+  };
+
+  const sendToDog = async (event: FormEvent) => {
+    event.preventDefault();
+    const text = guideInput.trim();
+    if (!text || guideBusy) return;
+    const next = [...guideMsgs, { role: "user" as const, content: text }];
+    setGuideMsgs(next);
+    setGuideInput("");
+    setGuideBusy(true);
+    try {
+      const res = await fetch("/api/guide/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: next.slice(-16) }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { reply?: string };
+      const reply =
+        data.reply || "Hmm, I lost my train of thought. Ask me again?";
+      setGuideMsgs((m) => [...m, { role: "assistant", content: reply }]);
+      if (guideSpeak) void speakDog(reply);
+    } catch {
+      setGuideMsgs((m) => [
+        ...m,
+        { role: "assistant", content: "I couldn't hear you just then — try again?" },
+      ]);
+    } finally {
+      setGuideBusy(false);
+    }
+  };
+
+  const openGuide = () => {
+    if (document.pointerLockElement) document.exitPointerLock();
+    setGuideOpen(true);
+    if (guideMsgs.length === 0) {
+      setGuideMsgs([
+        {
+          role: "assistant",
+          content:
+            "Woof! I'm Travis's dog — I show folks around here. Ask me anything about the site.",
+        },
+      ]);
+    }
+  };
+
+  const closeGuide = () => {
+    stopDogVoice();
+    setGuideOpen(false);
   };
 
   const uploadWallImage = async (file: File) => {
@@ -3362,6 +3458,15 @@ export default function ConstructGame() {
                   </span>
                 </Link>
               )}
+              {near.number === "01" && (
+                <button
+                  type="button"
+                  onClick={openGuide}
+                  className="pointer-events-auto mt-3 block w-full rounded-md border border-[#f0c36a]/60 bg-[#121826]/72 px-5 py-2.5 text-xs font-bold uppercase tracking-[0.16em] text-[#f0c36a] transition-colors hover:bg-[#f0c36a] hover:text-[#0b1020]"
+                >
+                  🐾 Talk to the dog
+                </button>
+              )}
               {nearMine && (
                 <Link
                   href="/studio"
@@ -3526,6 +3631,99 @@ export default function ConstructGame() {
           >
             back to the environment page
           </Link>
+        </div>
+      )}
+
+      {/* Talk to the dog — the site guide */}
+      {guideOpen && (
+        <div className="pointer-events-auto absolute inset-0 z-40 flex items-end justify-center bg-black/70 p-4 sm:items-center">
+          <div className="flex h-[75vh] w-full max-w-md flex-col rounded-xl border border-[#f0c36a]/30 bg-[#0b1020] shadow-2xl sm:h-[70vh]">
+            <div className="flex items-center justify-between border-b border-white/10 p-4">
+              <div>
+                <p className="text-sm font-bold uppercase tracking-[0.2em] text-[#f0c36a]">
+                  🐾 The Dog
+                </p>
+                <p className="text-[11px] text-ink-dim">
+                  Travis&apos;s dog · ask about the site
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (guideSpeak) stopDogVoice();
+                    setGuideSpeak((v) => !v);
+                  }}
+                  className={`rounded-md border px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.12em] transition-colors ${
+                    guideSpeak
+                      ? "border-[#f0c36a]/70 bg-[#f0c36a]/15 text-[#f0c36a]"
+                      : "border-white/18 text-ink-dim hover:text-ink-soft"
+                  }`}
+                >
+                  {guideSpeak ? "🔊 voice" : "🔇 muted"}
+                </button>
+                <button
+                  type="button"
+                  onClick={closeGuide}
+                  className="rounded-md border border-white/20 px-3 py-1.5 text-[11px] uppercase tracking-wider text-ink-soft hover:bg-white/10"
+                >
+                  close
+                </button>
+              </div>
+            </div>
+
+            <div
+              ref={guideScrollRef}
+              className="flex flex-1 flex-col gap-3 overflow-y-auto p-4"
+            >
+              {guideMsgs.map((m, i) => (
+                <div
+                  key={i}
+                  className={
+                    m.role === "user" ? "flex justify-end" : "flex justify-start"
+                  }
+                >
+                  <p
+                    className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-sm leading-relaxed ${
+                      m.role === "user"
+                        ? "bg-[#8fb3ff]/20 text-[#dbe5ff]"
+                        : "bg-white/[0.06] text-ink-soft"
+                    }`}
+                  >
+                    {m.content}
+                  </p>
+                </div>
+              ))}
+              {guideBusy && (
+                <div className="flex justify-start">
+                  <p className="rounded-2xl bg-white/[0.06] px-3.5 py-2 text-sm text-ink-dim">
+                    …sniffing around for an answer
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <form
+              onSubmit={sendToDog}
+              className="flex gap-2 border-t border-white/10 p-3"
+            >
+              <input
+                value={guideInput}
+                onChange={(e) => setGuideInput(e.target.value)}
+                autoFocus
+                maxLength={2000}
+                placeholder="Ask the dog about the site…"
+                className="w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-sm text-[#dbe5ff] outline-none focus:border-[#f0c36a]"
+              />
+              <button
+                type="submit"
+                disabled={guideBusy || !guideInput.trim()}
+                className="shrink-0 rounded-lg border border-[#f0c36a]/60 bg-[#121826]/72 px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-[#f0c36a] transition-colors hover:bg-[#f0c36a] hover:text-[#0b1020] disabled:opacity-40"
+              >
+                ask
+              </button>
+            </form>
+          </div>
         </div>
       )}
 
