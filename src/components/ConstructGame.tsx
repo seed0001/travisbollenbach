@@ -985,6 +985,7 @@ export default function ConstructGame() {
   const [guideInput, setGuideInput] = useState("");
   const [guideBusy, setGuideBusy] = useState(false);
   const [guideSpeak, setGuideSpeak] = useState(true); // read replies aloud
+  const [voiceNote, setVoiceNote] = useState(""); // surfaced TTS status/errors
   const guideAudioRef = useRef<HTMLAudioElement | null>(null);
   const guideScrollRef = useRef<HTMLDivElement>(null);
   // Reactive copies of the studio data for the HUD (refs feed the scene/effects)
@@ -1158,24 +1159,40 @@ export default function ConstructGame() {
     }
   };
 
-  // Read a reply aloud through Fish Audio TTS. Best-effort — if the voice
-  // backend isn't set up, the text is still shown in the chat.
+  // Read a reply aloud through Fish Audio TTS. Surfaces why it failed instead
+  // of going silent, and reports when the browser blocks autoplay (in which
+  // case the 🔊 replay button — a direct tap — will still work).
   const speakDog = async (text: string) => {
+    setVoiceNote("");
+    let res: Response;
     try {
-      const res = await fetch("/api/tts/speak", {
+      res = await fetch("/api/tts/speak", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
       });
-      if (!res.ok) return;
-      const blob = await res.blob();
-      stopDogVoice();
-      const audio = guideAudioRef.current ?? new Audio();
-      guideAudioRef.current = audio;
-      audio.src = URL.createObjectURL(blob);
-      void audio.play().catch(() => {});
     } catch {
-      /* voice is optional */
+      setVoiceNote("Couldn't reach the voice backend.");
+      return;
+    }
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      setVoiceNote(data.error || `Voice error (${res.status}).`);
+      return;
+    }
+    const blob = await res.blob();
+    if (blob.size === 0) {
+      setVoiceNote("The voice came back empty.");
+      return;
+    }
+    stopDogVoice();
+    const audio = guideAudioRef.current ?? new Audio();
+    guideAudioRef.current = audio;
+    audio.src = URL.createObjectURL(blob);
+    try {
+      await audio.play();
+    } catch {
+      setVoiceNote("Browser blocked autoplay — tap 🔊 on Chance's message to hear it.");
     }
   };
 
@@ -3672,6 +3689,12 @@ export default function ConstructGame() {
               </div>
             </div>
 
+            {voiceNote && (
+              <p className="border-b border-white/10 bg-[#f0c36a]/10 px-4 py-2 text-[11px] text-[#f0c36a]">
+                {voiceNote}
+              </p>
+            )}
+
             <div
               ref={guideScrollRef}
               className="flex flex-1 flex-col gap-3 overflow-y-auto p-4"
@@ -3679,9 +3702,9 @@ export default function ConstructGame() {
               {guideMsgs.map((m, i) => (
                 <div
                   key={i}
-                  className={
-                    m.role === "user" ? "flex justify-end" : "flex justify-start"
-                  }
+                  className={`flex items-end gap-1.5 ${
+                    m.role === "user" ? "justify-end" : "justify-start"
+                  }`}
                 >
                   <p
                     className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-sm leading-relaxed ${
@@ -3692,6 +3715,17 @@ export default function ConstructGame() {
                   >
                     {m.content}
                   </p>
+                  {m.role === "assistant" && (
+                    <button
+                      type="button"
+                      onClick={() => speakDog(m.content)}
+                      aria-label="Hear this aloud"
+                      title="Hear this aloud"
+                      className="shrink-0 rounded-md px-1.5 py-1 text-sm text-ink-dim transition-colors hover:text-[#f0c36a]"
+                    >
+                      🔊
+                    </button>
+                  )}
                 </div>
               ))}
               {guideBusy && (
