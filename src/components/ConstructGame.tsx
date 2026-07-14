@@ -29,13 +29,29 @@ import {
 
 const EYE_HEIGHT = 2.2;
 const MOVE_SPEED = 12;
-// The walkable deck of the pier — past these edges is railing, then ocean.
-const BOUNDS = { x: 24, zMin: -108, zMax: 20 };
 const REVEAL_RADIUS = 13;
 // The Superdome closes off the far end of the street. Walking into this
 // forecourt zone (centered on the entrance) lets the visitor press E to enter.
 const ARENA_ENTRANCE = { x: 0, z: -104, radius: 12 };
 const ARENA_HREF = "/rabbit-hole/venue";
+
+// The huge Ferris wheel stands on a platform beside the Colossus, off to the
+// right of the plaza. Face in the y-z plane (axle along x), so it's seen from
+// the side as you come down the pier and looms overhead at the far end.
+const WHEEL = { x: 54, y: 50, z: -150, radius: 46, cabins: 16, speed: 0.16 };
+const WHEEL_BOARD = { x: 54, z: -150, radius: 13 }; // walk-up boarding zone
+
+// The walkable deck: the main walk, a strip across the plaza front, and the
+// Ferris-wheel platform to the right of the Colossus. Anything off it is
+// railing then ocean, so movement is clamped to this union. The rectangles
+// overlap generously so you can round the corner onto the platform without
+// snagging on a seam.
+function onDeck(x: number, z: number): boolean {
+  if (x >= -24 && x <= 24 && z >= -116 && z <= 20) return true; // main walk
+  if (x >= -42 && x <= 42 && z >= -124 && z <= -110) return true; // plaza front
+  if (x >= 30 && x <= 74 && z >= -182 && z <= -118) return true; // wheel platform
+  return false;
+}
 
 const ORB_COLORS = [
   "#8fb3ff",
@@ -929,6 +945,13 @@ export default function ConstructGame() {
   const studiosRef = useRef<Map<string, PublicStudio>>(new Map());
   const ownedRef = useRef<Set<string>>(new Set());
   const overlayOpenRef = useRef(false);
+  // Ferris wheel: refs bridge the render loop (proximity, ride camera) and the
+  // React HUD (walk-up prompt, exit button).
+  const nearWheelRef = useRef(false);
+  const ridingRef = useRef(false);
+  const rideControlRef = useRef<{ board: () => void; exit: () => void } | null>(
+    null,
+  );
 
   const router = useRouter();
   const [locked, setLocked] = useState(false);
@@ -936,6 +959,8 @@ export default function ConstructGame() {
   const [mode, setMode] = useState<ControlMode>("touch");
   const [nearStore, setNearStore] = useState<number>(-1);
   const [nearArena, setNearArena] = useState(false);
+  const [nearWheel, setNearWheel] = useState(false);
+  const [riding, setRiding] = useState(false);
   const [focusedWall, setFocusedWall] = useState<{
     unit: string;
     wallId: string;
@@ -1423,7 +1448,7 @@ export default function ConstructGame() {
     });
     scene.add(pilings);
 
-    // Wooden railings around every open edge (the deck past BOUNDS).
+    // Wooden railings around every open edge (past the walkable deck).
     const railMat = new THREE.MeshBasicMaterial({ color: 0x5a4634 });
     disposables.push(railMat);
     const postPoses: THREE.Matrix4[] = [];
@@ -1513,6 +1538,7 @@ export default function ConstructGame() {
     const nightKey = new THREE.Color(0x3a4d78);
     const dayAmbient = new THREE.Color(0xffe8d0);
     const nightAmbient = new THREE.Color(0x2a3a5c);
+    let wheelLightAmount = 0; // how lit the Ferris-wheel bulbs are (night → 1)
     const applyTimeOfDay = (hour: number, doy: number) => {
       const sp = solarPosition(hour, doy);
       const elev = sp.elevDeg;
@@ -1555,6 +1581,7 @@ export default function ConstructGame() {
       );
       woodMat.uniforms.uLampGlow.value = lampOn * 0.5;
       wallMat.uniforms.uLampGlow.value = lampOn * 0.5;
+      wheelLightAmount = lampOn; // the Ferris wheel lights up with the lanterns
       for (const g of lampGlows) g.opacity = THREE.MathUtils.lerp(0.14, 0.95, lampOn);
       lampGlobeMat.color
         .set(0x6a5836)
@@ -2280,6 +2307,258 @@ export default function ConstructGame() {
       scene.add(arenaGroup);
     }
 
+    // --- The Ferris wheel: huge, beside the Colossus -------------------------
+    // Basic pass: a boarding platform, an A-frame carrying a spinning wheel of
+    // spokes + a rim, and upright cabins you can ride. Fine detailing later.
+    const gondolas: { mesh: THREE.Group; base: number }[] = [];
+    let wheelAngle = 0;
+    let wheelRunning = false;
+    const rideCamPos = new THREE.Vector3();
+    let rideCabin = 0;
+    let updateWheel: (delta: number) => void = () => {};
+    // Exiting the ride drops the rider back onto the platform by the base.
+    const rideExit = () => {
+      camera.position.set(WHEEL.x, EYE_HEIGHT, WHEEL.z + 12);
+    };
+    {
+      const C = new THREE.Vector3(WHEEL.x, WHEEL.y, WHEEL.z);
+      const R = WHEEL.radius;
+
+      // Platform deck beside the plaza (the part past the plaza's own edge),
+      // reusing the pier's wood shader so the planks stay continuous.
+      const platW = 30;
+      const platCx = 74 - platW / 2; // hug the plaza edge at x≈44, out to x=74
+      const platL = 64;
+      const platSlabGeo = new THREE.BoxGeometry(platW, 0.9, platL);
+      const platSlab = new THREE.Mesh(platSlabGeo, deckSlabMat);
+      platSlab.position.set(platCx, -0.45, WHEEL.z);
+      scene.add(platSlab);
+      const platTopGeo = new THREE.PlaneGeometry(platW, platL);
+      const platTop = new THREE.Mesh(platTopGeo, woodMat);
+      platTop.rotation.x = -Math.PI / 2;
+      platTop.position.set(platCx, 0.012, WHEEL.z);
+      scene.add(platTop);
+      disposables.push(platSlabGeo, platTopGeo);
+
+      // Materials — neon rim/spokes over a dark steel frame, to match the world.
+      const frameMat = new THREE.MeshBasicMaterial({ color: 0x1b2436 });
+      const rimMat = new THREE.MeshBasicMaterial({ color: 0x66e0ff });
+      const spokeMat = new THREE.MeshBasicMaterial({ color: 0x8fb3ff });
+      const hubMat = new THREE.MeshBasicMaterial({ color: 0x223049 });
+      const cabinColors = [
+        0x8fb3ff, 0x66e0ff, 0x7dffa8, 0xf0c36a, 0xff8fd6, 0xff6b6b, 0xb28dff,
+        0xe8ecff,
+      ];
+      const cabinMats = cabinColors.map(
+        (c) => new THREE.MeshBasicMaterial({ color: c }),
+      );
+      disposables.push(frameMat, rimMat, spokeMat, hubMat, ...cabinMats);
+
+      // A cylinder strut between two points (used for legs, axle, spokes).
+      const strut = (
+        a: THREE.Vector3,
+        b: THREE.Vector3,
+        material: THREE.Material,
+        thick: number,
+        parent: THREE.Object3D,
+      ) => {
+        const dir = new THREE.Vector3().subVectors(b, a);
+        const len = dir.length() || 0.001;
+        const geo = new THREE.CylinderGeometry(thick, thick, len, 8);
+        disposables.push(geo);
+        const m = new THREE.Mesh(geo, material);
+        m.position.copy(a).addScaledVector(dir, 0.5);
+        m.quaternion.setFromUnitVectors(
+          new THREE.Vector3(0, 1, 0),
+          dir.clone().normalize(),
+        );
+        // struts built in world space are re-parented relative to `parent`.
+        parent.add(m);
+        m.position.sub(parent.position);
+        return m;
+      };
+
+      // Static A-frame legs on both sides of the axle, plus the axle itself.
+      const axleLeft = new THREE.Vector3(WHEEL.x - 16, WHEEL.y, WHEEL.z);
+      const axleRight = new THREE.Vector3(WHEEL.x + 16, WHEEL.y, WHEEL.z);
+      for (const axle of [axleLeft, axleRight]) {
+        strut(
+          new THREE.Vector3(axle.x, 0, axle.z - 12),
+          axle,
+          frameMat,
+          0.9,
+          scene,
+        );
+        strut(
+          new THREE.Vector3(axle.x, 0, axle.z + 12),
+          axle,
+          frameMat,
+          0.9,
+          scene,
+        );
+      }
+      strut(axleLeft, axleRight, hubMat, 1.1, scene);
+
+      // Spinning wheel: hub, spokes, and a rim ring, in a group that rotates
+      // about the world x-axis (the axle). Built in local space (origin = hub).
+      const wheelSpin = new THREE.Group();
+      wheelSpin.position.copy(C);
+      scene.add(wheelSpin);
+
+      const hubGeo = new THREE.CylinderGeometry(2.4, 2.4, 3, 16);
+      const hub = new THREE.Mesh(hubGeo, hubMat);
+      hub.rotation.z = Math.PI / 2; // lie the hub along the x-axis
+      wheelSpin.add(hub);
+      disposables.push(hubGeo);
+
+      // Rim as a torus in the y-z plane (rotate the default x-y torus by 90°).
+      const rimGeo = new THREE.TorusGeometry(R, 0.55, 10, 72);
+      const rim = new THREE.Mesh(rimGeo, rimMat);
+      rim.rotation.y = Math.PI / 2;
+      wheelSpin.add(rim);
+      const rimGeoInner = new THREE.TorusGeometry(R - 3, 0.28, 8, 72);
+      const rimInner = new THREE.Mesh(rimGeoInner, rimMat);
+      rimInner.rotation.y = Math.PI / 2;
+      wheelSpin.add(rimInner);
+      disposables.push(rimGeo, rimGeoInner);
+
+      // Spokes from hub to rim (local y-z plane; x stays 0).
+      for (let i = 0; i < WHEEL.cabins; i += 1) {
+        const a = (i / WHEEL.cabins) * Math.PI * 2;
+        strut(
+          new THREE.Vector3(WHEEL.x, WHEEL.y, WHEEL.z),
+          new THREE.Vector3(
+            WHEEL.x,
+            WHEEL.y + R * Math.sin(a),
+            WHEEL.z + R * Math.cos(a),
+          ),
+          spokeMat,
+          0.18,
+          wheelSpin,
+        );
+      }
+
+      // Cabins: kept upright (not children of the spinning group), repositioned
+      // each frame along the rim. Each is a little open gondola with a roof.
+      const cabinBodyGeo = new THREE.BoxGeometry(4.4, 2.6, 3.6);
+      const cabinRoofGeo = new THREE.BoxGeometry(4.8, 0.4, 4.0);
+      disposables.push(cabinBodyGeo, cabinRoofGeo);
+      for (let i = 0; i < WHEEL.cabins; i += 1) {
+        const g = new THREE.Group();
+        const body = new THREE.Mesh(cabinBodyGeo, cabinMats[i % cabinMats.length]);
+        body.position.y = -1.3; // hang below its rim attach point
+        g.add(body);
+        const roof = new THREE.Mesh(cabinRoofGeo, frameMat);
+        roof.position.y = 0.2;
+        g.add(roof);
+        scene.add(g);
+        gondolas.push({ mesh: g, base: (i / WHEEL.cabins) * Math.PI * 2 });
+      }
+
+      // Lights strung around the wheel — a ring of bulbs on the outer rim plus
+      // beads running out along each spoke. They ride the spinning group (so
+      // the lights go around with it), glow warm at night, and a travelling
+      // wave chases around the rim. Additive glow sprites via a Points cloud.
+      const bulbPos: number[] = [];
+      const bulbWave: number[] = []; // 0..1 position along the chase, per bulb
+      const RIM_BULBS = 60;
+      for (let i = 0; i < RIM_BULBS; i += 1) {
+        const a = (i / RIM_BULBS) * Math.PI * 2;
+        bulbPos.push(0, (R + 0.5) * Math.cos(a), (R + 0.5) * Math.sin(a));
+        bulbWave.push(i / RIM_BULBS);
+      }
+      for (let s = 0; s < WHEEL.cabins; s += 1) {
+        const a = (s / WHEEL.cabins) * Math.PI * 2;
+        for (const f of [0.35, 0.55, 0.75, 0.95]) {
+          bulbPos.push(0, R * f * Math.cos(a), R * f * Math.sin(a));
+          bulbWave.push(s / WHEEL.cabins);
+        }
+      }
+      const bulbCount = bulbPos.length / 3;
+      const bulbGeo = new THREE.BufferGeometry();
+      bulbGeo.setAttribute(
+        "position",
+        new THREE.Float32BufferAttribute(bulbPos, 3),
+      );
+      const bulbColorAttr = new THREE.Float32BufferAttribute(
+        new Float32Array(bulbCount * 3),
+        3,
+      );
+      bulbGeo.setAttribute("color", bulbColorAttr);
+      const bulbTex = makeGlowTexture();
+      const bulbMat = new THREE.PointsMaterial({
+        map: bulbTex,
+        size: 3.2,
+        sizeAttenuation: true,
+        transparent: true,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      const bulbs = new THREE.Points(bulbGeo, bulbMat);
+      wheelSpin.add(bulbs);
+      disposables.push(bulbGeo, bulbTex, bulbMat);
+      const bulbWarm = new THREE.Color(0xffe6b0);
+      const bulbCool = new THREE.Color(0x8fd9ff);
+      const bulbC = new THREE.Color();
+      let bulbClock = 0;
+
+      // Advance the wheel and keep the cabins hanging upright on the rim.
+      updateWheel = (delta: number) => {
+        if (wheelRunning) wheelAngle += WHEEL.speed * delta;
+        wheelSpin.rotation.x = wheelAngle;
+        for (const g of gondolas) {
+          const a = wheelAngle + g.base;
+          g.mesh.position.set(
+            WHEEL.x,
+            WHEEL.y + R * Math.sin(a),
+            WHEEL.z + R * Math.cos(a),
+          );
+        }
+        // Ride camera rides the chosen cabin's seat.
+        if (ridingRef.current) {
+          rideCamPos.copy(gondolas[rideCabin].mesh.position);
+          rideCamPos.y += 0.2;
+        }
+        // Bulbs: a chase wave around the rim, all scaled by how dark it is.
+        bulbClock += delta;
+        const arr = bulbColorAttr.array as Float32Array;
+        for (let i = 0; i < bulbCount; i += 1) {
+          const wave = 0.55 + 0.45 * Math.sin(bulbClock * 3 - bulbWave[i] * 12);
+          const b = wheelLightAmount * wave;
+          bulbC.copy(i % 2 === 0 ? bulbWarm : bulbCool).multiplyScalar(b);
+          arr[i * 3] = bulbC.r;
+          arr[i * 3 + 1] = bulbC.g;
+          arr[i * 3 + 2] = bulbC.b;
+        }
+        bulbColorAttr.needsUpdate = true;
+      };
+
+      // Board the cabin nearest the bottom; exit drops you back on the platform.
+      rideControlRef.current = {
+        board: () => {
+          let best = 0;
+          let bestY = Infinity;
+          gondolas.forEach((g, i) => {
+            if (g.mesh.position.y < bestY) {
+              bestY = g.mesh.position.y;
+              best = i;
+            }
+          });
+          rideCabin = best;
+          ridingRef.current = true;
+          wheelRunning = true;
+          setRiding(true);
+          setNearWheel(false);
+        },
+        exit: () => {
+          ridingRef.current = false;
+          setRiding(false);
+          rideExit();
+        },
+      };
+    }
+
     // Let React push studio content onto the walls as it loads / is edited.
     wallApiRef.current = {
       applyStudios(studios) {
@@ -2437,6 +2716,17 @@ export default function ConstructGame() {
         window.setTimeout(() => chatInputRef.current?.focus(), 50);
         return;
       }
+      // E boards the Ferris wheel when near its base, and gets off while riding.
+      if (event.code === "KeyE" && !overlayOpenRef.current) {
+        if (ridingRef.current) {
+          rideControlRef.current?.exit();
+          return;
+        }
+        if (nearWheelRef.current) {
+          rideControlRef.current?.board();
+          return;
+        }
+      }
       keys.add(event.code);
     };
     const onKeyUp = (event: KeyboardEvent) => {
@@ -2555,6 +2845,7 @@ export default function ConstructGame() {
     const velocity = new THREE.Vector3();
     let currentNear = -1;
     let currentNearArena = false;
+    let currentNearWheel = false;
     let animationFrame = 0;
     let lastBroadcast = 0;
     const lastSent = new THREE.Vector2(Infinity, Infinity);
@@ -2626,23 +2917,26 @@ export default function ConstructGame() {
         velocity.addScaledVector(right, touchState.moveDelta.x);
       }
 
-      if (overlayOpenRef.current) velocity.set(0, 0, 0);
+      if (overlayOpenRef.current || ridingRef.current) velocity.set(0, 0, 0);
 
-      if (velocity.lengthSq() > 0) {
+      // Walk the deck (union of walk / plaza front / wheel platform), sliding
+      // along edges instead of stopping dead. Skipped while riding the wheel.
+      if (velocity.lengthSq() > 0 && !ridingRef.current) {
         if (velocity.lengthSq() > 1) velocity.normalize();
-        camera.position.addScaledVector(velocity, MOVE_SPEED * delta);
-        camera.position.x = Math.max(
-          -BOUNDS.x,
-          Math.min(BOUNDS.x, camera.position.x),
-        );
-        camera.position.z = Math.max(
-          BOUNDS.zMin,
-          Math.min(BOUNDS.zMax, camera.position.z),
-        );
+        const step = MOVE_SPEED * delta;
+        const nx = camera.position.x + velocity.x * step;
+        const nz = camera.position.z + velocity.z * step;
+        if (onDeck(nx, camera.position.z)) camera.position.x = nx;
+        if (onDeck(camera.position.x, nz)) camera.position.z = nz;
       }
 
-      // subtle idle bob (skip in gyro mode — the sensor already moves)
-      if (modeRef.current !== "gyro") {
+      // advance the wheel + hang the cabins; ride camera follows a cabin
+      updateWheel(delta);
+
+      if (ridingRef.current) {
+        camera.position.copy(rideCamPos);
+      } else if (modeRef.current !== "gyro") {
+        // subtle idle bob (skip in gyro mode — the sensor already moves)
         camera.position.y = EYE_HEIGHT + Math.sin(elapsed * 1.4) * 0.035;
       } else {
         camera.position.y = EYE_HEIGHT;
@@ -2700,6 +2994,19 @@ export default function ConstructGame() {
       if (nearArenaNow !== currentNearArena) {
         currentNearArena = nearArenaNow;
         setNearArena(nearArenaNow);
+      }
+
+      // Ferris-wheel boarding proximity (its base on the platform)
+      const nearWheelNow =
+        !ridingRef.current &&
+        Math.hypot(
+          camera.position.x - WHEEL_BOARD.x,
+          camera.position.z - WHEEL_BOARD.z,
+        ) < WHEEL_BOARD.radius;
+      if (nearWheelNow !== currentNearWheel) {
+        currentNearWheel = nearWheelNow;
+        nearWheelRef.current = nearWheelNow;
+        setNearWheel(nearWheelNow);
       }
 
       // Which poster wall is under the crosshair (throttled, paused in overlays)
@@ -3086,6 +3393,49 @@ export default function ConstructGame() {
                 </span>
               </Link>
             </div>
+          </div>
+        )}
+
+        {/* Ferris-wheel boarding placard */}
+        {nearWheel && !riding && !near && !nearArena && (
+          <div className="absolute inset-x-0 bottom-14 flex justify-center px-4">
+            <div className="max-w-md rounded-lg border border-[#66e0ff]/50 bg-[#0b1020]/88 p-5 text-center backdrop-blur-sm">
+              <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-[#66e0ff]">
+                the boardwalk
+              </p>
+              <p className="mt-1.5 text-lg font-black tracking-tight text-[#dbe5ff]">
+                The Ferris Wheel
+              </p>
+              <p className="mt-1 text-sm leading-relaxed text-ink-soft">
+                Climb aboard and take it for a spin, high over the pier.
+              </p>
+              <button
+                type="button"
+                onClick={() => rideControlRef.current?.board()}
+                className="pointer-events-auto mt-4 inline-block rounded-md border border-[#66e0ff]/70 bg-[#121826]/72 px-5 py-2.5 text-xs font-bold uppercase tracking-[0.16em] text-[#dbe5ff] transition-colors hover:bg-[#66e0ff] hover:text-[#0b1020]"
+              >
+                Ride the wheel
+                <span className="ml-2 hidden text-[10px] text-ink-dim sm:inline">
+                  or press E
+                </span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* riding the wheel — get off */}
+        {riding && (
+          <div className="absolute inset-x-0 bottom-14 flex justify-center px-4">
+            <button
+              type="button"
+              onClick={() => rideControlRef.current?.exit()}
+              className="pointer-events-auto rounded-md border border-[#66e0ff]/70 bg-[#0b1020]/88 px-5 py-2.5 text-xs font-bold uppercase tracking-[0.16em] text-[#dbe5ff] backdrop-blur-sm transition-colors hover:bg-[#66e0ff] hover:text-[#0b1020]"
+            >
+              Get off the wheel
+              <span className="ml-2 hidden text-[10px] text-ink-dim sm:inline">
+                or press E
+              </span>
+            </button>
           </div>
         )}
 
