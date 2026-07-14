@@ -1216,7 +1216,7 @@ export default function ConstructGame() {
         {
           role: "assistant",
           content:
-            "Woof! I'm Travis's dog — I show folks around here. Ask me anything about the site.",
+            "Woof! I'm Chance, Travis's dog — I show folks around here. Ask me anything about the site.",
         },
       ]);
     }
@@ -3464,7 +3464,7 @@ export default function ConstructGame() {
                   onClick={openGuide}
                   className="pointer-events-auto mt-3 block w-full rounded-md border border-[#f0c36a]/60 bg-[#121826]/72 px-5 py-2.5 text-xs font-bold uppercase tracking-[0.16em] text-[#f0c36a] transition-colors hover:bg-[#f0c36a] hover:text-[#0b1020]"
                 >
-                  🐾 Talk to the dog
+                  🐾 Talk to Chance
                 </button>
               )}
               {nearMine && (
@@ -3641,7 +3641,7 @@ export default function ConstructGame() {
             <div className="flex items-center justify-between border-b border-white/10 p-4">
               <div>
                 <p className="text-sm font-bold uppercase tracking-[0.2em] text-[#f0c36a]">
-                  🐾 The Dog
+                  🐾 Chance
                 </p>
                 <p className="text-[11px] text-ink-dim">
                   Travis&apos;s dog · ask about the site
