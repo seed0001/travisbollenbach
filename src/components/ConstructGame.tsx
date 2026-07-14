@@ -1538,6 +1538,7 @@ export default function ConstructGame() {
     const nightKey = new THREE.Color(0x3a4d78);
     const dayAmbient = new THREE.Color(0xffe8d0);
     const nightAmbient = new THREE.Color(0x2a3a5c);
+    let wheelLightAmount = 0; // how lit the Ferris-wheel bulbs are (night → 1)
     const applyTimeOfDay = (hour: number, doy: number) => {
       const sp = solarPosition(hour, doy);
       const elev = sp.elevDeg;
@@ -1580,6 +1581,7 @@ export default function ConstructGame() {
       );
       woodMat.uniforms.uLampGlow.value = lampOn * 0.5;
       wallMat.uniforms.uLampGlow.value = lampOn * 0.5;
+      wheelLightAmount = lampOn; // the Ferris wheel lights up with the lanterns
       for (const g of lampGlows) g.opacity = THREE.MathUtils.lerp(0.14, 0.95, lampOn);
       lampGlobeMat.color
         .set(0x6a5836)
@@ -2453,6 +2455,54 @@ export default function ConstructGame() {
         gondolas.push({ mesh: g, base: (i / WHEEL.cabins) * Math.PI * 2 });
       }
 
+      // Lights strung around the wheel — a ring of bulbs on the outer rim plus
+      // beads running out along each spoke. They ride the spinning group (so
+      // the lights go around with it), glow warm at night, and a travelling
+      // wave chases around the rim. Additive glow sprites via a Points cloud.
+      const bulbPos: number[] = [];
+      const bulbWave: number[] = []; // 0..1 position along the chase, per bulb
+      const RIM_BULBS = 60;
+      for (let i = 0; i < RIM_BULBS; i += 1) {
+        const a = (i / RIM_BULBS) * Math.PI * 2;
+        bulbPos.push(0, (R + 0.5) * Math.cos(a), (R + 0.5) * Math.sin(a));
+        bulbWave.push(i / RIM_BULBS);
+      }
+      for (let s = 0; s < WHEEL.cabins; s += 1) {
+        const a = (s / WHEEL.cabins) * Math.PI * 2;
+        for (const f of [0.35, 0.55, 0.75, 0.95]) {
+          bulbPos.push(0, R * f * Math.cos(a), R * f * Math.sin(a));
+          bulbWave.push(s / WHEEL.cabins);
+        }
+      }
+      const bulbCount = bulbPos.length / 3;
+      const bulbGeo = new THREE.BufferGeometry();
+      bulbGeo.setAttribute(
+        "position",
+        new THREE.Float32BufferAttribute(bulbPos, 3),
+      );
+      const bulbColorAttr = new THREE.Float32BufferAttribute(
+        new Float32Array(bulbCount * 3),
+        3,
+      );
+      bulbGeo.setAttribute("color", bulbColorAttr);
+      const bulbTex = makeGlowTexture();
+      const bulbMat = new THREE.PointsMaterial({
+        map: bulbTex,
+        size: 3.2,
+        sizeAttenuation: true,
+        transparent: true,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      const bulbs = new THREE.Points(bulbGeo, bulbMat);
+      wheelSpin.add(bulbs);
+      disposables.push(bulbGeo, bulbTex, bulbMat);
+      const bulbWarm = new THREE.Color(0xffe6b0);
+      const bulbCool = new THREE.Color(0x8fd9ff);
+      const bulbC = new THREE.Color();
+      let bulbClock = 0;
+
       // Advance the wheel and keep the cabins hanging upright on the rim.
       updateWheel = (delta: number) => {
         if (wheelRunning) wheelAngle += WHEEL.speed * delta;
@@ -2470,6 +2520,18 @@ export default function ConstructGame() {
           rideCamPos.copy(gondolas[rideCabin].mesh.position);
           rideCamPos.y += 0.2;
         }
+        // Bulbs: a chase wave around the rim, all scaled by how dark it is.
+        bulbClock += delta;
+        const arr = bulbColorAttr.array as Float32Array;
+        for (let i = 0; i < bulbCount; i += 1) {
+          const wave = 0.55 + 0.45 * Math.sin(bulbClock * 3 - bulbWave[i] * 12);
+          const b = wheelLightAmount * wave;
+          bulbC.copy(i % 2 === 0 ? bulbWarm : bulbCool).multiplyScalar(b);
+          arr[i * 3] = bulbC.r;
+          arr[i * 3 + 1] = bulbC.g;
+          arr[i * 3 + 2] = bulbC.b;
+        }
+        bulbColorAttr.needsUpdate = true;
       };
 
       // Board the cabin nearest the bottom; exit drops you back on the platform.
