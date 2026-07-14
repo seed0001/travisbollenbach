@@ -38,7 +38,8 @@ const ARENA_HREF = "/rabbit-hole/venue";
 // The huge Ferris wheel stands on a platform beside the Colossus, off to the
 // right of the plaza. Face in the y-z plane (axle along x), so it's seen from
 // the side as you come down the pier and looms overhead at the far end.
-const WHEEL = { x: 54, y: 50, z: -150, radius: 46, cabins: 16, speed: 0.16 };
+// speed is negative so the wheel turns clockwise as seen from the boardwalk.
+const WHEEL = { x: 54, y: 50, z: -150, radius: 46, cabins: 16, speed: -0.16 };
 const WHEEL_BOARD = { x: 54, z: -150, radius: 13 }; // walk-up boarding zone
 
 // The walkable deck: the main walk, a strip across the plaza front, and the
@@ -2506,7 +2507,10 @@ export default function ConstructGame() {
       // Advance the wheel and keep the cabins hanging upright on the rim.
       updateWheel = (delta: number) => {
         if (wheelRunning) wheelAngle += WHEEL.speed * delta;
-        wheelSpin.rotation.x = wheelAngle;
+        // Spin the spokes/rim/bulbs the same way the cabins travel (a positive
+        // x-rotation runs the rim backwards, so negate it to match) — both go
+        // clockwise as seen from the boardwalk.
+        wheelSpin.rotation.x = -wheelAngle;
         for (const g of gondolas) {
           const a = wheelAngle + g.base;
           g.mesh.position.set(
@@ -2515,10 +2519,13 @@ export default function ConstructGame() {
             WHEEL.z + R * Math.cos(a),
           );
         }
-        // Ride camera rides the chosen cabin's seat.
+        // Ride camera: sit up above the cabin and a little out in front of the
+        // wheel (toward the pier), so you see the boardwalk and ocean around
+        // you instead of the inside of the car.
         if (ridingRef.current) {
           rideCamPos.copy(gondolas[rideCabin].mesh.position);
-          rideCamPos.y += 0.2;
+          rideCamPos.x = WHEEL.x - 5;
+          rideCamPos.y += 2.2;
         }
         // Bulbs: a chase wave around the rim, all scaled by how dark it is.
         bulbClock += delta;
@@ -2548,6 +2555,10 @@ export default function ConstructGame() {
           rideCabin = best;
           ridingRef.current = true;
           wheelRunning = true;
+          // Face out toward the pier (−x) at the horizon, so the first thing
+          // you see is the boardwalk, not the wheel behind you.
+          yaw = Math.PI / 2;
+          pitch = 0;
           setRiding(true);
           setNearWheel(false);
         },
