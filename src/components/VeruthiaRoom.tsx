@@ -116,49 +116,10 @@ function makeStationTexture(
   return texture;
 }
 
-// The big board at the back: the firm's name, what it does, and its address.
-function makeBoardTexture() {
-  const canvas = document.createElement("canvas");
-  canvas.width = 1280;
-  canvas.height = 640;
-  const ctx = canvas.getContext("2d");
-  if (ctx) {
-    const W = canvas.width;
-    const H = canvas.height;
-    ctx.fillStyle = "#050810";
-    ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = "rgba(34,211,238,0.05)";
-    for (let y = 0; y < H; y += 6) ctx.fillRect(0, y, W, 2);
-    ctx.strokeStyle = "#22d3ee";
-    ctx.lineWidth = 10;
-    ctx.strokeRect(8, 8, W - 16, H - 16);
-    ctx.strokeStyle = "rgba(34,211,238,0.35)";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(26, 26, W - 52, H - 52);
-
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-
-    ctx.shadowColor = "#22d3ee";
-    ctx.shadowBlur = 40;
-    ctx.fillStyle = "#e6fbff";
-    ctx.font = "900 190px Arial";
-    ctx.fillText(veruthia.board.title, W / 2, 250);
-
-    ctx.shadowBlur = 12;
-    ctx.fillStyle = "#22d3ee";
-    ctx.font = "800 44px Arial";
-    ctx.fillText(veruthia.board.subtitle, W / 2, 420, W - 160);
-
-    ctx.shadowBlur = 4;
-    ctx.fillStyle = "rgba(219,229,255,0.7)";
-    ctx.font = "700 34px Arial";
-    ctx.fillText("veruthia.com  —  walk up to visit", W / 2, 530);
-  }
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  return texture;
-}
+// The big board at the back shows the Veruthia Consulting logo image
+// (public/veruthia-logo.png, 1969x799 — its aspect sets the board's shape).
+const BOARD_IMAGE = "/veruthia-logo.png";
+const BOARD_IMAGE_RATIO = 799 / 1969;
 
 // Soft radial glow laid flat on the floor under a pad.
 function makeGlowTexture() {
@@ -421,7 +382,7 @@ export default function VeruthiaRoom() {
     const BOARD_Z = -58;
     const BOARD_Y = 9;
     const BOARD_W = 24;
-    const BOARD_H = BOARD_W * (640 / 1280);
+    const BOARD_H = BOARD_W * BOARD_IMAGE_RATIO;
 
     const boardGroup = new THREE.Group();
     boardGroup.position.set(0, 0, BOARD_Z);
@@ -433,17 +394,24 @@ export default function VeruthiaRoom() {
     boardGroup.add(boardFrame);
     disposables.push(boardFrameGeo, boardFrameMat);
 
-    const boardTex = makeBoardTexture();
+    // Dark face until the logo loads, then the image swaps in.
     const boardFaceGeo = new THREE.PlaneGeometry(BOARD_W, BOARD_H);
     const boardFaceMat = new THREE.MeshBasicMaterial({
-      map: boardTex,
+      color: 0x0a0f1c,
       fog: false,
       toneMapped: false,
+    });
+    new THREE.TextureLoader().load(BOARD_IMAGE, (loaded) => {
+      loaded.colorSpace = THREE.SRGBColorSpace;
+      boardFaceMat.map = loaded;
+      boardFaceMat.color.set(0xffffff);
+      boardFaceMat.needsUpdate = true;
+      disposables.push(loaded);
     });
     const boardFace = new THREE.Mesh(boardFaceGeo, boardFaceMat);
     boardFace.position.set(0, BOARD_Y, 0);
     boardGroup.add(boardFace);
-    disposables.push(boardTex, boardFaceGeo, boardFaceMat);
+    disposables.push(boardFaceGeo, boardFaceMat);
 
     const legGeo = new THREE.BoxGeometry(1.3, BOARD_Y - BOARD_H / 2 + 0.2, 1.3);
     const legMat = new THREE.MeshBasicMaterial({ color: 0x121a2a });
