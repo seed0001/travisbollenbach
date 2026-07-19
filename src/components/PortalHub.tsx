@@ -356,17 +356,16 @@ export default function PortalHub() {
         });
       }
 
-      // --- The Veruthia kiosk: the security partner's booth, hovering down by
-      // the left corner of the scoreboard. Walk toward it and press E to
-      // enter the Ops Floor (/veruthia).
+      // --- The Veruthia kiosk: the security partner's booth, down by the
+      // left corner of the scoreboard. Same build as the pill pedestals:
+      // grounded pad, floating gem, lit sign. Press E to enter /veruthia.
       const KIOSK_X = -17.5;
       const KIOSK_Z = -50;
-      const KIOSK_BASE_Y = 1.7; // the whole platform floats
-      const KIOSK_GEM_Y = 2.4; // gem height above the floating pad
+      const KIOSK_GEM_Y = 3.2; // hover height of the gem, matching the pills
       const kioskAccent = new THREE.Color(veruthia.accent);
 
       const kiosk = new THREE.Group();
-      kiosk.position.set(KIOSK_X, KIOSK_BASE_Y, KIOSK_Z);
+      kiosk.position.set(KIOSK_X, 0, KIOSK_Z);
       kiosk.rotation.y = 0.3; // angled toward the runway
 
       const kioskPadMat = new THREE.MeshBasicMaterial({
@@ -375,6 +374,7 @@ export default function PortalHub() {
         opacity: 0.5,
       });
       const kioskPad = new THREE.Mesh(padGeo, kioskPadMat);
+      kioskPad.position.set(0, 0.2, 0);
       kiosk.add(kioskPad);
       disposables.push(kioskPadMat);
 
@@ -394,11 +394,7 @@ export default function PortalHub() {
       disposables.push(gemGeo, gemMat);
 
       const kioskLight = new THREE.PointLight(kioskAccent, 16, 16);
-      kioskLight.position.set(
-        KIOSK_X + 1,
-        KIOSK_BASE_Y + KIOSK_GEM_Y + 1,
-        KIOSK_Z + 3,
-      );
+      kioskLight.position.set(KIOSK_X + 1, KIOSK_GEM_Y + 1, KIOSK_Z + 3);
       scene.add(kioskLight);
 
       const kioskGlowMat = new THREE.SpriteMaterial({
@@ -426,7 +422,7 @@ export default function PortalHub() {
         transparent: true,
       });
       const kioskSign = new THREE.Mesh(signGeo, kioskSignMat);
-      kioskSign.position.set(0, KIOSK_GEM_Y + 3.4, 0);
+      kioskSign.position.set(0, KIOSK_GEM_Y + 4.2, 0);
       kiosk.add(kioskSign);
       disposables.push(kioskSignTex, kioskSignMat);
 
@@ -546,9 +542,9 @@ export default function PortalHub() {
           for (const g of glowMats) {
             g.material.opacity = 0.72 + Math.sin(elapsed * 1.6 + g.phase) * 0.18;
           }
-          kioskGem.rotation.y += delta * 0.7;
-          kiosk.position.y =
-            KIOSK_BASE_Y + Math.sin(elapsed * 1.1 + Math.PI / 2) * 0.3;
+          kioskGem.rotation.y += delta * 0.55;
+          kioskGem.position.y =
+            KIOSK_GEM_Y + Math.sin(elapsed * 1.3 + Math.PI / 2) * 0.18;
           boardGlowMat.opacity = 0.45 + Math.sin(elapsed * 0.9) * 0.12;
           const positions = moteGeo.attributes.position.array as Float32Array;
           for (let i = 0; i < MOTES; i += 1) {
