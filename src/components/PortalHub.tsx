@@ -356,16 +356,18 @@ export default function PortalHub() {
         });
       }
 
-      // --- The Veruthia kiosk: the security partner's booth, off to the side.
-      // Walk up and press E to enter the Ops Floor (/veruthia).
-      const KIOSK_X = -18;
-      const KIOSK_Z = -18;
-      const KIOSK_GEM_Y = 3.1;
+      // --- The Veruthia kiosk: the security partner's booth, hovering down by
+      // the left corner of the scoreboard. Walk toward it and press E to
+      // enter the Ops Floor (/veruthia).
+      const KIOSK_X = -17.5;
+      const KIOSK_Z = -50;
+      const KIOSK_BASE_Y = 1.7; // the whole platform floats
+      const KIOSK_GEM_Y = 2.4; // gem height above the floating pad
       const kioskAccent = new THREE.Color(veruthia.accent);
 
       const kiosk = new THREE.Group();
-      kiosk.position.set(KIOSK_X, 0, KIOSK_Z);
-      kiosk.rotation.y = -0.45; // angled toward the runway
+      kiosk.position.set(KIOSK_X, KIOSK_BASE_Y, KIOSK_Z);
+      kiosk.rotation.y = 0.3; // angled toward the runway
 
       const kioskPadMat = new THREE.MeshBasicMaterial({
         color: kioskAccent,
@@ -373,7 +375,6 @@ export default function PortalHub() {
         opacity: 0.5,
       });
       const kioskPad = new THREE.Mesh(padGeo, kioskPadMat);
-      kioskPad.position.set(0, 0.2, 0);
       kiosk.add(kioskPad);
       disposables.push(kioskPadMat);
 
@@ -393,7 +394,11 @@ export default function PortalHub() {
       disposables.push(gemGeo, gemMat);
 
       const kioskLight = new THREE.PointLight(kioskAccent, 16, 16);
-      kioskLight.position.set(KIOSK_X, KIOSK_GEM_Y + 1, KIOSK_Z + 2.5);
+      kioskLight.position.set(
+        KIOSK_X + 1,
+        KIOSK_BASE_Y + KIOSK_GEM_Y + 1,
+        KIOSK_Z + 3,
+      );
       scene.add(kioskLight);
 
       const kioskGlowMat = new THREE.SpriteMaterial({
@@ -421,17 +426,19 @@ export default function PortalHub() {
         transparent: true,
       });
       const kioskSign = new THREE.Mesh(signGeo, kioskSignMat);
-      kioskSign.position.set(0, KIOSK_GEM_Y + 4.2, 0);
+      kioskSign.position.set(0, KIOSK_GEM_Y + 3.4, 0);
       kiosk.add(kioskSign);
       disposables.push(kioskSignTex, kioskSignMat);
 
       scene.add(kiosk);
 
+      // The kiosk itself hovers beyond the walkable bounds, so the trigger
+      // spot sits at the near edge in front of it.
       interactables.push({
         id: veruthia.kiosk.href,
         x: KIOSK_X,
-        z: KIOSK_Z + 3,
-        radius: 7,
+        z: -26.5,
+        radius: 7.5,
         accent: veruthia.accent,
         eyebrow: "site security",
         title: veruthia.kiosk.label,
@@ -540,8 +547,8 @@ export default function PortalHub() {
             g.material.opacity = 0.72 + Math.sin(elapsed * 1.6 + g.phase) * 0.18;
           }
           kioskGem.rotation.y += delta * 0.7;
-          kioskGem.position.y =
-            KIOSK_GEM_Y + Math.sin(elapsed * 1.3 + Math.PI / 2) * 0.18;
+          kiosk.position.y =
+            KIOSK_BASE_Y + Math.sin(elapsed * 1.1 + Math.PI / 2) * 0.3;
           boardGlowMat.opacity = 0.45 + Math.sin(elapsed * 0.9) * 0.12;
           const positions = moteGeo.attributes.position.array as Float32Array;
           for (let i = 0; i < MOTES; i += 1) {
