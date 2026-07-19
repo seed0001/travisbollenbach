@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef } from "react";
 import * as THREE from "three";
-import { hub } from "@/lib/content";
+import { hub, veruthia } from "@/lib/content";
 import WalkWorld, { type WorldHandle } from "./WalkWorld";
 
 type HubStats = {
@@ -356,6 +356,90 @@ export default function PortalHub() {
         });
       }
 
+      // --- The Veruthia kiosk: the security partner's booth, off to the side.
+      // Walk up and press E to enter the Ops Floor (/veruthia).
+      const KIOSK_X = -18;
+      const KIOSK_Z = -18;
+      const KIOSK_GEM_Y = 3.1;
+      const kioskAccent = new THREE.Color(veruthia.accent);
+
+      const kiosk = new THREE.Group();
+      kiosk.position.set(KIOSK_X, 0, KIOSK_Z);
+      kiosk.rotation.y = -0.45; // angled toward the runway
+
+      const kioskPadMat = new THREE.MeshBasicMaterial({
+        color: kioskAccent,
+        transparent: true,
+        opacity: 0.5,
+      });
+      const kioskPad = new THREE.Mesh(padGeo, kioskPadMat);
+      kioskPad.position.set(0, 0.2, 0);
+      kiosk.add(kioskPad);
+      disposables.push(kioskPadMat);
+
+      // A floating shield-cut gem instead of a pill.
+      const gemGeo = new THREE.OctahedronGeometry(1.15);
+      const gemMat = new THREE.MeshPhysicalMaterial({
+        color: 0x0e7490,
+        roughness: 0.15,
+        metalness: 0.35,
+        clearcoat: 1,
+        clearcoatRoughness: 0.1,
+      });
+      const kioskGem = new THREE.Group();
+      kioskGem.position.set(0, KIOSK_GEM_Y, 0);
+      kioskGem.add(new THREE.Mesh(gemGeo, gemMat));
+      kiosk.add(kioskGem);
+      disposables.push(gemGeo, gemMat);
+
+      const kioskLight = new THREE.PointLight(kioskAccent, 16, 16);
+      kioskLight.position.set(KIOSK_X, KIOSK_GEM_Y + 1, KIOSK_Z + 2.5);
+      scene.add(kioskLight);
+
+      const kioskGlowMat = new THREE.SpriteMaterial({
+        map: glowTex,
+        color: kioskAccent,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        opacity: 0.8,
+      });
+      const kioskGlow = new THREE.Sprite(kioskGlowMat);
+      kioskGlow.scale.set(7.5, 7.5, 1);
+      kioskGlow.position.set(0, KIOSK_GEM_Y, -0.4);
+      kiosk.add(kioskGlow);
+      disposables.push(kioskGlowMat);
+      glowMats.push({ material: kioskGlowMat, phase: Math.PI / 2 });
+
+      const kioskSignTex = makeSignTexture(
+        veruthia.kiosk.label,
+        veruthia.kiosk.subtitle,
+        veruthia.accent,
+      );
+      const kioskSignMat = new THREE.MeshBasicMaterial({
+        map: kioskSignTex,
+        transparent: true,
+      });
+      const kioskSign = new THREE.Mesh(signGeo, kioskSignMat);
+      kioskSign.position.set(0, KIOSK_GEM_Y + 4.2, 0);
+      kiosk.add(kioskSign);
+      disposables.push(kioskSignTex, kioskSignMat);
+
+      scene.add(kiosk);
+
+      interactables.push({
+        id: veruthia.kiosk.href,
+        x: KIOSK_X,
+        z: KIOSK_Z + 3,
+        radius: 7,
+        accent: veruthia.accent,
+        eyebrow: "site security",
+        title: veruthia.kiosk.label,
+        blurb: veruthia.kiosk.blurb,
+        prompt: veruthia.kiosk.prompt,
+        onInteract: () => router.push(veruthia.kiosk.href),
+      });
+
       // --- The scoreboard: live site stats, way at the back -----------------
       // Sits beyond the walkable bounds so it reads as a glowing backdrop.
       // Its materials ignore fog so it stays highlighted through the haze.
@@ -455,6 +539,9 @@ export default function PortalHub() {
           for (const g of glowMats) {
             g.material.opacity = 0.72 + Math.sin(elapsed * 1.6 + g.phase) * 0.18;
           }
+          kioskGem.rotation.y += delta * 0.7;
+          kioskGem.position.y =
+            KIOSK_GEM_Y + Math.sin(elapsed * 1.3 + Math.PI / 2) * 0.18;
           boardGlowMat.opacity = 0.45 + Math.sin(elapsed * 0.9) * 0.12;
           const positions = moteGeo.attributes.position.array as Float32Array;
           for (let i = 0; i < MOTES; i += 1) {

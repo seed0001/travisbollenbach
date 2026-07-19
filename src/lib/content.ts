@@ -465,3 +465,145 @@ export const workshop = {
     reset: "Start over",
   },
 };
+
+// ---------------------------------------------------------------------------
+// The Universe — an open starfield of procedurally grown planets
+// ---------------------------------------------------------------------------
+
+export const universe = {
+  name: "The Universe",
+  accent: "#7dd3fc",
+  intro:
+    "An open night sky around a single sun. Every planet out there was grown from a seed — terrain, rings, atmosphere, name and all — and no two are alike. Fly out and meet them.",
+  reroll: "another universe",
+  // Quiet credit, per the house rule: creators get named, never loudly.
+  credit: "planetcraft after dgreenheck's procedural planets (MIT)",
+  // The roaming rift that leads here (PortalRift.tsx).
+  portalLabel: "A rift in the page — step through before it closes",
+  portalHint: "step through",
+};
+
+// ---------------------------------------------------------------------------
+// Veruthia — the security-first consultancy that audited this site.
+// A showcase room (the Ops Floor) plus a kiosk in the Gateway hub that leads
+// to it. Service copy is written from veruthia.com (fetched July 2026) —
+// edit here when Ethan's offerings change.
+// ---------------------------------------------------------------------------
+
+export type VeruthiaStation = {
+  id: string;
+  title: string;
+  tagline: string; // one-liner on the walk-up placard
+  body: string[]; // paragraphs in the reader overlay
+};
+
+export const veruthia = {
+  name: "Veruthia",
+  firm: "Veruthia Consulting",
+  founder: "Ethan Johnson",
+  url: "https://www.veruthia.com/",
+  email: "ethan@veruthia.com",
+  accent: "#22d3ee",
+  kicker: "veruthia consulting",
+
+  // The kiosk in the Gateway hub.
+  kiosk: {
+    label: "Veruthia",
+    subtitle: "The firm that audits this site.",
+    blurb:
+      "Security-first systems for local service businesses — and the eye that watches this site's back.",
+    prompt: "Visit the ops floor",
+    href: "/veruthia",
+  },
+
+  overlay: {
+    title: "The Ops Floor",
+    intro:
+      "A room for the firm that watches this site's back. Veruthia builds security-first systems for local service businesses — automated intake, follow-up, dashboards, websites. Walk the floor, open the modules, and check the case file at the end.",
+    enter: "step onto the floor",
+  },
+  hint: {
+    desktop: "wasd / arrows: walk — mouse: look — E at a module: open it",
+    touch: "left thumb: walk — right thumb / motion: look — tap a module: open it",
+  },
+
+  // The big board at the back of the room. Walking up to it opens veruthia.com.
+  board: {
+    title: "VERUTHIA",
+    subtitle: "SECURE SYSTEMS FOR SERVICE BUSINESSES",
+    placard: {
+      eyebrow: "the firm",
+      title: "Veruthia Consulting",
+      blurb: "Ethan Johnson — ethan@veruthia.com",
+      prompt: "Open veruthia.com",
+    },
+  },
+
+  stations: [
+    {
+      id: "intake",
+      title: "Automated Intake",
+      tagline: "Every call answered, qualified, and routed.",
+      body: [
+        "The front line of the missed-call problem: an automated system that picks up every inquiry, asks the qualifying questions, filters out the spam, and routes real customers to the right place — with a live human transfer when the moment calls for one.",
+        "Built for local service businesses — HVAC, plumbing, electrical, roofing — where every missed call is a booked job for a competitor.",
+      ],
+    },
+    {
+      id: "sms",
+      title: "SMS Follow-Up",
+      tagline: "Missed calls get a text before they find a competitor.",
+      body: [
+        "When a call slips through, the system texts back immediately and works the lead toward a booking — an affordable alternative to a full voice receptionist.",
+        "Reviews and follow-ups ride the same rails, so the conversation keeps moving even when nobody's by the phone.",
+      ],
+    },
+    {
+      id: "crm",
+      title: "Lead Dashboards & CRM",
+      tagline: "Every lead tracked from first ring to closed job.",
+      body: [
+        "A pipeline view of the whole business: lead statuses, notes, follow-up reminders, and role-based access so the right people see the right things.",
+        "Nothing falls through the cracks between the truck and the office.",
+      ],
+    },
+    {
+      id: "web",
+      title: "Websites + Control Panel",
+      tagline: "A fast, credible site the owner can actually edit.",
+      body: [
+        "Fast, credible websites with editable service pages, analytics, and a control panel built for owners — not developers.",
+        "Change your pages, your photos, and your services yourself, without filing a support ticket.",
+      ],
+    },
+    {
+      id: "tools",
+      title: "Custom Business Tools",
+      tagline: "Inventory, staffing, scheduling — built to order.",
+      body: [
+        "Modular tools shaped to the business: inventory, staff tracking, scheduling, and reporting systems that start simple and scale with the operation.",
+        "When off-the-shelf doesn't fit the way you actually work, this is the workshop.",
+      ],
+    },
+    {
+      id: "security",
+      title: "Security First",
+      tagline: "Every system starts with security — not as an upcharge.",
+      body: [
+        "That line is Veruthia's, and it's the philosophy under everything in this room: security isn't a premium add-on, it's the foundation every build starts from.",
+        "It's also how this partnership started — Ethan turned that same eye on this site. The case file at the end of the room has the story.",
+      ],
+    },
+  ] as VeruthiaStation[],
+
+  // The center-end panel: what Veruthia did for this site.
+  caseFile: {
+    id: "case-file",
+    title: "Case File: This Site",
+    tagline: "Veruthia audited travisbollenbach.com.",
+    body: [
+      "Veruthia ran a security review of this site — the same security-first pass that goes into every system they build. The findings were delivered privately, and the fixes are rolling out.",
+      "This room is the other half of the deal: good work deserves a spotlight. If you run a service business, go see what Ethan can build for you.",
+    ],
+  } as VeruthiaStation,
+};
