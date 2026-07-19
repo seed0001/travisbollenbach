@@ -58,6 +58,7 @@ type Props = {
   overlay: { kicker: string; title: string; intro: string; enter: string };
   hint: { desktop: string; touch: string };
   topRight?: ReactNode;
+  bottomRight?: ReactNode;
   exitHref?: string;
   exitLabel?: string;
 };
@@ -101,6 +102,7 @@ export default function WalkWorld({
   overlay,
   hint,
   topRight,
+  bottomRight,
   exitHref = "/",
   exitLabel = "exit",
 }: Props) {
@@ -533,6 +535,11 @@ export default function WalkWorld({
             </Link>
           </div>
         </div>
+
+        {/* bottom-right corner slot (e.g. security badge) */}
+        {bottomRight && (
+          <div className="absolute bottom-3 right-3">{bottomRight}</div>
+        )}
 
         {/* controls hint */}
         {entered && (
