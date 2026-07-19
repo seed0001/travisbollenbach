@@ -497,22 +497,6 @@ export default function PortalHub() {
           portfolio
         </Link>
       }
-      bottomRight={
-        <a
-          href="https://www.veruthia.com/"
-          target="_blank"
-          rel="noopener noreferrer"
-          title="Site security audited by Kruthia"
-          className="pointer-events-auto block overflow-hidden rounded-md border border-white/12 opacity-80 transition-opacity hover:opacity-100"
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/kruthia-badge.png"
-            alt="Kruthia — Secure. Protect. Empower. Guarding what matters."
-            className="h-auto w-40"
-          />
-        </a>
-      }
     />
   );
 }
