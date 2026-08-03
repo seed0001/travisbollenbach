@@ -15,7 +15,7 @@ const GH_USER = "seed0001";
 type Repo = { name: string; url: string; desc: string };
 type Category = { title: string; repos: Repo[] };
 
-// Blurbs are written from each repo's README (fetched July 2026).
+// Blurbs are written from each repo's README (fetched August 2026).
 const gh = (name: string, desc: string): Repo => ({
   name,
   url: `https://github.com/${GH_USER}/${name}`,
@@ -46,6 +46,14 @@ const CATEGORIES: Category[] = [
         "throngs",
         "A Three.js world of AI-driven entities and dialogue that begins with a single character — “In the beginning, there was one.”",
       ),
+      gh(
+        "the-worlds",
+        "Scene Engines: real-time films computed live in the browser — a seeded universe, Apollo, Chernobyl, the Pyramids, Route 66 — where every narrated fact is read off the running simulation.",
+      ),
+      gh(
+        "simtown",
+        "A persistent multiplayer 3D town where every resident is an AI person with a persona, a job, a memory, and a bank account — and logging in means becoming one of them.",
+      ),
     ],
   },
   {
@@ -66,6 +74,22 @@ const CATEGORIES: Category[] = [
       gh(
         "MiniSim",
         "A multiplayer voxel world with two modes: walk and sculpt on a lunar grid, or fly a starfighter with real momentum physics.",
+      ),
+      gh(
+        "space-movie",
+        "Solar System Trader: an Elite-inspired 3D space trading sim playable three ways — pure game, narrated story, or an endless procedurally generated film.",
+      ),
+      gh(
+        "ar-games",
+        "CAMFUN: camera-based AR games in the phone browser — a WebXR cover shooter with real positional tracking, and a scanner that paints your yard into a 3D world.",
+      ),
+      gh(
+        "PHONE-GAMES",
+        "Pocket Arcade: a phone game hub of 200-wave tower-defense campaigns where the towers have hit points and the enemies shoot back.",
+      ),
+      gh(
+        "cards",
+        "Card Vault: a Pokémon card collection tracker — log your cards into an inventory and see what the collection is worth.",
       ),
     ],
   },
@@ -92,6 +116,10 @@ const CATEGORIES: Category[] = [
         "eve-and-the-endless-convo",
         "The next companion experiment: a study in one endless, unbroken conversation. Reserved — work not yet public.",
       ),
+      gh(
+        "connor",
+        "An evolving AI companion with a chemical brain simulation and quantum reasoning — run him on Discord or fully headless in the browser.",
+      ),
     ],
   },
   {
@@ -116,6 +144,14 @@ const CATEGORIES: Category[] = [
       gh(
         "claude",
         "An experiment in total control: an AI organism with unrestricted PowerShell access to a laptop, narrating everything it does.",
+      ),
+      gh(
+        "Andrew-the-coder",
+        "A Lovable-style coding platform run by a distinguished AI butler who plans, delegates to coder subagents, and reviews every deliverable — but never writes code himself.",
+      ),
+      gh(
+        "the-office",
+        "A personal AI workspace: streaming chat over any OpenRouter model, a task list the assistant manages itself, durable memory, and web research on demand.",
       ),
     ],
   },
@@ -169,6 +205,14 @@ const CATEGORIES: Category[] = [
         "b-bBros",
         "The front door to a creator ecosystem where builders publish, sell, teach, and collaborate around GitHub projects — and keep ownership.",
       ),
+      gh(
+        "medbot",
+        "An AI health-logging assistant: chat in plain English and it tracks blood sugar, meds, meals, and appointments — then prints a doctor-ready report.",
+      ),
+      gh(
+        "MedicalBot-Platform",
+        "A personal health management platform with condition-aware metric tracking and Google Workspace integration — its safety boundaries enforced in code, not disclaimers.",
+      ),
     ],
   },
   {
@@ -214,6 +258,11 @@ const CATEGORIES: Category[] = [
         "A clean 10-page static portfolio explaining, in plain English, what Travis does in AI development and architecture.",
       ),
       gh("my-hobby", "A space reserved for the hobby side of things. Coming soon."),
+      gh("my-story", "A space reserved for the story behind all of this. Coming soon."),
+      gh(
+        "my-hub",
+        "A phone-first personal command center PWA whose agentic assistant turns ideas into roadmaps and build prompts ready to hand to a coding agent.",
+      ),
       gh(
         "Hopes-Place",
         "A software lifeform named during setup: Grok-powered reasoning with a local inner life of intuition, drives, and existential states.",
@@ -242,6 +291,14 @@ const CATEGORIES: Category[] = [
       gh(
         "travis-and-andrew-website",
         "A simple site telling the story of a human and a software lifeform building the future together.",
+      ),
+      gh(
+        "book-maker",
+        "BookMaker: write any book with an AI co-writer — brainstorm, outline, draft, proofread — then design it into a real book with cover art and a page-by-page preview.",
+      ),
+      gh(
+        "castflow",
+        "The next home for the CastFlow media network. Reserved — work not yet public.",
       ),
     ],
   },
@@ -280,6 +337,18 @@ const CATEGORIES: Category[] = [
       gh(
         "jar",
         "JARVIS as a standalone desktop app — a Python backend and web frontend wrapped in its own window with one-click launch.",
+      ),
+      gh(
+        "discord-agent",
+        "A Discord bot that manages your server end-to-end — moderation, roles, channels, voice, and AI chat — with a mobile-friendly dashboard, all in one process.",
+      ),
+      gh(
+        "multi-agent-discord-bot",
+        "A bot fleet in one service: run any number of independent Discord bots from a single dashboard, with Whisper ears and TTS voices for the ones that talk.",
+      ),
+      gh(
+        "Discord-Bot-Platform",
+        "Companion: a self-hosted command center for autonomous Discord bot agents — three-tier memory, a ReAct tool loop, voice, and a task orchestrator.",
       ),
     ],
   },
