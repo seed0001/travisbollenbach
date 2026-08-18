@@ -5,7 +5,7 @@ The source for **[travisbollenbach.com](https://travisbollenbach.com)** — a pe
 
 A visitor lands in **the Gateway** — a walkable 3D hub with a live stats scoreboard glowing at the back — and picks a pill:
 
-- **Blue pill → `/storefront`** — the professional portfolio: a project gallery of 53 GitHub repos in twelve categories, staged as a 3D boulevard of walkable panels.
+- **Blue pill → `/storefront`** — the professional portfolio: a project gallery of 82 GitHub repos in twelve categories, staged as a 3D boulevard of walkable panels.
 - **Red pill → `/rabbit-hole/game`** — the experimental world behind the work: **The Construct**, a live 3D multiplayer environment, with essays, an AI persona workshop, and a three-room venue branching off it.
 
 It's part portfolio, part playground.

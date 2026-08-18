@@ -1,16 +1,12 @@
 import type { Metadata } from "next";
-import PortalHub from "@/components/PortalHub";
+import Hero from "@/components/Hero";
 
 export const metadata: Metadata = {
-  title: "Travis Bollenbach - Choose",
+  title: "Travis Bollenbach",
   description:
-    "Step up to the choice: take the blue pill for the professional portfolio, or the red pill to drop into an immersive 3D environment.",
+    "Independent, self-taught software builder — AI agents, Discord bots, small business software, interactive 3D experiences, and AI content pipelines.",
 };
 
 export default function Home() {
-  return (
-    <main>
-      <PortalHub />
-    </main>
-  );
+  return <Hero />;
 }

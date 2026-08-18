@@ -12,14 +12,15 @@ const GH_USER = "seed0001";
 // Every panel in the walk is a category of GitHub projects. Walk up to one and
 // press E to open its subpage — a list of every repo in that category, each a
 // link to GitHub. The 13th panel, at the center end of the road, is the photo.
-type Repo = { name: string; url: string; desc: string };
+type Repo = { name: string; url: string; desc: string; live?: string };
 type Category = { title: string; repos: Repo[] };
 
 // Blurbs are written from each repo's README (fetched August 2026).
-const gh = (name: string, desc: string): Repo => ({
+const gh = (name: string, desc: string, live?: string): Repo => ({
   name,
   url: `https://github.com/${GH_USER}/${name}`,
   desc,
+  live,
 });
 
 const CATEGORIES: Category[] = [
@@ -91,6 +92,10 @@ const CATEGORIES: Category[] = [
         "cards",
         "Card Vault: a Pokémon card collection tracker — log your cards into an inventory and see what the collection is worth.",
       ),
+      gh(
+        "discordgame",
+        "Realmbound: a Discord-native fantasy RPG with persistent characters, dice-check combat, four classes, and voice-channel presence for the table.",
+      ),
     ],
   },
   {
@@ -119,6 +124,10 @@ const CATEGORIES: Category[] = [
       gh(
         "connor",
         "An evolving AI companion with a chemical brain simulation and quantum reasoning — run him on Discord or fully headless in the browser.",
+      ),
+      gh(
+        "checkin-companion",
+        "A phone-call AI companion that rings you at a set time each day for a short warm chat — nudging toward real human contact instead of replacing it. Currently a private repo.",
       ),
     ],
   },
@@ -176,6 +185,19 @@ const CATEGORIES: Category[] = [
         "SeedKG",
         "A transparent cognitive architecture: every fact, inference, and piece of evidence lives in an inspectable knowledge graph.",
       ),
+      gh(
+        "voidcoder",
+        "VoidCode: a terminal-and-desktop AI coding agent harness — reads your project, edits files with permission, runs commands, and remembers across sessions, on any OpenAI-compatible model.",
+      ),
+      gh(
+        "voidcoder-website",
+        "The landing and download page for VoidCode — a zero-dependency static site serving the installer and docs.",
+        "https://voidcoder-website-production.up.railway.app/",
+      ),
+      gh(
+        "new-internet",
+        "THE VOID: a private internet for select people — one database, twenty rendered “districts” for search, social, commerce, and games, unlocked through a Discord-issued key.",
+      ),
     ],
   },
   {
@@ -212,6 +234,14 @@ const CATEGORIES: Category[] = [
       gh(
         "MedicalBot-Platform",
         "A personal health management platform with condition-aware metric tracking and Google Workspace integration — its safety boundaries enforced in code, not disclaimers.",
+      ),
+      gh(
+        "mental-space-app",
+        "A private, non-clinical wellness app — journaling, mood check-ins, guided exercises, and a voice-enabled AI companion that can act on your calendar and journal on your behalf. Currently a private repo.",
+      ),
+      gh(
+        "sharenet",
+        "An early-stage share-network concept, still at the scaffold. Reserved — work not yet public.",
       ),
     ],
   },
@@ -299,6 +329,22 @@ const CATEGORIES: Category[] = [
       gh(
         "castflow",
         "The next home for the CastFlow media network. Reserved — work not yet public.",
+      ),
+      gh(
+        "ai-studio",
+        "A stateless AI studio that generates songs and the music videos built around them — no accounts, no database, just generation. Currently a private repo.",
+      ),
+      gh(
+        "movieMaker",
+        "A local video production pipeline built around a 33B omni-modal model: an AI director drafts storyboards, frame-chains scenes for continuity, and stitches the finished cut with synced audio.",
+      ),
+      gh(
+        "videoMaker",
+        "Automated still-image video pipeline: prompt list → script → illustrations → narration → FFmpeg assembly → YouTube upload, with local-only or cloud models at every stage.",
+      ),
+      gh(
+        "the-voide-network",
+        "The Voide Network: weekly investigative reports and debunks, AI-drafted and human-verified, published as a static site and delivered by email.",
       ),
     ],
   },
@@ -803,11 +849,11 @@ export default function PortfolioWalk() {
           kicker: portfolioWalk.kicker,
           title: "The project gallery",
           intro:
-            "Every panel is a category of what I've built on GitHub — 53 projects across 12 rooms. Walk up to one and press E to open it, then jump to any repo. At the center end of the road, that's me and my QA lead.",
+            "Every panel is a category of what I've built on GitHub — 82 projects across 12 rooms. Walk up to one and press E to open it, then jump to any repo. At the center end of the road, that's me and my QA lead.",
           enter: "start walking",
         }}
         hint={portfolioWalk.hint}
-        exitHref="/"
+        exitHref="/gateway"
         exitLabel="back to the choice"
         topRight={
           <Link
@@ -845,23 +891,38 @@ export default function PortfolioWalk() {
             </h2>
             <ul className="mt-6 divide-y divide-slate-200 border-y border-slate-200">
               {overlay.category.repos.map((repo) => (
-                <li key={repo.name}>
+                <li key={repo.name} className="flex items-start justify-between gap-4 py-3">
                   <a
                     href={repo.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="group flex items-start justify-between gap-4 py-3 text-slate-800 transition-colors hover:text-sky-700"
+                    className="group min-w-0 text-slate-800 transition-colors hover:text-sky-700"
                   >
-                    <span>
-                      <span className="font-semibold">{repo.name}</span>
-                      <span className="mt-1 block text-sm leading-snug text-slate-500 group-hover:text-slate-600">
-                        {repo.desc}
-                      </span>
-                    </span>
-                    <span className="shrink-0 pt-0.5 text-xs font-bold uppercase tracking-[0.16em] text-sky-700">
-                      github ↗
+                    <span className="font-semibold">{repo.name}</span>
+                    <span className="mt-1 block text-sm leading-snug text-slate-500 group-hover:text-slate-600">
+                      {repo.desc}
                     </span>
                   </a>
+                  <span className="flex shrink-0 flex-col items-end gap-1.5 pt-0.5">
+                    {repo.live && (
+                      <a
+                        href={repo.live}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-600 transition-colors hover:text-emerald-700"
+                      >
+                        download ↗
+                      </a>
+                    )}
+                    <a
+                      href={repo.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs font-bold uppercase tracking-[0.16em] text-sky-700 transition-colors hover:text-sky-800"
+                    >
+                      github ↗
+                    </a>
+                  </span>
                 </li>
               ))}
             </ul>
@@ -907,6 +968,12 @@ export default function PortfolioWalk() {
               {cat.repos.map((repo) => (
                 <li key={repo.name}>
                   <a href={repo.url}>{repo.name}</a> — {repo.desc}
+                  {repo.live && (
+                    <>
+                      {" "}
+                      (<a href={repo.live}>download</a>)
+                    </>
+                  )}
                 </li>
               ))}
             </ul>

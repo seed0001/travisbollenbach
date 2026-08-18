@@ -2,9 +2,9 @@
 
 **Route:** `/storefront` (a legacy route name — nothing is for sale here) · **Component:** [`PortfolioWalk`](../src/components/PortfolioWalk.tsx) on the shared [`WalkWorld`](../src/components/WalkWorld.tsx) engine
 
-The professional side of the site is a **project gallery**, staged as a 3D boulevard. Thirteen panels float on lit pads inside light beams down both sides of a road. Twelve of them are categories of Travis's GitHub work — **53 projects in all** — and the thirteenth, at the center end of the road, is the photo of Travis and his dog. There are no products, no services, no pricing, and no sales pitch: the gallery is a walkable index of the work itself.
+The professional side of the site is a **project gallery**, staged as a 3D boulevard. Thirteen panels float on lit pads inside light beams down both sides of a road. Twelve of them are categories of Travis's GitHub work — **82 projects in all** — and the thirteenth, at the center end of the road, is the photo of Travis and his dog. There are no products, no services, no pricing, and no sales pitch: the gallery is a walkable index of the work itself.
 
-Panels idle in a slow spin; walk up to one and it turns to face you. The intro overlay reads: *"Every panel is a category of what I've built on GitHub — 53 projects across 12 rooms."*
+Panels idle in a slow spin; walk up to one and it turns to face you. The intro overlay reads: *"Every panel is a category of what I've built on GitHub — 82 projects across 12 rooms."*
 
 ## The walk, in order
 

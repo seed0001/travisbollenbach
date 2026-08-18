@@ -6,14 +6,14 @@
 
 The landing page is a *Matrix*-style choice staged as a small 3D world ([The Gateway](02-the-gateway.md)): two glowing pills hover on pedestals, and the visitor walks up and takes one.
 
-- **Blue pill → [The Portfolio Walk](03-portfolio-walk.md)** (`/storefront` — a legacy route name; nothing is for sale) — the professional side: a **project gallery**. Twelve panels along a 3D boulevard, each a category of Travis's GitHub work — 53 repositories in all — and each opening a list of direct links to the repos. There are no products, no services, and no sales pitch; the gallery is a walkable index of the work itself.
+- **Blue pill → [The Portfolio Walk](03-portfolio-walk.md)** (`/storefront` — a legacy route name; nothing is for sale) — the professional side: a **project gallery**. Twelve panels along a 3D boulevard, each a category of Travis's GitHub work — 82 repositories in all — and each opening a list of direct links to the repos. There are no products, no services, and no sales pitch; the gallery is a walkable index of the work itself.
 - **Red pill → [The Construct](04-the-construct.md)** (`/rabbit-hole/game`) — the experimental side: the red pill drops you **straight into the Construct**, a live multiplayer 3D city block. The Construct is the hub of this half of the site — the Colossus venue, the Character Workshop, and the essay page all branch off it.
 
 Nothing is hidden behind the choice — both halves are always reachable — but the framing sets the tone: one door shows the work, the other is for the curious.
 
 ## What's in each half
 
-**The professional half** is a single walkable boulevard: twelve category panels covering 53 GitHub projects — 3D worlds, games, AI companions, agents, frameworks, business apps, and more — plus a thirteenth panel at the end of the road: the photo of Travis and his dog.
+**The professional half** is a single walkable boulevard: twelve category panels covering 82 GitHub projects — 3D worlds, games, AI companions, agents, frameworks, business apps, and more — plus a thirteenth panel at the end of the road: the photo of Travis and his dog.
 
 **The experimental half** all hangs off the Construct:
 

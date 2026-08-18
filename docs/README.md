@@ -9,7 +9,7 @@ Every visitor lands at the 3D Gateway and picks a pill:
 ```
 /  The Gateway (3D hub: two pills + a live stats jumbotron)
 ├── blue pill → /storefront          The Portfolio Walk — a project gallery:
-│                                    53 GitHub repos in 12 walkable categories
+│                                    82 GitHub repos in 12 walkable categories
 └── red pill  → /rabbit-hole/game    The Construct — the multiplayer 3D city
                                      block, and the hub for everything else:
       ├── street's end (press E) →  /rabbit-hole/venue    The Colossus room picker
@@ -28,7 +28,7 @@ Every visitor lands at the 3D Gateway and picks a pill:
 | --- | --- |
 | [Overview](01-overview.md) | What the site is, the two-pill idea, and how the pieces fit together |
 | [The Gateway](02-the-gateway.md) | The 3D landing hub: the pills, the controls, and the live scoreboard |
-| [The Portfolio Walk](03-portfolio-walk.md) | The blue pill: a 3D gallery of 53 GitHub projects in 12 categories |
+| [The Portfolio Walk](03-portfolio-walk.md) | The blue pill: a 3D gallery of 82 GitHub projects in 12 categories |
 | [The Construct](04-the-construct.md) | The red pill: the multiplayer 3D city block — presence, chat, voice, the street of storefronts |
 | [The Environment Page](05-environment-page.md) | The Construct's parent page at `/rabbit-hole`: four essays and the guestbook |
 | [The Colossus](06-the-colossus.md) | The venue at the end of the street: the room picker, the Game Arena, and the Movie Theater |

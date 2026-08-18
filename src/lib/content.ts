@@ -10,6 +10,130 @@ export const site = {
 };
 
 // ---------------------------------------------------------------------------
+// The Hero — the new flat front door (route: "/")
+//
+// A plain, non-3D landing page: who Travis is, what he legitimately builds,
+// and links out to the 3D sections (the Gateway, the Portfolio Walk, the
+// Construct) as "cool sections" rather than the only way in.
+// ---------------------------------------------------------------------------
+
+export type Service = {
+  n: string; // "01".."05"
+  title: string;
+  blurb: string;
+  proof: { name: string; url: string }[];
+};
+
+const ghUrl = (name: string) => `https://github.com/seed0001/${name}`;
+
+export const hero = {
+  eyebrow: site.domain,
+  title: "Independent software builder.",
+  subhead: "AI-focused. Self-taught. Shipping constantly.",
+  lede: "I've spent the last three years teaching myself to build by building — no CS degree, no ML research background. Just three years of hands-on, self-directed work, most of it public. GitHub tells the pace: 80+ self-directed projects, several new ones most weeks.",
+  honesty: {
+    title: "What this is — and isn't",
+    is: [
+      "One person who ships working software end to end: frontend, backend, deployment.",
+      "AI woven into real products — agents, bots, business tools, content pipelines — using existing models and APIs.",
+      "Fast, because I build with AI tools myself. You can watch the pace on GitHub.",
+    ],
+    isnt: [
+      "Not a PhD or an ML research lab — I don't train models from scratch.",
+      "Not a big team — I'm one builder, so scope accordingly.",
+      "Not vaporware — every service below links to shipped, working code.",
+    ],
+  },
+  services: [
+    {
+      n: "01",
+      title: "AI agents & companions",
+      blurb:
+        "Custom LLM-backed agents with persistent memory, personality, and a measure of autonomy — built to run standalone, in a chat window, or on Discord.",
+      proof: [
+        { name: "Adam", url: ghUrl("Adam") },
+        { name: "growing-agent", url: ghUrl("growing-agent") },
+        { name: "voidcoder", url: "https://voidcoder-website-production.up.railway.app/" },
+      ],
+    },
+    {
+      n: "02",
+      title: "Discord bot development",
+      blurb:
+        "Full bot platforms, not single-command scripts: moderation, roles, voice, multi-bot fleets, and a dashboard to run it all from.",
+      proof: [
+        { name: "Discord-Bot-Platform", url: ghUrl("Discord-Bot-Platform") },
+        { name: "discord-agent", url: ghUrl("discord-agent") },
+        { name: "Adam-GURU", url: ghUrl("Adam-GURU") },
+      ],
+    },
+    {
+      n: "03",
+      title: "Small business software + AI",
+      blurb:
+        "Real business logic — quoting, shop management, client portals, health tracking — with an AI layer wired into the workflow, not bolted on after.",
+      proof: [
+        { name: "the-biz-app", url: ghUrl("the-biz-app") },
+        { name: "quote-ai", url: ghUrl("quote-ai") },
+        { name: "3d-printing-company-software", url: ghUrl("3d-printing-company-software") },
+      ],
+    },
+    {
+      n: "04",
+      title: "Interactive 3D & web experiences",
+      blurb:
+        "Three.js-built browser worlds: multiplayer environments, physics sandboxes, procedural generation — the kind of thing this very site is built from.",
+      proof: [
+        { name: "AI-City", url: ghUrl("AI-City") },
+        { name: "the-worlds", url: ghUrl("the-worlds") },
+        { name: "outdoor-world", url: ghUrl("outdoor-world") },
+      ],
+    },
+    {
+      n: "05",
+      title: "AI content & video pipelines",
+      blurb:
+        "The newest line of work: end-to-end pipelines that turn a prompt into a finished video — script, narration, image or video generation, stitched and delivered to YouTube.",
+      proof: [
+        { name: "videoMaker", url: ghUrl("videoMaker") },
+        { name: "movieMaker", url: ghUrl("movieMaker") },
+        { name: "Audio-Podcast", url: ghUrl("Audio-Podcast") },
+      ],
+    },
+  ] as Service[],
+  entryPoints: {
+    title: "Beyond the work",
+    intro:
+      "The professional index is one door. This site has others — an interactive 3D side built the same way as everything above.",
+    cards: [
+      {
+        title: "The Portfolio Walk",
+        description: "Every project, walkable — a 3D boulevard of category panels linking straight to GitHub.",
+        href: "/storefront",
+        accent: "#38bdf8",
+      },
+      {
+        title: "The Construct",
+        description: "A live multiplayer 3D city block — chat, voice, rentable storefronts, a venue at the end of the street.",
+        href: "/rabbit-hole/game",
+        accent: "#f43f5e",
+      },
+      {
+        title: "The Gateway",
+        description: "The original front door: a cinematic pill-choice intro staged as a small 3D room.",
+        href: "/gateway",
+        accent: "#8fb3ff",
+      },
+    ],
+  },
+  contact: {
+    title: "Get in touch",
+    description: "Have something that fits one of these? Tell me what you're building.",
+    cta: "Email me",
+  },
+};
+
+// ---------------------------------------------------------------------------
 // The Choice — landing page
 // ---------------------------------------------------------------------------
 
