@@ -905,6 +905,8 @@ const ZEE = new THREE.Vector3(0, 0, 1);
 const orientEuler = new THREE.Euler();
 const qScreen = new THREE.Quaternion();
 const Q_FLIP = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
+const recenterQ = new THREE.Quaternion();
+const recenterEuler = new THREE.Euler();
 
 function setQuaternionFromOrientation(
   quaternion: THREE.Quaternion,
@@ -922,6 +924,8 @@ function setQuaternionFromOrientation(
 export default function ConstructGame() {
   const hostRef = useRef<HTMLDivElement>(null);
   const lockFnRef = useRef<(() => void) | null>(null);
+  const recenterRef = useRef<(() => void) | null>(null);
+  const forceTouchRef = useRef<(() => void) | null>(null);
   const modeRef = useRef<ControlMode>("touch");
   const lobbyRef = useRef<LobbyClient | null>(null);
   const sceneApiRef = useRef<SceneApi | null>(null);
@@ -2822,6 +2826,48 @@ export default function ConstructGame() {
       );
     };
 
+    // Manual recovery for a skewed sensor frame (e.g. the orientation-change
+    // listener missed a rotation on iOS): re-read the screen angle right now,
+    // level the pitch, and treat wherever the device is currently pointed as
+    // "forward" instead of requiring the visitor to physically re-orient it.
+    const recenterLook = () => {
+      screenAngle = THREE.MathUtils.degToRad(
+        window.screen.orientation?.angle ?? 0,
+      );
+      pitch = 0;
+      if (modeRef.current === "gyro") {
+        setQuaternionFromOrientation(
+          recenterQ,
+          gyro.alpha,
+          gyro.beta,
+          gyro.gamma,
+          screenAngle,
+        );
+        recenterEuler.setFromQuaternion(recenterQ, "YXZ");
+        gyroYawOffset = -recenterEuler.y;
+      } else {
+        gyroYawOffset = 0;
+      }
+    };
+    recenterRef.current = recenterLook;
+
+    // Bail out of gyro mode entirely, for a session where the sensor frame
+    // can't be trusted — hands the currently-visible facing off to plain
+    // yaw/pitch so the switch doesn't snap the view.
+    const forceTouch = () => {
+      if (modeRef.current === "gyro") {
+        recenterEuler.setFromQuaternion(camera.quaternion, "YXZ");
+        yaw = recenterEuler.y;
+        pitch = Math.max(
+          -Math.PI / 2.2,
+          Math.min(Math.PI / 2.2, recenterEuler.x),
+        );
+      }
+      modeRef.current = "touch";
+      setMode("touch");
+    };
+    forceTouchRef.current = forceTouch;
+
     const isTyping = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       return (
@@ -3157,6 +3203,8 @@ export default function ConstructGame() {
 
     return () => {
       sceneDisposed = true;
+      recenterRef.current = null;
+      forceTouchRef.current = null;
       wallApiRef.current = null;
       posters.forEach((p) => p.ownTex?.dispose());
       [...avatars.keys()].forEach(removeAvatar);
@@ -3355,6 +3403,24 @@ export default function ConstructGame() {
             )}
           </div>
           <div className="flex items-center gap-2">
+            {isTouch && entered && (
+              <button
+                type="button"
+                onClick={() => recenterRef.current?.()}
+                className="pointer-events-auto rounded-md border border-white/18 bg-white/[0.055] px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-[#dbe5ff] transition-colors hover:bg-[#dbe5ff] hover:text-[#0b1020]"
+              >
+                recenter
+              </button>
+            )}
+            {isTouch && entered && mode === "gyro" && (
+              <button
+                type="button"
+                onClick={() => forceTouchRef.current?.()}
+                className="pointer-events-auto rounded-md border border-white/18 bg-white/[0.055] px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-[#dbe5ff] transition-colors hover:bg-[#dbe5ff] hover:text-[#0b1020]"
+              >
+                switch to touch
+              </button>
+            )}
             {entered && (
               <>
                 <button
@@ -3390,8 +3456,8 @@ export default function ConstructGame() {
         <p className="absolute inset-x-0 bottom-4 px-4 text-center text-[11px] uppercase tracking-[0.25em] text-ink-dim">
           {isTouch
             ? mode === "gyro"
-              ? "move your phone to look — left thumb: walk — swipe right side: turn"
-              : "left thumb: walk — right thumb: look"
+              ? "move your phone to look — left thumb: walk — swipe right side: turn — tilted? tap recenter, or switch to touch"
+              : "left thumb: walk — right thumb: look — tilted? tap recenter"
             : locked
               ? "wasd / arrows: move — mouse: look — enter: chat — esc: release cursor"
               : "cursor released — click the scene to look around again"}

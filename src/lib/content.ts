@@ -168,7 +168,8 @@ export const hub = {
     "You're standing at the threshold. Two pills. Walk up to one and take it — the blue pill opens the professional portfolio, the red pill drops you straight into the Construct.",
   hint: {
     desktop: "wasd / arrows: walk — mouse: look — E at a pill: take it",
-    touch: "left thumb: walk — right thumb / motion: look — tap a pill: take it",
+    touch:
+      "left thumb: walk — right thumb / motion: look — tap a pill: take it — view tilted? tap recenter, or switch to touch",
   },
   pills: {
     blue: {
@@ -222,7 +223,8 @@ export const portfolioWalk = {
   kicker: "professional portfolio",
   hint: {
     desktop: "wasd / arrows: walk — mouse: look — E at a panel: read it",
-    touch: "left thumb: walk — right thumb / motion: look — tap a panel: read it",
+    touch:
+      "left thumb: walk — right thumb / motion: look — tap a panel: read it — view tilted? tap recenter, or switch to touch",
   },
 };
 

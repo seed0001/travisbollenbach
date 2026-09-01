@@ -11,7 +11,8 @@ const GH_USER = "seed0001";
 
 // Every panel in the walk is a category of GitHub projects. Walk up to one and
 // press E to open its subpage — a list of every repo in that category, each a
-// link to GitHub. The 13th panel, at the center end of the road, is the photo.
+// link to GitHub. The 13th panel spotlights tagged releases; the 14th, at the
+// center end of the road, is the photo.
 type Repo = { name: string; url: string; desc: string; live?: string };
 type Category = { title: string; repos: Repo[] };
 
@@ -22,6 +23,29 @@ const gh = (name: string, desc: string, live?: string): Repo => ({
   desc,
   live,
 });
+
+// The releases spotlight: repos that are actually tagged and versioned, not
+// just committed to. Right now that's forge — add more here by hand as other
+// projects start cutting real releases.
+type Showcase = {
+  name: string;
+  tagline: string;
+  version: string;
+  releaseCount: number;
+  url: string;
+  releasesUrl: string;
+};
+const SHOWCASE: Showcase[] = [
+  {
+    name: "forge",
+    tagline:
+      "Desktop pair-programming agent with reviewable diffs and governed autonomy — nothing lands on disk unreviewed unless you've told it to.",
+    version: "v0.2.54",
+    releaseCount: 62,
+    url: `https://github.com/${GH_USER}/forge`,
+    releasesUrl: `https://github.com/${GH_USER}/forge/releases`,
+  },
+];
 
 const CATEGORIES: Category[] = [
   {
@@ -173,7 +197,7 @@ const CATEGORIES: Category[] = [
       ),
       gh(
         "Framework",
-        "The Alpha core of a software lifeform that arrives with no fixed identity — it's shaped by the history you build with it.",
+        "The Alpha release of a self-hosted, persistent AI agent core: multi-provider LLM support, long-term memory, a decision layer that governs autonomous action, and a FastAPI + React dashboard.",
       ),
       gh("baseline", "A clean create-next-app starting point — the baseline other web projects grow from."),
       gh(
@@ -184,6 +208,14 @@ const CATEGORIES: Category[] = [
       gh(
         "SeedKG",
         "A transparent cognitive architecture: every fact, inference, and piece of evidence lives in an inspectable knowledge graph.",
+      ),
+      gh(
+        "Engines",
+        "A 70-engine cognition library across emotion, personality, memory, cognitive processing, behavior, and creative/utility functions — extracted from four companion projects into a universal, plugin-ready core for any AI companion chatbot.",
+      ),
+      gh(
+        "forge",
+        "Desktop pair-programming coding agent: reviewable per-hunk diffs, Plan/Build modes, any provider (OpenRouter, local Ollama/llama.cpp, or your own Codex subscription), a background builder thread, a self-scheduler, and a phone portal.",
       ),
       gh(
         "voidcoder",
@@ -243,6 +275,10 @@ const CATEGORIES: Category[] = [
         "sharenet",
         "An early-stage share-network concept, still at the scaffold. Reserved — work not yet public.",
       ),
+      gh(
+        "market-strategy-lab",
+        "A paper-trading and market-analysis platform for backtesting pluggable strategies against historical and live data — no real brokerage integration, every trade simulated — with plain-English explanations and a local-first AI assistant for people with zero investing background.",
+      ),
     ],
   },
   {
@@ -263,6 +299,10 @@ const CATEGORIES: Category[] = [
       gh(
         "quote-ai",
         "QuoteFlow: an offline-first quoting and project workspace with a kanban workflow, a natural-language command bar, and background AI agents.",
+      ),
+      gh(
+        "ai-schooling",
+        "AI-assisted planning for any kind of teaching or learning — a class, a course, a tutee, or your own self-directed study. Describe the situation and it drafts an editable, drill-down plan, level by level.",
       ),
     ],
   },
@@ -332,7 +372,7 @@ const CATEGORIES: Category[] = [
       ),
       gh(
         "ai-studio",
-        "A stateless AI studio that generates songs and the music videos built around them — no accounts, no database, just generation. Currently a private repo.",
+        "A stateless AI studio that generates songs and the music videos built around them — no accounts, no database, just generation.",
       ),
       gh(
         "movieMaker",
@@ -396,12 +436,20 @@ const CATEGORIES: Category[] = [
         "Discord-Bot-Platform",
         "Companion: a self-hosted command center for autonomous Discord bot agents — three-tier memory, a ReAct tool loop, voice, and a task orchestrator.",
       ),
+      gh(
+        "ai-tv",
+        "A desktop live-TV player for free IPTV streams — search and filter by country or category, with a browser-like user agent so more channels load.",
+      ),
+      gh(
+        "GifWarBot",
+        "A Discord bot for themed GIF-war battles: post a theme, members reply with GIFs, everyone votes by reaction, and a per-server leaderboard tracks the winners — with a web dashboard for admins. Currently a private repo.",
+      ),
     ],
   },
 ];
 
-// Panel positions down the boulevard: 12 category stations + the photo at the
-// center end. side -1 = left, 1 = right, 0 = center.
+// Panel positions down the boulevard: 12 category stations, the releases
+// spotlight, then the photo at the center end. side -1 = left, 1 = right, 0 = center.
 const LAYOUT: { side: -1 | 0 | 1; z: number; accent: string }[] = [
   { side: -1, z: -8, accent: "#38bdf8" },
   { side: 1, z: -8, accent: "#7dffa8" },
@@ -415,7 +463,8 @@ const LAYOUT: { side: -1 | 0 | 1; z: number; accent: string }[] = [
   { side: 1, z: -64, accent: "#66e0ff" },
   { side: -1, z: -76, accent: "#ffd166" },
   { side: 1, z: -76, accent: "#f0abfc" },
-  { side: 0, z: -86, accent: "#f43f5e" }, // photo
+  { side: -1, z: -90, accent: "#fb923c" }, // releases spotlight
+  { side: 0, z: -100, accent: "#f43f5e" }, // photo
 ];
 
 type Panel = {
@@ -424,14 +473,15 @@ type Panel = {
   z: number;
   accent: string;
   category?: Category;
+  releases?: boolean;
   photo?: boolean;
 };
 
-const PANELS: Panel[] = LAYOUT.map((l, i) =>
-  i < CATEGORIES.length
-    ? { n: i + 1, ...l, category: CATEGORIES[i] }
-    : { n: i + 1, ...l, photo: true },
-);
+const PANELS: Panel[] = LAYOUT.map((l, i) => {
+  if (i < CATEGORIES.length) return { n: i + 1, ...l, category: CATEGORIES[i] };
+  if (i === CATEGORIES.length) return { n: i + 1, ...l, releases: true };
+  return { n: i + 1, ...l, photo: true };
+});
 
 // --- Canvas panel faces -----------------------------------------------------
 function roundRectPath(
@@ -514,6 +564,56 @@ function makeCategoryTexture(
   return texture;
 }
 
+// The releases panel: same frame as a category panel, but headed "SHIPPING
+// NOW" with the latest tag instead of a project count.
+function makeReleasesTexture(accent: string) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1200;
+  canvas.height = 800;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    const pad = 24;
+    ctx.fillStyle = "#0c1220";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    roundRectPath(ctx, pad, pad, canvas.width - pad * 2, canvas.height - pad * 2, 28);
+    ctx.fillStyle = "#0f1830";
+    ctx.fill();
+
+    const headerH = 116;
+    ctx.save();
+    roundRectPath(ctx, pad, pad, canvas.width - pad * 2, headerH, 28);
+    ctx.clip();
+    ctx.fillStyle = accent;
+    ctx.fillRect(pad, pad, canvas.width - pad * 2, headerH);
+    ctx.restore();
+    ctx.fillStyle = "#3a1a04";
+    ctx.textBaseline = "middle";
+    ctx.font = "800 38px Arial";
+    ctx.textAlign = "left";
+    ctx.fillText("SHIPPING NOW", pad + 56, pad + headerH / 2 + 2);
+    ctx.textAlign = "right";
+    ctx.fillText(
+      SHOWCASE[0].version,
+      canvas.width - pad - 56,
+      pad + headerH / 2 + 2,
+    );
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "800 96px Arial";
+    ctx.fillText("RELEASES", canvas.width / 2, 470);
+
+    ctx.fillStyle = accent;
+    ctx.font = "700 32px Arial";
+    ctx.fillText("PRESS  E  TO  OPEN  →", canvas.width / 2, 690);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
 // Placeholder behind the photo panel while the portrait loads.
 function makePhotoPlaceholder() {
   const canvas = document.createElement("canvas");
@@ -564,6 +664,7 @@ function makeBeamTexture() {
 
 type Overlay =
   | { type: "category"; n: number; category: Category; accent: string }
+  | { type: "releases" }
   | { type: "photo" }
   | null;
 
@@ -611,7 +712,7 @@ export default function PortfolioWalk() {
       opacity: 0.7,
     });
     disposables.push(dashGeo, dashMat);
-    for (let z = 8; z > -100; z -= 6) {
+    for (let z = 8; z > -110; z -= 6) {
       const dash = new THREE.Mesh(dashGeo, dashMat);
       dash.rotation.x = -Math.PI / 2;
       dash.position.set(0, 0.02, z);
@@ -706,12 +807,14 @@ export default function PortfolioWalk() {
 
       const texture = panel.photo
         ? makePhotoPlaceholder()
-        : makeCategoryTexture(
-            panel.n,
-            panel.category!.title,
-            panel.category!.repos.length,
-            panel.accent,
-          );
+        : panel.releases
+          ? makeReleasesTexture(panel.accent)
+          : makeCategoryTexture(
+              panel.n,
+              panel.category!.title,
+              panel.category!.repos.length,
+              panel.accent,
+            );
       disposables.push(texture);
 
       const contentMat = new THREE.MeshBasicMaterial({ map: texture });
@@ -757,21 +860,33 @@ export default function PortfolioWalk() {
         z: panel.z,
         radius: panel.side === 0 ? 9 : 4.6,
         accent: panel.accent,
-        eyebrow: panel.photo ? "the end of the road" : `category ${panel.n}`,
-        title: panel.photo ? "Travis & his QA lead" : category!.title,
+        eyebrow: panel.photo
+          ? "the end of the road"
+          : panel.releases
+            ? "shipping now"
+            : `category ${panel.n}`,
+        title: panel.photo
+          ? "Travis & his QA lead"
+          : panel.releases
+            ? "Releases"
+            : category!.title,
         blurb: panel.photo
           ? "The one who approves every release."
-          : `${category!.repos.length} projects · open to see them all`,
+          : panel.releases
+            ? "Tagged, versioned, and shipping — everything else on this walk is a work in progress."
+            : `${category!.repos.length} projects · open to see them all`,
         prompt: panel.photo ? "See the photo" : "Open",
         onInteract: panel.photo
           ? () => setOverlay({ type: "photo" })
-          : () =>
-              setOverlay({
-                type: "category",
-                n: panel.n,
-                category: category!,
-                accent: panel.accent,
-              }),
+          : panel.releases
+            ? () => setOverlay({ type: "releases" })
+            : () =>
+                setOverlay({
+                  type: "category",
+                  n: panel.n,
+                  category: category!,
+                  accent: panel.accent,
+                }),
       });
     });
 
@@ -841,7 +956,7 @@ export default function PortfolioWalk() {
       <WalkWorld
         build={build}
         spawn={{ x: 0, z: 14, yaw: 0 }}
-        bounds={{ x: 30, zMin: -80, zMax: 20 }}
+        bounds={{ x: 30, zMin: -94, zMax: 20 }}
         background={0x0b111c}
         fog={{ color: 0x0b111c, near: 34, far: 150 }}
         paused={!!overlay}
@@ -849,7 +964,7 @@ export default function PortfolioWalk() {
           kicker: portfolioWalk.kicker,
           title: "The project gallery",
           intro:
-            "Every panel is a category of what I've built on GitHub — 82 projects across 12 rooms. Walk up to one and press E to open it, then jump to any repo. At the center end of the road, that's me and my QA lead.",
+            "Every panel is a category of what I've built on GitHub — 88 projects across 12 rooms. Walk up to one and press E to open it, then jump to any repo. At the center end of the road, that's me and my QA lead.",
           enter: "start walking",
         }}
         hint={portfolioWalk.hint}
@@ -930,6 +1045,156 @@ export default function PortfolioWalk() {
               type="button"
               onClick={() => setOverlay(null)}
               className="mt-8 rounded-md border border-slate-300 px-5 py-2.5 text-xs font-bold uppercase tracking-[0.16em] text-slate-600 transition-colors hover:border-sky-400 hover:text-sky-700"
+            >
+              keep walking
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Releases spotlight — real HTML/CSS recreations of each shipped app's
+          own UI, not screenshots, plus its tag/release count and links. */}
+      {overlay?.type === "releases" && (
+        <div className="pointer-events-auto fixed inset-0 z-40 flex items-center justify-center bg-black/90 p-4">
+          <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl border border-white/12 bg-[#0b1020] p-6 text-[#dbe5ff] md:p-9">
+            <div className="flex items-start justify-between gap-6">
+              <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#fb923c]">
+                shipping now
+              </p>
+              <button
+                type="button"
+                onClick={() => setOverlay(null)}
+                className="text-ink-dim transition-colors hover:text-[#dbe5ff]"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+            <h2 className="mt-2 text-4xl font-black tracking-tight text-white">
+              Releases
+            </h2>
+            <p className="mt-2 max-w-lg text-sm leading-relaxed text-ink-soft">
+              Tagged, versioned, and shipping — everything else on this walk is a
+              work in progress. This is what&rsquo;s actually cutting releases on
+              GitHub right now.
+            </p>
+
+            {SHOWCASE.map((item) => (
+              <div key={item.name} className="mt-8">
+                {/* A live recreation of the app's own interface — real HTML,
+                    not a screenshot. */}
+                <div className="overflow-hidden rounded-lg border border-white/14 bg-[#0a0e16] shadow-2xl">
+                  <div className="flex items-center gap-1.5 border-b border-white/10 bg-[#0d1220] px-3 py-2">
+                    <span className="rounded-t-md border-x border-t border-white/10 bg-[#141a2a] px-3 py-1 text-[10px] font-semibold text-[#dbe5ff]">
+                      BuildersSource
+                    </span>
+                    <span className="px-3 py-1 text-[10px] text-ink-dim">AI TV</span>
+                    <span className="px-3 py-1 text-[10px] text-ink-dim">
+                      VideoMakerSpace
+                    </span>
+                  </div>
+                  <div className="flex h-[260px] sm:h-[300px]">
+                    <div className="flex w-[120px] shrink-0 flex-col border-r border-white/10 bg-[#0c111e] p-2.5 sm:w-[150px]">
+                      <p className="text-[10px] font-bold text-[#dbe5ff]">
+                        BuildersSource
+                      </p>
+                      <div className="mt-2 flex gap-1 text-[8px] font-semibold">
+                        <span className="rounded bg-white/10 px-1.5 py-1 text-[#dbe5ff]">
+                          Sessions
+                        </span>
+                        <span className="px-1.5 py-1 text-ink-dim">Files</span>
+                      </div>
+                      <div className="mt-2 rounded border border-white/10 px-1.5 py-1 text-center text-[8px] text-ink-soft">
+                        + New session
+                      </div>
+                      <p className="mt-3 text-[7px] uppercase tracking-widest text-ink-dim">
+                        Today
+                      </p>
+                      <div className="mt-1 rounded border-l-2 border-[#fb923c] bg-white/[0.06] px-1.5 py-1 text-[8px] text-[#dbe5ff]">
+                        New session
+                      </div>
+                      <div className="mt-auto text-[7px] text-ink-dim">
+                        Forge {item.version}
+                      </div>
+                    </div>
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <div className="flex items-center gap-3 border-b border-white/10 px-3 py-1.5 text-[8px] text-ink-dim">
+                        <span className="font-bold text-[#dbe5ff]">Chat</span>
+                        <span>Editor</span>
+                        <span>Terminal</span>
+                        <span>Scheduler</span>
+                        <span>Audit</span>
+                      </div>
+                      <div className="flex flex-1 flex-col items-center justify-center gap-1.5 px-6 text-center">
+                        <p className="text-xs font-bold text-white sm:text-sm">
+                          What should this workspace do?
+                        </p>
+                        <p className="max-w-xs text-[8px] leading-relaxed text-ink-dim sm:text-[9px]">
+                          It reads files, runs commands, and proposes edits.
+                          Nothing reaches disk until you accept it.
+                        </p>
+                      </div>
+                      <div className="border-t border-white/10 p-2">
+                        <div className="rounded border border-white/12 bg-[#0d1220] px-2 py-1.5 text-[8px] text-ink-dim">
+                          Ask, or describe a task
+                        </div>
+                        <div className="mt-1.5 flex gap-1 text-[7px] font-semibold">
+                          <span className="rounded bg-white/10 px-1.5 py-1 text-[#dbe5ff]">
+                            Plan
+                          </span>
+                          <span className="rounded px-1.5 py-1 text-ink-dim">
+                            Build
+                          </span>
+                          <span className="rounded px-1.5 py-1 text-ink-dim">
+                            Flash
+                          </span>
+                          <span className="rounded px-1.5 py-1 text-ink-dim">
+                            Balanced
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <p className="text-lg font-black tracking-tight text-white">
+                      {item.name}
+                    </p>
+                    <p className="mt-1 max-w-md text-sm leading-relaxed text-ink-soft">
+                      {item.tagline}
+                    </p>
+                    <p className="mt-2 text-xs font-bold uppercase tracking-[0.16em] text-[#fb923c]">
+                      {item.version} · {item.releaseCount} tagged releases
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <a
+                      href={item.releasesUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded-md border border-[#fb923c]/60 bg-[#fb923c]/10 px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-[#fb923c] transition-colors hover:bg-[#fb923c] hover:text-[#0b1020]"
+                    >
+                      releases ↗
+                    </a>
+                    <a
+                      href={item.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded-md border border-white/18 px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-[#dbe5ff] transition-colors hover:bg-[#dbe5ff] hover:text-[#0b1020]"
+                    >
+                      github ↗
+                    </a>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            <button
+              type="button"
+              onClick={() => setOverlay(null)}
+              className="mt-8 rounded-md border border-white/18 px-5 py-2.5 text-xs font-bold uppercase tracking-[0.16em] text-ink-soft transition-colors hover:border-[#fb923c]/60 hover:text-[#fb923c]"
             >
               keep walking
             </button>

@@ -51,3 +51,4 @@ The **exit** button (top bar) and the enter-overlay's "back to the environment p
 - Full multiplayer (presence, chat, voice) requires the custom server (`npm start`); under `next dev` the world renders but the lobby is absent.
 - The lobby also feeds the [Gateway scoreboard](02-the-gateway.md#the-live-scoreboard): the "in the construct now" count and the verified host-presence flag come from this socket.
 - Controls match the rest of the site: WASD/arrows + pointer-lock mouse, twin thumbs + optional gyro on touch, **E** to interact, **Enter** for chat, **Esc** to free the cursor or close overlays.
+- On touch, the top bar also carries **recenter** (re-levels the camera and re-reads the device's current heading as "forward" — fixes a tilted view, e.g. after rotating the device) and, while in motion-control mode, **switch to touch** (drops motion controls for the rest of the session without a reload).

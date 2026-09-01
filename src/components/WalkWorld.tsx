@@ -74,6 +74,8 @@ const ZEE = new THREE.Vector3(0, 0, 1);
 const orientEuler = new THREE.Euler();
 const qScreen = new THREE.Quaternion();
 const Q_FLIP = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
+const recenterQ = new THREE.Quaternion();
+const recenterEuler = new THREE.Euler();
 
 function setQuaternionFromOrientation(
   quaternion: THREE.Quaternion,
@@ -108,6 +110,8 @@ export default function WalkWorld({
   const buildRef = useRef(build);
   const modeRef = useRef<ControlMode>("touch");
   const lockFnRef = useRef<(() => void) | null>(null);
+  const recenterRef = useRef<(() => void) | null>(null);
+  const forceTouchRef = useRef<(() => void) | null>(null);
   const pausedRef = useRef(paused);
   const enteredRef = useRef(false);
   const nearRef = useRef<Interactable | null>(null);
@@ -116,6 +120,7 @@ export default function WalkWorld({
   const [entered, setEntered] = useState(false);
   const [locked, setLocked] = useState(false);
   const [near, setNear] = useState<Interactable | null>(null);
+  const [mode, setMode] = useState<ControlMode>("touch");
 
   const isTouch = useSyncExternalStore(
     subscribeToPointerType,
@@ -168,6 +173,7 @@ export default function WalkWorld({
       }
     }
     modeRef.current = nextMode;
+    setMode(nextMode);
     enteredRef.current = true;
     setEntered(true);
   };
@@ -245,6 +251,48 @@ export default function WalkWorld({
         window.screen.orientation?.angle ?? 0,
       );
     };
+
+    // Manual recovery for a skewed sensor frame (e.g. the orientation-change
+    // listener missed a rotation on iOS): re-read the screen angle right now,
+    // level the pitch, and treat wherever the device is currently pointed as
+    // "forward" instead of requiring the visitor to physically re-orient it.
+    const recenterLook = () => {
+      screenAngle = THREE.MathUtils.degToRad(
+        window.screen.orientation?.angle ?? 0,
+      );
+      pitch = 0;
+      if (modeRef.current === "gyro") {
+        setQuaternionFromOrientation(
+          recenterQ,
+          gyro.alpha,
+          gyro.beta,
+          gyro.gamma,
+          screenAngle,
+        );
+        recenterEuler.setFromQuaternion(recenterQ, "YXZ");
+        gyroYawOffset = -recenterEuler.y;
+      } else {
+        gyroYawOffset = 0;
+      }
+    };
+    recenterRef.current = recenterLook;
+
+    // Bail out of gyro mode entirely, for a session where the sensor frame
+    // can't be trusted — hands the currently-visible facing off to plain
+    // yaw/pitch so the switch doesn't snap the view.
+    const forceTouch = () => {
+      if (modeRef.current === "gyro") {
+        recenterEuler.setFromQuaternion(camera.quaternion, "YXZ");
+        yaw = recenterEuler.y;
+        pitch = Math.max(
+          -Math.PI / 2.2,
+          Math.min(Math.PI / 2.2, recenterEuler.x),
+        );
+      }
+      modeRef.current = "touch";
+      setMode("touch");
+    };
+    forceTouchRef.current = forceTouch;
 
     const applyLook = (dx: number, dy: number, sensitivity: number) => {
       yaw -= dx * sensitivity;
@@ -482,6 +530,8 @@ export default function WalkWorld({
 
     return () => {
       lockFnRef.current = null;
+      recenterRef.current = null;
+      forceTouchRef.current = null;
       window.cancelAnimationFrame(animationFrame);
       document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("keyup", onKeyUp);
@@ -524,6 +574,24 @@ export default function WalkWorld({
             {entered ? overlay.kicker : ""}
           </p>
           <div className="flex items-center gap-2">
+            {isTouch && entered && (
+              <button
+                type="button"
+                onClick={() => recenterRef.current?.()}
+                className="pointer-events-auto rounded-md border border-white/18 bg-white/[0.055] px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-[#dbe5ff] transition-colors hover:bg-[#dbe5ff] hover:text-[#0b1020]"
+              >
+                recenter
+              </button>
+            )}
+            {isTouch && entered && mode === "gyro" && (
+              <button
+                type="button"
+                onClick={() => forceTouchRef.current?.()}
+                className="pointer-events-auto rounded-md border border-white/18 bg-white/[0.055] px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-[#dbe5ff] transition-colors hover:bg-[#dbe5ff] hover:text-[#0b1020]"
+              >
+                switch to touch
+              </button>
+            )}
             {topRight}
             <Link
               href={exitHref}

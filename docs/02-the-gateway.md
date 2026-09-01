@@ -21,6 +21,8 @@ The first thing every visitor sees. Instead of a flat landing page, the site ope
 
 Walking into a pill's trigger zone pops a placard ("Take the blue pill" / "Take the red pill"); confirming navigates.
 
+On touch, two buttons live in the top bar once you're in: **recenter** re-levels the view and re-reads the device's current heading as "forward" (fixes a tilted or skewed camera, e.g. after rotating the device); **switch to touch** bails out of motion controls for the rest of the session without a reload.
+
 ## Escape hatches
 
 Not everyone wants the theater:
